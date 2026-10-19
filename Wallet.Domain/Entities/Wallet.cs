@@ -1,47 +1,17 @@
+using Wallet.Domain.Base;
+using Wallet.Domain.Enums;
+
 namespace Wallet.Domain.Entities;
 
-using global::Wallet.Domain.Common;
-using global::Wallet.Domain.Exceptions;
-
-public class WalletAccount : BaseEntity
+public class Wallet : AuditableEntity<Guid>
 {
-    public string UserId { get; set; } = string.Empty;
-    public decimal Balance { get; set; } = 0m;
-    public string Currency { get; set; } = "VND";
-    public string Status { get; set; } = "ACTIVE";
+    public required Guid UserId { get; set; }
+    public decimal Balance { get; set; }
+    public decimal LockedBalance { get; set; }
+    public required CurrencyCode Currency { get; set; } = CurrencyCode.Vnd;
 
+    // Navigation
     public ICollection<WalletTransaction> Transactions { get; set; } = new List<WalletTransaction>();
-
-    public void Deposit(decimal amount)
-    {
-        if (amount <= 0)
-            throw new ArgumentException("Số tiền nạp phải lớn hơn 0.", nameof(amount));
-
-        Balance += amount;
-        UpdatedAt = DateTimeOffset.UtcNow;
-    }
-
-    public void Withdraw(decimal amount)
-    {
-        if (amount <= 0)
-            throw new ArgumentException("Số tiền rút phải lớn hơn 0.", nameof(amount));
-
-        if (Balance < amount)
-            throw new InsufficientBalanceException(Balance, amount);
-
-        Balance -= amount;
-        UpdatedAt = DateTimeOffset.UtcNow;
-    }
-
-    public void Deduct(decimal amount)
-    {
-        if (amount <= 0)
-            throw new ArgumentException("Số tiền trừ phải lớn hơn 0.", nameof(amount));
-
-        if (Balance < amount)
-            throw new InsufficientBalanceException(Balance, amount);
-
-        Balance -= amount;
-        UpdatedAt = DateTimeOffset.UtcNow;
-    }
+    public ICollection<WalletTopup> Topups { get; set; } = new List<WalletTopup>();
+    public ICollection<WithdrawalRequest> WithdrawalRequests { get; set; } = new List<WithdrawalRequest>();
 }
