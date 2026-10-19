@@ -4,6 +4,7 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Wallet.Application.Common.Interfaces;
 using Wallet.Application.DTOs;
+using Wallet.Domain.Enums;
 
 public record ListTransactionsQuery(string UserId, int Page, int PageSize, string? Type) : IRequest<WalletTransactionPageDto>;
 
@@ -25,9 +26,9 @@ public class ListTransactionsQueryHandler : IRequestHandler<ListTransactionsQuer
             .AsNoTracking()
             .Where(t => t.UserId == request.UserId);
 
-        if (!string.IsNullOrWhiteSpace(request.Type))
+        if (!string.IsNullOrWhiteSpace(request.Type) && Enum.TryParse<WalletTransactionType>(request.Type.Trim(), true, out var txType))
         {
-            query = query.Where(t => t.Type == request.Type.Trim().ToUpperInvariant());
+            query = query.Where(t => t.Type == txType);
         }
 
         var total = await query.CountAsync(cancellationToken);
@@ -40,13 +41,13 @@ public class ListTransactionsQueryHandler : IRequestHandler<ListTransactionsQuer
             {
                 Id = t.Id.ToString(),
                 WalletId = t.WalletId.ToString(),
-                UserId = t.UserId,
-                Type = t.Type,
+                UserId = t.UserId ?? string.Empty,
+                Type = t.Type.ToString(),
                 Amount = t.Amount,
-                Currency = t.Currency,
+                Currency = t.Currency ?? "VND",
                 BalanceAfter = t.BalanceAfter,
-                Status = t.Status,
-                Note = t.Note,
+                Status = t.Status.ToString(),
+                Note = t.Note ?? string.Empty,
                 CreatedAt = t.CreatedAt
             })
             .ToListAsync(cancellationToken);

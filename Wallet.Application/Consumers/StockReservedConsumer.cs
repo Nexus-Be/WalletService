@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Wallet.Application.Common.Interfaces;
 using Wallet.Domain.Entities;
+using Wallet.Domain.Enums;
 using Wallet.Domain.Events;
 using Wallet.Domain.Exceptions;
 
@@ -38,8 +39,10 @@ public class StockReservedConsumer : IConsumer<IStockReservedEvent>
             return;
         }
 
+        _ = Guid.TryParse(message.UserId, out var uid);
+
         var wallet = await _context.Wallets
-            .FirstOrDefaultAsync(w => w.UserId == message.UserId, context.CancellationToken);
+            .FirstOrDefaultAsync(w => w.UserId == uid, context.CancellationToken);
 
         if (wallet == null)
         {
@@ -55,17 +58,19 @@ public class StockReservedConsumer : IConsumer<IStockReservedEvent>
 
         try
         {
+            var balanceBefore = wallet.Balance;
             wallet.Deduct(requiredAmount);
 
             var tx = new WalletTransaction
             {
                 WalletId = wallet.Id,
-                UserId = wallet.UserId,
-                Type = "ORDER_PAYMENT",
+                UserId = wallet.UserId.ToString(),
+                Type = WalletTransactionType.PurchaseDebit,
                 Amount = requiredAmount,
-                Currency = wallet.Currency,
+                Currency = wallet.Currency.ToString(),
+                BalanceBefore = balanceBefore,
                 BalanceAfter = wallet.Balance,
-                Status = "SUCCESS",
+                Status = TransactionStatus.Success,
                 Note = $"Thanh toán đơn hàng #{message.OrderId}"
             };
 

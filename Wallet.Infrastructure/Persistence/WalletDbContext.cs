@@ -14,6 +14,10 @@ public class WalletDbContext : DbContext, IWalletDbContext
     public DbSet<WalletAccount> Wallets => Set<WalletAccount>();
     public DbSet<WalletTransaction> WalletTransactions => Set<WalletTransaction>();
     public DbSet<BankAccount> BankAccounts => Set<BankAccount>();
+    public DbSet<WalletTopup> WalletTopups => Set<WalletTopup>();
+    public DbSet<WithdrawalRequest> WithdrawalRequests => Set<WithdrawalRequest>();
+    public DbSet<VnpayIpnLog> VnpayIpnLogs => Set<VnpayIpnLog>();
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -25,5 +29,12 @@ public class WalletDbContext : DbContext, IWalletDbContext
         modelBuilder.AddInboxStateEntity();
         modelBuilder.AddOutboxMessageEntity();
         modelBuilder.AddOutboxStateEntity();
+    }
+}
+
+public class AppDbContext : WalletDbContext
+{
+    public AppDbContext(DbContextOptions<WalletDbContext> options) : base(options)
+    {
     }
 }

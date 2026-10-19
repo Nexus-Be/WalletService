@@ -8,29 +8,10 @@ public class BankAccountConfiguration : IEntityTypeConfiguration<BankAccount>
 {
     public void Configure(EntityTypeBuilder<BankAccount> builder)
     {
-        builder.ToTable("bank_accounts");
-
-        builder.HasKey(b => b.Id);
-
-        builder.Property(b => b.UserId)
-            .IsRequired()
-            .HasMaxLength(100);
-
-        builder.HasIndex(b => b.UserId);
-
-        builder.Property(b => b.BankName)
-            .IsRequired()
-            .HasMaxLength(150);
-
-        builder.Property(b => b.AccountNumber)
-            .IsRequired()
-            .HasMaxLength(50);
-
-        builder.Property(b => b.AccountHolderName)
-            .IsRequired()
-            .HasMaxLength(150);
-
-        builder.Property(b => b.CreatedAt)
-            .IsRequired();
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.UserId).HasMaxLength(100).IsRequired();
+        builder.Property(x => x.BankName).HasMaxLength(150).IsRequired();
+        builder.Property(x => x.AccountNumber).HasMaxLength(100).IsRequired();
+        builder.Property(x => x.AccountHolderName).HasMaxLength(255).IsRequired();
     }
 }

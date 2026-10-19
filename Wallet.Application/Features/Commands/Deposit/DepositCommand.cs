@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Wallet.Application.Common.Interfaces;
 using Wallet.Application.DTOs;
 using Wallet.Domain.Entities;
+using Wallet.Domain.Enums;
 
 public record DepositCommand(string UserId, decimal Amount, string Currency, string PaymentMethod) : IRequest<WalletTransactionDto>;
 
@@ -29,32 +30,36 @@ public class DepositCommandHandler : IRequestHandler<DepositCommand, WalletTrans
 
     public async Task<WalletTransactionDto> Handle(DepositCommand request, CancellationToken cancellationToken)
     {
+        _ = Guid.TryParse(request.UserId, out var uid);
+
         var wallet = await _context.Wallets
-            .FirstOrDefaultAsync(w => w.UserId == request.UserId, cancellationToken);
+            .FirstOrDefaultAsync(w => w.UserId == uid, cancellationToken);
 
         if (wallet == null)
         {
             wallet = new WalletAccount
             {
-                UserId = request.UserId,
+                UserId = uid != Guid.Empty ? uid : Guid.NewGuid(),
                 Balance = 0m,
-                Currency = string.IsNullOrWhiteSpace(request.Currency) ? "VND" : request.Currency,
+                Currency = CurrencyCode.Vnd,
                 Status = "ACTIVE"
             };
             _context.Wallets.Add(wallet);
         }
 
+        var balanceBefore = wallet.Balance;
         wallet.Deposit(request.Amount);
 
         var transaction = new WalletTransaction
         {
             WalletId = wallet.Id,
-            UserId = wallet.UserId,
-            Type = "DEPOSIT",
+            UserId = wallet.UserId.ToString(),
+            Type = WalletTransactionType.TopupVnpay,
             Amount = request.Amount,
-            Currency = wallet.Currency,
+            Currency = wallet.Currency.ToString(),
+            BalanceBefore = balanceBefore,
             BalanceAfter = wallet.Balance,
-            Status = "SUCCESS",
+            Status = TransactionStatus.Success,
             Note = $"Nạp tiền qua {request.PaymentMethod}"
         };
 
@@ -66,12 +71,12 @@ public class DepositCommandHandler : IRequestHandler<DepositCommand, WalletTrans
             Id = transaction.Id.ToString(),
             WalletId = transaction.WalletId.ToString(),
             UserId = transaction.UserId,
-            Type = transaction.Type,
+            Type = transaction.Type.ToString(),
             Amount = transaction.Amount,
             Currency = transaction.Currency,
             BalanceAfter = transaction.BalanceAfter,
-            Status = transaction.Status,
-            Note = transaction.Note,
+            Status = transaction.Status.ToString(),
+            Note = transaction.Note ?? string.Empty,
             CreatedAt = transaction.CreatedAt
         };
     }

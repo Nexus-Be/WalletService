@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Wallet.Application.Common.Interfaces;
 using Wallet.Application.DTOs;
 using Wallet.Domain.Entities;
+using Wallet.Domain.Enums;
 using Wallet.Domain.Exceptions;
 
 public record WithdrawCommand(string UserId, decimal Amount, string Currency, string BankAccount) : IRequest<WalletTransactionDto>;
@@ -31,8 +32,10 @@ public class WithdrawCommandHandler : IRequestHandler<WithdrawCommand, WalletTra
 
     public async Task<WalletTransactionDto> Handle(WithdrawCommand request, CancellationToken cancellationToken)
     {
+        _ = Guid.TryParse(request.UserId, out var uid);
+
         var wallet = await _context.Wallets
-            .FirstOrDefaultAsync(w => w.UserId == request.UserId, cancellationToken);
+            .FirstOrDefaultAsync(w => w.UserId == uid, cancellationToken);
 
         if (wallet == null)
             throw new WalletNotFoundException(request.UserId);
@@ -42,12 +45,13 @@ public class WithdrawCommandHandler : IRequestHandler<WithdrawCommand, WalletTra
         var transaction = new WalletTransaction
         {
             WalletId = wallet.Id,
-            UserId = wallet.UserId,
-            Type = "WITHDRAW",
+            UserId = wallet.UserId.ToString(),
+            Type = WalletTransactionType.WithdrawalDebit,
             Amount = request.Amount,
-            Currency = wallet.Currency,
+            Currency = wallet.Currency.ToString(),
+            BalanceBefore = wallet.Balance + request.Amount,
             BalanceAfter = wallet.Balance,
-            Status = "SUCCESS",
+            Status = TransactionStatus.Success,
             Note = $"Rút tiền về tài khoản ngân hàng: {request.BankAccount}"
         };
 
@@ -59,12 +63,12 @@ public class WithdrawCommandHandler : IRequestHandler<WithdrawCommand, WalletTra
             Id = transaction.Id.ToString(),
             WalletId = transaction.WalletId.ToString(),
             UserId = transaction.UserId,
-            Type = transaction.Type,
+            Type = transaction.Type.ToString(),
             Amount = transaction.Amount,
             Currency = transaction.Currency,
             BalanceAfter = transaction.BalanceAfter,
-            Status = transaction.Status,
-            Note = transaction.Note,
+            Status = transaction.Status.ToString(),
+            Note = transaction.Note ?? string.Empty,
             CreatedAt = transaction.CreatedAt
         };
     }

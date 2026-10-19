@@ -13,6 +13,11 @@ public class WalletTransaction : BaseEntity<Guid>
     public Guid? ReferenceId { get; set; }
     public required TransactionStatus Status { get; set; } = TransactionStatus.Pending;
 
+    // Helper metadata properties for logging & display
+    public string? UserId { get; set; }
+    public string? Currency { get; set; }
+    public string? Note { get; set; }
+
     // Navigation
     public Wallet? Wallet { get; set; }
 }

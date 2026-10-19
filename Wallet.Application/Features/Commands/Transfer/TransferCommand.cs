@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Wallet.Application.Common.Interfaces;
 using Wallet.Application.DTOs;
 using Wallet.Domain.Entities;
+using Wallet.Domain.Enums;
 using Wallet.Domain.Exceptions;
 
 public record TransferCommand(string SenderUserId, string RecipientUserId, decimal Amount, string Note) : IRequest<WalletTransactionDto>;
@@ -32,20 +33,23 @@ public class TransferCommandHandler : IRequestHandler<TransferCommand, WalletTra
 
     public async Task<WalletTransactionDto> Handle(TransferCommand request, CancellationToken cancellationToken)
     {
+        _ = Guid.TryParse(request.SenderUserId, out var senderGuid);
+        _ = Guid.TryParse(request.RecipientUserId, out var recipientGuid);
+
         var senderWallet = await _context.Wallets
-            .FirstOrDefaultAsync(w => w.UserId == request.SenderUserId, cancellationToken);
+            .FirstOrDefaultAsync(w => w.UserId == senderGuid, cancellationToken);
 
         if (senderWallet == null)
             throw new WalletNotFoundException(request.SenderUserId);
 
         var recipientWallet = await _context.Wallets
-            .FirstOrDefaultAsync(w => w.UserId == request.RecipientUserId, cancellationToken);
+            .FirstOrDefaultAsync(w => w.UserId == recipientGuid, cancellationToken);
 
         if (recipientWallet == null)
         {
             recipientWallet = new WalletAccount
             {
-                UserId = request.RecipientUserId,
+                UserId = recipientGuid != Guid.Empty ? recipientGuid : Guid.NewGuid(),
                 Balance = 0m,
                 Currency = senderWallet.Currency,
                 Status = "ACTIVE"
@@ -54,32 +58,36 @@ public class TransferCommandHandler : IRequestHandler<TransferCommand, WalletTra
         }
 
         // Deduct from sender
+        var senderBefore = senderWallet.Balance;
         senderWallet.Deduct(request.Amount);
 
         // Deposit to recipient
+        var recipientBefore = recipientWallet.Balance;
         recipientWallet.Deposit(request.Amount);
 
         var senderTx = new WalletTransaction
         {
             WalletId = senderWallet.Id,
-            UserId = senderWallet.UserId,
-            Type = "TRANSFER_OUT",
+            UserId = senderWallet.UserId.ToString(),
+            Type = WalletTransactionType.AdjustmentDebit,
             Amount = request.Amount,
-            Currency = senderWallet.Currency,
+            Currency = senderWallet.Currency.ToString(),
+            BalanceBefore = senderBefore,
             BalanceAfter = senderWallet.Balance,
-            Status = "SUCCESS",
+            Status = TransactionStatus.Success,
             Note = string.IsNullOrWhiteSpace(request.Note) ? $"Chuyển tiền tới user {request.RecipientUserId}" : request.Note
         };
 
         var recipientTx = new WalletTransaction
         {
             WalletId = recipientWallet.Id,
-            UserId = recipientWallet.UserId,
-            Type = "TRANSFER_IN",
+            UserId = recipientWallet.UserId.ToString(),
+            Type = WalletTransactionType.AdjustmentCredit,
             Amount = request.Amount,
-            Currency = recipientWallet.Currency,
+            Currency = recipientWallet.Currency.ToString(),
+            BalanceBefore = recipientBefore,
             BalanceAfter = recipientWallet.Balance,
-            Status = "SUCCESS",
+            Status = TransactionStatus.Success,
             Note = string.IsNullOrWhiteSpace(request.Note) ? $"Nhận tiền từ user {request.SenderUserId}" : request.Note
         };
 
@@ -93,12 +101,12 @@ public class TransferCommandHandler : IRequestHandler<TransferCommand, WalletTra
             Id = senderTx.Id.ToString(),
             WalletId = senderTx.WalletId.ToString(),
             UserId = senderTx.UserId,
-            Type = senderTx.Type,
+            Type = senderTx.Type.ToString(),
             Amount = senderTx.Amount,
             Currency = senderTx.Currency,
             BalanceAfter = senderTx.BalanceAfter,
-            Status = senderTx.Status,
-            Note = senderTx.Note,
+            Status = senderTx.Status.ToString(),
+            Note = senderTx.Note ?? string.Empty,
             CreatedAt = senderTx.CreatedAt
         };
     }
