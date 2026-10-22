@@ -56,7 +56,15 @@
    - `Status`: `WithdrawalStatus` (`Pending = 0`, `Approved = 1`, `Processing = 2`, `Completed = 3`, `Rejected = 4`, `Failed = 5`).
    - Navigation: `Wallet`.
 
-6. **`VnpayIpnLog`**:
+6. **`BankAccount` (Tài khoản ngân hàng liên kết)**:
+   - `Id`: `Guid` (Primary Key).
+   - `UserId`: `string` (Cross-service Ref $\rightarrow$ `UserService.Users.Id`).
+   - `BankName`: `string`.
+   - `AccountNumber`: `string`.
+   - `AccountHolderName`: `string`.
+   - `IsDefault`: `bool`.
+
+7. **`VnpayIpnLog`**:
    - `Id`: `Guid`.
    - `VnpTxnRef`: `string` (Mã tham chiếu liên kết logic với `WalletTopup` hoặc `DirectPaymentOrder`).
    - `VnpResponseCode`, `VnpTransactionNo`, `ClientIp`: `string?`.

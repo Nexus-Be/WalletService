@@ -21,6 +21,10 @@ builder.Services.AddGrpc(options =>
 // 4. Swagger / OpenAPI for REST endpoints (if any)
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+});
 
 var app = builder.Build();
 
