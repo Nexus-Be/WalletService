@@ -11,5 +11,6 @@ public enum WalletTransactionType
     WithdrawalReversal = 6,
     PlatformFeeCredit = 7,
     AdjustmentCredit = 8,
-    AdjustmentDebit = 9
+    AdjustmentDebit = 9,
+    DirectVnpayDebit = 10
 }

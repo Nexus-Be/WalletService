@@ -8,6 +8,7 @@ public interface IWalletDbContext
     DbSet<WalletAccount> Wallets { get; }
     DbSet<WalletTransaction> WalletTransactions { get; }
     DbSet<BankAccount> BankAccounts { get; }
+    DbSet<DirectPaymentOrder> DirectPaymentOrders { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

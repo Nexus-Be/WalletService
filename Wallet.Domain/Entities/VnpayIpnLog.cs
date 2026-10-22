@@ -14,4 +14,5 @@ public class VnpayIpnLog : BaseEntity<Guid>
 
     // Navigation
     public WalletTopup? WalletTopup { get; set; }
+    public DirectPaymentOrder? DirectPaymentOrder { get; set; }
 }
