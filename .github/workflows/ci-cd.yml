@@ -17,15 +17,18 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Extract Docker Metadata for PR
-        if: github.event_name == 'pull_request'
-        id: meta_pr
+      - name: Extract Docker Metadata
+        id: meta
         uses: docker/metadata-action@v5
         with:
-          images: local/${{ github.event.repository.name }}
+          images: ${{ secrets.DOCKER_HUB_USERNAME }}/${{ github.event.repository.name }}
+          flavor: |
+            prefix=,onlatest=true
           tags: |
+            type=ref,event=branch
             type=ref,event=pr
             type=sha,prefix=sha-,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Log in to Docker Hub
         if: github.event_name != 'pull_request'
