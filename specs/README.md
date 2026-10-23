@@ -8,7 +8,7 @@ Tài liệu này là **Bộ Chỉ Dẫn & Đặc Tả Kỹ Thuật (Spec Kit)** 
 
 | File Đặc Tả | Trọng Tâm Nội Dung |
 |:---|:---|
-| [00_AGENT_MISSION_GUARDRAILS.md](00_AGENT_MISSION_GUARDRAILS.md) | Bounded Context, Port `8008`, DB `wallet_db` (`5439`), các điều cấm kỵ cốt lõi. |
+| [00_AGENT_MISSION_GUARDRAILS.md](00_AGENT_MISSION_GUARDRAILS.md) | Bounded Context, Port `8008`, DB `wallet_db` (`5440`), các điều cấm kỵ cốt lõi. |
 | [01_CLEAN_ARCHITECTURE_LAYERS.md](01_CLEAN_ARCHITECTURE_LAYERS.md) | Cấu trúc 4 tầng Clean Architecture (`.Api`, `.Application`, `.Domain`, `.Infrastructure`), luồng phụ thuộc. |
 | [02_API_GRPC_CONTRACTS.md](02_API_GRPC_CONTRACTS.md) | Hợp đồng gRPC `WalletApi` trong `shop.proto`, Request/Response messages, phân trang, tiền tệ. |
 | [03_EVENT_MESSAGING.md](03_EVENT_MESSAGING.md) | Sự kiện bất đồng bộ RabbitMQ + MassTransit 8.4.1 (Trừ tiền trong Checkout Saga, bắn sự kiện hoàn tất/thất bại). |
@@ -21,6 +21,6 @@ Tài liệu này là **Bộ Chỉ Dẫn & Đặc Tả Kỹ Thuật (Spec Kit)** 
 
 - **Ngôn ngữ & Runtime**: .NET 8 (C# 12).
 - **Cổng gRPC Server**: Port `8008` (Mọi REST call từ client đều qua ApiGateway Port `8000`).
-- **Cơ Sở Dữ Liệu**: PostgreSQL (Port `5439`, Database: `wallet_db`).
+- **Cơ Sở Dữ Liệu**: PostgreSQL (Port `5440`, Database: `wallet_db`, Mật khẩu: `MatkhaucuaTui123@`).
 - **Message Broker**: RabbitMQ (Port `5672`, Virtual Host: `/`).
 - **Đơn Vị Tiền Tệ Mặc Định**: `VND`. Số dư và số tiền giao dịch lưu chuỗi decimal chuẩn 2 chữ số thập phân (ví dụ: `"500000.00"`).

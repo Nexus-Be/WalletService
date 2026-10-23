@@ -22,6 +22,6 @@ dotnet run --project Wallet.Api
 
 - [ ] **Biên dịch thành công 100%**: Không lỗi biên dịch, không cảnh báo nghiêm trọng.
 - [ ] **Không vi phạm rào chắn**: Không dùng Generic Repository Pattern bọc ngoài EF Core.
-- [ ] **Port & Database**: Lắng nghe đúng port `8008`, kết nối `wallet_db` trên port `5439`.
+- [ ] **Port & Database**: Lắng nghe đúng port `8008`, kết nối `wallet_db` trên port `5440` (Password: `MatkhaucuaTui123@`).
 - [ ] **Bảo vệ số dư**: Thao tác trừ tiền, rút tiền, chuyển tiền luôn kiểm tra số dư khả dụng, không để âm ví.
 - [ ] **Git Status**: Không commit file build rác (`bin/`, `obj/`, `.idea/`, `.env`).

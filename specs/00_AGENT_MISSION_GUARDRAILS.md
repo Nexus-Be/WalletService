@@ -29,9 +29,9 @@
    - Mọi thao tác rút tiền (`Withdraw`), chuyển tiền (`Transfer`), hoặc trừ tiền thanh toán (`Deduct`) bắt buộc phải kiểm tra điều kiện `Balance >= Amount`.
    - Nếu số dư không đủ, bắt buộc ném `InsufficientBalanceException` và không cho phép giao dịch hoàn tất.
 
-4. **TUYỆT ĐỐI KHÔNG THAY ĐỔI CỔNG 8008 VÀ DATABASE 5439**:
+4. **TUYỆT ĐỐI KHÔNG THAY ĐỔI CỔNG 8008 VÀ DATABASE 5440**:
    - Service gRPC chạy tại `http://localhost:8008`.
-   - Chuỗi kết nối DB trỏ tới `localhost:5439/wallet_db`.
+   - Chuỗi kết nối DB trỏ tới `localhost:5440/wallet_db` với mật khẩu mặc định `MatkhaucuaTui123@`.
 
 5. **TUYỆT ĐỐI KHÔNG TỰ Ý SỬA PROTOBUF MÀ KHÔNG ĐỒNG BỘ GATEWAY**:
    - RPC methods và message formats phải khớp 100% với `Contracts/shop.proto` tại ApiGateway (`WalletApi`).
