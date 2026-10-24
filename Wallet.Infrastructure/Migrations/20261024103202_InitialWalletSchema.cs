@@ -4,6 +4,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
+#pragma warning disable CA1814 // Prefer jagged arrays over multidimensional
+
 namespace Wallet.Infrastructure.Migrations
 {
     /// <inheritdoc />
@@ -308,9 +310,26 @@ namespace Wallet.Infrastructure.Migrations
                 });
 
             migrationBuilder.InsertData(
+                table: "BankAccounts",
+                columns: new[] { "Id", "AccountHolderName", "AccountNumber", "BankName", "CreatedAt", "DeletedAt", "IsDefault", "IsDeleted", "UpdatedAt", "UserId" },
+                values: new object[] { new Guid("88888888-3333-3333-3333-333333333333"), "NEXUS OFFICIAL STORE", "9988776655", "Vietcombank", new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), null, true, false, new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), "cccccccc-3333-3333-3333-333333333333" });
+
+            migrationBuilder.InsertData(
                 table: "Wallets",
                 columns: new[] { "Id", "Balance", "CreatedAt", "CreatedBy", "Currency", "DeletedAt", "IsDeleted", "LockedBalance", "Status", "UpdatedAt", "UpdatedBy", "UserId" },
-                values: new object[] { new Guid("99999999-9999-9999-9999-999999999999"), 0m, new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), new Guid("00000000-0000-0000-0000-000000000000"), "Vnd", null, false, 0m, "ACTIVE", new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), new Guid("00000000-0000-0000-0000-000000000000"), new Guid("00000000-0000-0000-0000-000000000001") });
+                values: new object[,]
+                {
+                    { new Guid("99999999-1111-1111-1111-111111111111"), 10000000m, new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), new Guid("00000000-0000-0000-0000-000000000000"), "Vnd", null, false, 0m, "ACTIVE", new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), new Guid("00000000-0000-0000-0000-000000000000"), new Guid("aaaaaaaa-1111-1111-1111-111111111111") },
+                    { new Guid("99999999-2222-2222-2222-222222222222"), 5000000m, new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), new Guid("00000000-0000-0000-0000-000000000000"), "Vnd", null, false, 0m, "ACTIVE", new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), new Guid("00000000-0000-0000-0000-000000000000"), new Guid("bbbbbbbb-2222-2222-2222-222222222222") },
+                    { new Guid("99999999-3333-3333-3333-333333333333"), 50000000m, new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), new Guid("00000000-0000-0000-0000-000000000000"), "Vnd", null, false, 0m, "ACTIVE", new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), new Guid("00000000-0000-0000-0000-000000000000"), new Guid("cccccccc-3333-3333-3333-333333333333") },
+                    { new Guid("99999999-4444-4444-4444-444444444444"), 20000000m, new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), new Guid("00000000-0000-0000-0000-000000000000"), "Vnd", null, false, 0m, "ACTIVE", new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), new Guid("00000000-0000-0000-0000-000000000000"), new Guid("dddddddd-4444-4444-4444-444444444444") },
+                    { new Guid("99999999-9999-9999-9999-999999999999"), 1000000000m, new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), new Guid("00000000-0000-0000-0000-000000000000"), "Vnd", null, false, 0m, "ACTIVE", new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), new Guid("00000000-0000-0000-0000-000000000000"), new Guid("00000000-0000-0000-0000-000000000001") }
+                });
+
+            migrationBuilder.InsertData(
+                table: "WalletTransactions",
+                columns: new[] { "Id", "Amount", "BalanceAfter", "BalanceBefore", "CreatedAt", "Currency", "DeletedAt", "IsDeleted", "Note", "ReferenceId", "Status", "Type", "UpdatedAt", "UserId", "WalletId" },
+                values: new object[] { new Guid("99999999-4444-4444-4444-444444444401"), 850000m, 20000000m, 20850000m, new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), "VND", null, false, "Thanh toán đơn hàng SUB-20260101-0001", new Guid("02000000-0000-0000-0000-000000000001"), "Success", "PurchaseDebit", new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), "dddddddd-4444-4444-4444-444444444444", new Guid("99999999-4444-4444-4444-444444444444") });
 
             migrationBuilder.CreateIndex(
                 name: "IX_DirectPaymentOrders_OrderId",

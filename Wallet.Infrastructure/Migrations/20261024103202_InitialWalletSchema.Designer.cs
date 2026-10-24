@@ -12,7 +12,7 @@ using Wallet.Infrastructure.Persistence;
 namespace Wallet.Infrastructure.Migrations
 {
     [DbContext(typeof(WalletDbContext))]
-    [Migration("20261024081115_InitialWalletSchema")]
+    [Migration("20261024103202_InitialWalletSchema")]
     partial class InitialWalletSchema
     {
         /// <inheritdoc />
@@ -302,6 +302,20 @@ namespace Wallet.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("BankAccounts");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("88888888-3333-3333-3333-333333333333"),
+                            AccountHolderName = "NEXUS OFFICIAL STORE",
+                            AccountNumber = "9988776655",
+                            BankName = "Vietcombank",
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            IsDefault = true,
+                            IsDeleted = false,
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            UserId = "cccccccc-3333-3333-3333-333333333333"
+                        });
                 });
 
             modelBuilder.Entity("Wallet.Domain.Entities.DirectPaymentOrder", b =>
@@ -461,7 +475,7 @@ namespace Wallet.Infrastructure.Migrations
                         new
                         {
                             Id = new Guid("99999999-9999-9999-9999-999999999999"),
-                            Balance = 0m,
+                            Balance = 1000000000m,
                             CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             CreatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
                             Currency = "Vnd",
@@ -471,6 +485,62 @@ namespace Wallet.Infrastructure.Migrations
                             UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
                             UserId = new Guid("00000000-0000-0000-0000-000000000001")
+                        },
+                        new
+                        {
+                            Id = new Guid("99999999-1111-1111-1111-111111111111"),
+                            Balance = 10000000m,
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
+                            Currency = "Vnd",
+                            IsDeleted = false,
+                            LockedBalance = 0m,
+                            Status = "ACTIVE",
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
+                            UserId = new Guid("aaaaaaaa-1111-1111-1111-111111111111")
+                        },
+                        new
+                        {
+                            Id = new Guid("99999999-2222-2222-2222-222222222222"),
+                            Balance = 5000000m,
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
+                            Currency = "Vnd",
+                            IsDeleted = false,
+                            LockedBalance = 0m,
+                            Status = "ACTIVE",
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
+                            UserId = new Guid("bbbbbbbb-2222-2222-2222-222222222222")
+                        },
+                        new
+                        {
+                            Id = new Guid("99999999-3333-3333-3333-333333333333"),
+                            Balance = 50000000m,
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
+                            Currency = "Vnd",
+                            IsDeleted = false,
+                            LockedBalance = 0m,
+                            Status = "ACTIVE",
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
+                            UserId = new Guid("cccccccc-3333-3333-3333-333333333333")
+                        },
+                        new
+                        {
+                            Id = new Guid("99999999-4444-4444-4444-444444444444"),
+                            Balance = 20000000m,
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
+                            Currency = "Vnd",
+                            IsDeleted = false,
+                            LockedBalance = 0m,
+                            Status = "ACTIVE",
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
+                            UserId = new Guid("dddddddd-4444-4444-4444-444444444444")
                         });
                 });
 
@@ -587,6 +657,25 @@ namespace Wallet.Infrastructure.Migrations
                     b.HasIndex("WalletId");
 
                     b.ToTable("WalletTransactions");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("99999999-4444-4444-4444-444444444401"),
+                            Amount = 850000m,
+                            BalanceAfter = 20000000m,
+                            BalanceBefore = 20850000m,
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            Currency = "VND",
+                            IsDeleted = false,
+                            Note = "Thanh toán đơn hàng SUB-20260101-0001",
+                            ReferenceId = new Guid("02000000-0000-0000-0000-000000000001"),
+                            Status = "Success",
+                            Type = "PurchaseDebit",
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            UserId = "dddddddd-4444-4444-4444-444444444444",
+                            WalletId = new Guid("99999999-4444-4444-4444-444444444444")
+                        });
                 });
 
             modelBuilder.Entity("Wallet.Domain.Entities.WithdrawalRequest", b =>
