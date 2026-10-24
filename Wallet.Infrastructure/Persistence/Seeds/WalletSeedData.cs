@@ -10,6 +10,7 @@ public static class WalletSeedData
     {
         var systemWalletId = Guid.Parse("99999999-9999-9999-9999-999999999999");
         var systemUserId = Guid.Parse("00000000-0000-0000-0000-000000000001");
+        var seedDate = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
         modelBuilder.Entity<WalletAccount>().HasData(
             new WalletAccount
@@ -20,8 +21,8 @@ public static class WalletSeedData
                 LockedBalance = 0m,
                 Currency = CurrencyCode.Vnd,
                 Status = "ACTIVE",
-                CreatedAt = DateTimeOffset.UtcNow,
-                UpdatedAt = DateTimeOffset.UtcNow,
+                CreatedAt = seedDate,
+                UpdatedAt = seedDate,
                 IsDeleted = false
             }
         );

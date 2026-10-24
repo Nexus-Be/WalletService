@@ -25,6 +25,7 @@ public class WalletDbContext : DbContext, IWalletDbContext
         base.OnModelCreating(modelBuilder);
 
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(WalletDbContext).Assembly);
+        Seeds.WalletSeedData.SeedSystemWallet(modelBuilder);
 
         // MassTransit Transactional Outbox entities
         modelBuilder.AddInboxStateEntity();

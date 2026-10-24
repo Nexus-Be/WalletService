@@ -19,5 +19,5 @@ public class WalletTransaction : BaseEntity<Guid>
     public string? Note { get; set; }
 
     // Navigation
-    public Wallet? Wallet { get; set; }
+    public WalletAccount? Wallet { get; set; }
 }
