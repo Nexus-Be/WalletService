@@ -42,3 +42,79 @@ This project is indexed by GitNexus as **WalletService** (450 symbols, 720 relat
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
 
 <!-- gitnexus:end -->
+
+---
+
+# QUY CHUẨN VẬN HÀNH DÀNH CHO AI CODING AGENTS (WALLET SERVICE)
+
+---
+
+## 🛑 NGUYÊN TẮC 1: BẮT BUỘC LẬP KẾ HOẠCH TRƯỚC KHI HÀNH ĐỘNG (PLAN-FIRST RULE)
+
+Mọi AI Agent khi nhận nhiệm vụ kỹ thuật tại WalletService **BẮT BUỘC PHẢI LẬP VÀ TRÌNH BÀY PLAN** trước khi thực hiện bất kỳ hành động sửa đổi mã nguồn, thêm/xóa file, refactor, tạo migration database hay thay đổi cấu hình nào.
+
+Một Plan chuẩn bắt buộc phải có:
+1. **Mục tiêu (Objective)**: Tóm tắt chính xác điều cần làm.
+2. **Context & Files cần đọc**: Liệt kê các file nội bộ của WalletService cần đọc theo đúng ma trận đọc file tại Nguyên tắc 3.
+3. **Phân tích rủi ro & Phạm vi ảnh hưởng (Impact Analysis)**:
+   - Dùng GitNexus `impact` đánh giá blast radius các symbol bị ảnh hưởng.
+   - Cảnh báo rõ nếu mức độ rủi ro là HIGH hoặc CRITICAL.
+4. **Checklist các bước thực hiện (Step-by-Step Implementation)**: Từng bước logic, chi tiết.
+5. **Kế hoạch kiểm chứng (Verification)**: `dotnet build` và `dotnet test` tương ứng.
+
+---
+
+## 🧭 NGUYÊN TẮC 2: QUY TẮC PHẠM VI NỘI BỘ (INWARD-ONLY / SELF-CONTAINED)
+
+WalletService là một Git Repository độc lập (`WalletService.git`):
+- **TUYỆT ĐỐI CHỈ ĐƯỢC trỏ tới các tài nguyên nội bộ của WalletService**.
+- **TUYỆT ĐỐI KHÔNG ĐƯỢC trỏ ngược ra ngoài Root** (`../../../docs/...`) hay sang các Service khác (`../../Catalog/...`).
+- Toàn bộ tài liệu, hướng dẫn và cấu hình trong repo này phải 100% tự cung tự cấp (Self-contained).
+
+---
+
+## 📚 NGUYÊN TẮC 3: DANH MỤC FILE NỘI BỘ BẮT BUỘC PHẢI ĐỌC TẠI WALLET SERVICE
+
+Khi bắt đầu làm việc tại WalletService, AI Agent **BẮT BUỘC PHẢI ĐỌC** các file nội bộ sau theo thứ tự:
+1. `specs/00_AGENT_MISSION_GUARDRAILS.md`: Bounded context số dư ví, nạp/rút/chuyển tiền, thanh toán, port `8008`, DB `5440` (`wallet_db`).
+2. `specs/01_CLEAN_ARCHITECTURE_LAYERS.md`: Cấu trúc 4 tầng Clean Architecture, No-Repository pattern over EF Core.
+3. `specs/02_API_GRPC_CONTRACTS.md`: Hợp đồng gRPC Server (`WalletApi`: GetBalance, Deposit, Withdraw, Transfer, DeductBalance).
+4. `specs/03_EVENT_MESSAGING.md`: Sự kiện RabbitMQ Saga (`PaymentCompletedEvent`, `PaymentFailedEvent`...).
+5. `specs/04_DATA_PERSISTENCE.md`: Schema PostgreSQL (`Wallets`, `Transactions`, `BankAccounts`).
+6. `specs/05_DEV_VERIFICATION_CHECKLIST.md`: Lệnh build & test kiểm chứng service.
+
+---
+
+## 🔒 NGUYÊN TẮC 4: RÀO CHẮN BẤT BIẾN TẠI WALLET SERVICE
+
+1. **TUYỆT ĐỐI KHÔNG DÙNG REPOSITORY PATTERN BỌC NGOÀI EF CORE**: Sử dụng trực tiếp `WalletDbContext` và `DbSet<T>` (hoặc interface `IWalletDbContext`) trong tầng Application. Cấm tạo `IWalletRepository`, `ITransactionRepository`, `UnitOfWork`.
+2. **TUYỆT ĐỐI KHÔNG ĐỂ SỐ DƯ ÂM (NEGATIVE BALANCE)**: Mọi thao tác rút, chuyển hoặc trừ tiền thanh toán bắt buộc kiểm tra `Balance >= Amount`. Thiếu tiền phải ném ngoại lệ không cho phép giao dịch.
+3. **CẤU HÌNH PORT 8008 VÀ DATABASE 5440 LÀ BẤT BIẾN**.
+4. **HỢP ĐỒNG PROTOBUF ĐỒNG BỘ 100% VỚI GATEWAY**.
+
+---
+
+## 💬 NGUYÊN TẮC 5: QUY CHUẨN THÔNG BÁO LỖI TOÀN HỆ THỐNG (MANDATORY ERROR RULES)
+
+Tất cả các thông báo lỗi (Error Messages, Exceptions, ProblemDetails, Validation Errors, Response Details) **BẮT BUỘC** phải tuân theo 3 nguyên tắc sau:
+1. **Ngôn ngữ (100% English)**: Toàn bộ thông báo lỗi phải được viết bằng tiếng Anh. Tuyệt đối không dùng tiếng Việt trong chuỗi thông báo lỗi trả về cho client.
+2. **Quy cách viết hoa (Sentence case)**: Viết hoa duy nhất chữ cái đầu câu, các từ tiếp theo viết thường (ngoại trừ tên riêng, từ viết tắt hoặc định danh kỹ thuật như `ID`, `OTP`, `JWT`, `URL`, `UUID`, `Email`...).
+   - ✅ Đúng: `"Wallet account not found for the specified user."`
+   - ✅ Đúng: `"Insufficient balance to complete the transaction."`
+   - ❌ Sai: `"Số dư không đủ"` (Không dùng tiếng Việt)
+   - ❌ Sai: `"wallet not found"` (Chữ cái đầu không viết hoa)
+   - ❌ Sai: `"WALLET NOT FOUND"` (Cấm viết hoa toàn bộ)
+   - ❌ Sai: `"Wallet Not Found Provided"` (Không dùng Title Case)
+3. **Mã lỗi (Error Codes — SCREAMING_SNAKE_CASE)**: Mã lỗi luôn viết hoa toàn bộ và nối bằng dấu gạch dưới:
+   - Ví dụ: `WALLET_NOT_FOUND`, `INSUFFICIENT_BALANCE`, `VAL_INVALID_INPUT`, `UNAUTHORIZED`, `FORBIDDEN`.
+
+---
+
+## 🎯 NGUYÊN TẮC 6: ĐIỀU KIỆN HOÀN THÀNH NHIỆM VỤ (DEFINITION OF DONE)
+
+Một task tại WalletService chỉ hoàn tất khi:
+- [ ] Đã lập Plan chi tiết trước khi thực hiện.
+- [ ] Không chứa bất kỳ liên kết trỏ ngược ra ngoài WalletService.
+- [ ] `dotnet build WalletService.sln -c Release` thành công 100% (0 error).
+- [ ] `dotnet test WalletService.sln -c Release` vượt qua 100% các bài test.
+- [ ] Trạng thái Git sạch, không commit file rác (`bin/`, `obj/`, `.vs/`, `.idea/`).
