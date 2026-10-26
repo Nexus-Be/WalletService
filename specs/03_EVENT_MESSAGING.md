@@ -36,3 +36,11 @@ WalletService đóng vai trò cốt lõi trong bước thanh toán của **Check
    - Đảm bảo việc trừ tiền ví và việc phát hành `PaymentCompletedEvent` / `PaymentFailedEvent` nằm chung trong một Database Transaction duy nhất.
 2. **Idempotent Consumer**:
    - MassTransit tự động ghi nhận bảng `InboxState` để chặn việc xử lý lặp lại nếu cùng một sự kiện `StockReservedEvent` được gửi tới nhiều lần.
+
+---
+
+## 4. WALLET WORKFLOW EVENTS
+
+The application also consumes `IUserRegisteredEvent` to create an active VND wallet, `IOrderCheckoutRequestedEvent` to debit a buyer's available balance, and `IOrderCancelledEvent` to refund a paid order. Checkout debits are keyed by the order ID; duplicate requests do not debit the wallet twice. `StockReservedEvent` remains supported for the existing checkout flow and publishes its legacy payment result events.
+
+Wallet operation results are published as `IWalletTopupInitiatedEvent`, `IWalletTopupSucceededEvent`, `IWalletTopupFailedEvent`, `IWalletDebitSucceededEvent`, `IWalletDebitFailedEvent`, `IWalletRefundedEvent`, `IWithdrawalRequestedEvent`, `IWithdrawalApprovedEvent`, `IWithdrawalRejectedEvent`, `IDirectPaymentInitiatedEvent`, and `IDirectPaymentFailedEvent`. The external services must use the same event property names and payload types when publishing/consuming these contracts.

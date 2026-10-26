@@ -53,3 +53,5 @@ CREATE INDEX ix_wallet_transactions_user_id ON wallet_transactions (user_id);
 CREATE INDEX ix_wallet_transactions_created_at ON wallet_transactions (created_at DESC);
 CREATE INDEX ix_bank_accounts_user_id ON bank_accounts (user_id);
 ```
+
+Balance-changing requests that reserve, debit, refund, or adjust funds run in a database transaction and lock the wallet row with PostgreSQL `SELECT ... FOR UPDATE`. `available_balance` is computed as `balance - locked_balance`; pending withdrawals increase only `locked_balance`, approval reduces both balances, and rejection only releases the locked amount. Every admin adjustment and withdrawal state change writes an `AuditLog`.
