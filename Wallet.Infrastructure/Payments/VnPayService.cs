@@ -16,8 +16,18 @@ public sealed class VnPayService : IVnPayService
         _configuration = configuration;
     }
 
-    public string CreatePaymentUrl(string transactionReference, decimal amount, string ipAddress)
+    public string CreatePaymentUrl(
+        string transactionReference,
+        decimal amount,
+        string ipAddress,
+        string? bankCode = null,
+        string? returnUrl = null)
     {
+        var effectiveReturnUrl = returnUrl ?? GetRequired("ReturnUrl");
+        if (!Uri.TryCreate(effectiveReturnUrl, UriKind.Absolute, out var returnUri) ||
+            returnUri.Scheme != Uri.UriSchemeHttps)
+            throw new InvalidOperationException("VNPay return URL must use HTTPS.");
+
         var parameters = new SortedDictionary<string, string>(StringComparer.Ordinal)
         {
             ["vnp_Version"] = GetRequired("Version"),
@@ -29,10 +39,12 @@ public sealed class VnPayService : IVnPayService
             ["vnp_OrderInfo"] = $"Wallet topup {transactionReference}",
             ["vnp_OrderType"] = "other",
             ["vnp_Locale"] = "vn",
-            ["vnp_ReturnUrl"] = GetRequired("ReturnUrl"),
+            ["vnp_ReturnUrl"] = effectiveReturnUrl,
             ["vnp_IpAddr"] = ipAddress,
             ["vnp_CreateDate"] = DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture)
         };
+        if (!string.IsNullOrWhiteSpace(bankCode))
+            parameters["vnp_BankCode"] = bankCode;
 
         var signedData = BuildQuery(parameters);
         var signature = ComputeSignature(signedData, GetRequired("HashSecret"));

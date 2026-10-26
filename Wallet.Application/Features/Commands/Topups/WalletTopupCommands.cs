@@ -16,7 +16,9 @@ using Wallet.Domain.Exceptions;
 public sealed record InitiateVnPayTopupCommand(
     string UserId,
     decimal Amount,
-    string IpAddress) : IRequest<VnPayTopupDto>;
+    string IpAddress,
+    string? BankCode = null,
+    string? ReturnUrl = null) : IRequest<VnPayTopupDto>;
 
 public sealed record VnPayTopupDto(
     string TransactionReference,
@@ -38,6 +40,11 @@ public sealed class InitiateVnPayTopupCommandValidator : AbstractValidator<Initi
             .WithMessage("Amount must have no more than two decimal places.");
         RuleFor(x => x.IpAddress).Must(x => IPAddress.TryParse(x, out _))
             .WithMessage("IpAddress must be a valid IP address.");
+        RuleFor(x => x.BankCode).MaximumLength(50);
+        RuleFor(x => x.ReturnUrl)
+            .Must(url => string.IsNullOrWhiteSpace(url) ||
+                         Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps)
+            .WithMessage("ReturnUrl must be an absolute HTTPS URL.");
     }
 }
 
@@ -64,7 +71,12 @@ public sealed class InitiateVnPayTopupCommandHandler : IRequestHandler<InitiateV
                      ?? throw new WalletNotFoundException(request.UserId);
 
         var reference = $"TOPUP-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid():N}";
-        var paymentUrl = _vnPay.CreatePaymentUrl(reference, request.Amount, request.IpAddress);
+        var paymentUrl = _vnPay.CreatePaymentUrl(
+            reference,
+            request.Amount,
+            request.IpAddress,
+            request.BankCode,
+            request.ReturnUrl);
 
         var topup = new WalletTopup
         {

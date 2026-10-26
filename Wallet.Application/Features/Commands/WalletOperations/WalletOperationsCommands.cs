@@ -17,7 +17,9 @@ public sealed record InitiateDirectGatewayPaymentCommand(
     string BuyerId,
     string OrderId,
     decimal Amount,
-    string Gateway) : IRequest<DirectGatewayPaymentDto>;
+    string Gateway,
+    string? BankCode = null,
+    string? ReturnUrl = null) : IRequest<DirectGatewayPaymentDto>;
 
 public sealed record DirectGatewayPaymentDto(string PaymentUrl, string TransactionId, string Status);
 
@@ -31,6 +33,11 @@ public sealed class
         RuleFor(x => x.Amount).GreaterThan(0);
         RuleFor(x => x.Amount).Must(x => decimal.Round(x, 2) == x);
         RuleFor(x => x.Gateway).Matches("^[A-Za-z0-9_-]{1,50}$");
+        RuleFor(x => x.BankCode).MaximumLength(50);
+        RuleFor(x => x.ReturnUrl)
+            .Must(url => string.IsNullOrWhiteSpace(url) ||
+                         Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps)
+            .WithMessage("ReturnUrl must be an absolute HTTPS URL.");
     }
 }
 
@@ -80,7 +87,9 @@ public sealed class InitiateDirectGatewayPaymentCommandHandler
                 request.Gateway.Trim(),
                 orderId,
                 existingTransaction.Amount,
-                wallet.Currency.ToString());
+                wallet.Currency.ToString(),
+                request.BankCode,
+                request.ReturnUrl);
             await dbTransaction.CommitAsync(cancellationToken);
             return new DirectGatewayPaymentDto(
                 existingPaymentUrl,
@@ -95,7 +104,9 @@ public sealed class InitiateDirectGatewayPaymentCommandHandler
                 request.Gateway.Trim(),
                 orderId,
                 request.Amount,
-                wallet.Currency.ToString());
+                wallet.Currency.ToString(),
+                request.BankCode,
+                request.ReturnUrl);
         }
         catch (InvalidOperationException)
         {
@@ -151,8 +162,12 @@ public sealed record RequestWithdrawalCommand(
 public sealed record WithdrawalDto(
     string WithdrawalId,
     string Status,
+    decimal Amount,
     decimal NetAmount,
     decimal Fee,
+    DateTimeOffset RequestedAt,
+    DateTimeOffset? ProcessedAt = null,
+    string? TransactionId = null,
     string? ProcessedBy = null);
 
 public sealed class RequestWithdrawalCommandValidator : AbstractValidator<RequestWithdrawalCommand>
@@ -160,8 +175,12 @@ public sealed class RequestWithdrawalCommandValidator : AbstractValidator<Reques
     public RequestWithdrawalCommandValidator()
     {
         RuleFor(x => x.SellerId).Must(x => Guid.TryParse(x, out var userId) && userId != Guid.Empty);
-        RuleFor(x => x.Amount).GreaterThanOrEqualTo(50_000m);
-        RuleFor(x => x.Amount).Must(x => decimal.Round(x, 2) == x);
+        RuleFor(x => x.Amount)
+            .GreaterThanOrEqualTo(50_000m)
+            .WithMessage("Minimum withdrawal amount is 50,000 VND.");
+        RuleFor(x => x.Amount)
+            .Must(x => decimal.Round(x, 2) == x)
+            .WithMessage("Amount must have no more than two decimal places.");
         RuleFor(x => x.BankName).NotEmpty().MaximumLength(150);
         RuleFor(x => x.BankAccountNumber).NotEmpty().MaximumLength(50);
         RuleFor(x => x.BankAccountHolder).NotEmpty().MaximumLength(150);
@@ -170,7 +189,7 @@ public sealed class RequestWithdrawalCommandValidator : AbstractValidator<Reques
 
 public sealed class RequestWithdrawalCommandHandler : IRequestHandler<RequestWithdrawalCommand, WithdrawalDto>
 {
-    private const decimal WithdrawalFee = 5_000m;
+    private const decimal WithdrawalFee = 0m;
     private readonly IWalletDbContext _context;
     private readonly IPublishEndpoint _publishEndpoint;
 
@@ -238,8 +257,10 @@ public sealed class RequestWithdrawalCommandHandler : IRequestHandler<RequestWit
         return new WithdrawalDto(
             withdrawal.Id.ToString(),
             withdrawal.Status.ToString().ToUpperInvariant(),
+            withdrawal.Amount,
             withdrawal.NetAmount,
-            withdrawal.Fee);
+            withdrawal.Fee,
+            withdrawal.CreatedAt);
     }
 }
 
@@ -293,12 +314,13 @@ public sealed class ProcessWithdrawalCommandHandler : IRequestHandler<ProcessWit
                      ?? throw new WalletNotFoundException(withdrawal.WalletId.ToString());
 
         var oldStatus = withdrawal.Status;
+        string? transactionId = null;
         if (approve)
         {
             wallet.CompleteLockedWithdrawal(withdrawal.Amount);
             withdrawal.Status = WithdrawalStatus.Approved;
             withdrawal.ProcessedAt = DateTimeOffset.UtcNow;
-            _context.WalletTransactions.Add(new WalletTransaction
+            var debit = new WalletTransaction
             {
                 WalletId = wallet.Id,
                 UserId = wallet.UserId.ToString(),
@@ -311,7 +333,9 @@ public sealed class ProcessWithdrawalCommandHandler : IRequestHandler<ProcessWit
                 Status = TransactionStatus.Success,
                 Note =
                     $"Rút tiền tới {withdrawal.BankName}, {withdrawal.BankAccountNumber}; phí {withdrawal.Fee.ToString("0.00", CultureInfo.InvariantCulture)}"
-            });
+            };
+            _context.WalletTransactions.Add(debit);
+            transactionId = debit.Id.ToString();
         }
         else
         {
@@ -367,14 +391,18 @@ public sealed class ProcessWithdrawalCommandHandler : IRequestHandler<ProcessWit
         return new WithdrawalDto(
             withdrawal.Id.ToString(),
             withdrawal.Status.ToString().ToUpperInvariant(),
+            withdrawal.Amount,
             withdrawal.NetAmount,
             withdrawal.Fee,
+            withdrawal.CreatedAt,
+            withdrawal.ProcessedAt,
+            transactionId,
             adminId.ToString());
     }
 }
 
 public sealed record AdjustWalletBalanceCommand(
-    string UserId,
+    string WalletId,
     string AdminId,
     decimal Amount,
     string Action,
@@ -384,7 +412,7 @@ public sealed class AdjustWalletBalanceCommandValidator : AbstractValidator<Adju
 {
     public AdjustWalletBalanceCommandValidator()
     {
-        RuleFor(x => x.UserId).Must(x => Guid.TryParse(x, out var userId) && userId != Guid.Empty);
+        RuleFor(x => x.WalletId).Must(x => Guid.TryParse(x, out var walletId) && walletId != Guid.Empty);
         RuleFor(x => x.AdminId).Must(x => Guid.TryParse(x, out var adminId) && adminId != Guid.Empty);
         RuleFor(x => x.Amount).GreaterThan(0);
         RuleFor(x => x.Amount).Must(x => decimal.Round(x, 2) == x);
@@ -409,13 +437,13 @@ public sealed class
         AdjustWalletBalanceCommand request,
         CancellationToken cancellationToken)
     {
-        var userId = Guid.Parse(request.UserId);
+        var walletId = Guid.Parse(request.WalletId);
         var adminId = Guid.Parse(request.AdminId);
         var credit = string.Equals(request.Action, "CREDIT", StringComparison.OrdinalIgnoreCase);
 
         await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
-        var wallet = await _context.LockWalletByUserIdAsync(userId, cancellationToken)
-                     ?? throw new WalletNotFoundException(request.UserId);
+        var wallet = await _context.LockWalletByIdAsync(walletId, cancellationToken)
+                     ?? throw new WalletNotFoundException(request.WalletId);
 
         var balanceBefore = wallet.Balance;
         if (credit)

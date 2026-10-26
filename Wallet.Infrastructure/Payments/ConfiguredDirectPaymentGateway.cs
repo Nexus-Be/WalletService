@@ -15,7 +15,13 @@ public sealed class ConfiguredDirectPaymentGateway : IDirectPaymentGateway
         _configuration = configuration;
     }
 
-    public string CreatePaymentUrl(string gatewayCode, Guid orderId, decimal amount, string currency)
+    public string CreatePaymentUrl(
+        string gatewayCode,
+        Guid orderId,
+        decimal amount,
+        string currency,
+        string? bankCode = null,
+        string? returnUrl = null)
     {
         var configurationPath = $"PaymentGateways:{gatewayCode}";
         var baseUrl = _configuration[$"{configurationPath}:PaymentUrl"];
@@ -26,7 +32,13 @@ public sealed class ConfiguredDirectPaymentGateway : IDirectPaymentGateway
             throw new InvalidOperationException($"Payment gateway '{gatewayCode}' must use an HTTPS payment URL.");
 
         var amountText = amount.ToString("0.00", CultureInfo.InvariantCulture);
-        var canonicalData = $"{orderId:D}|{amountText}|{currency}";
+        if (!string.IsNullOrWhiteSpace(returnUrl) &&
+            (!Uri.TryCreate(returnUrl, UriKind.Absolute, out var returnUri) ||
+             returnUri.Scheme != Uri.UriSchemeHttps))
+            throw new InvalidOperationException("Payment return URL must use HTTPS.");
+
+        var canonicalData =
+            $"{orderId:D}|{amountText}|{currency}|{bankCode ?? string.Empty}|{returnUrl ?? string.Empty}";
         using var hmac = new HMACSHA512(Encoding.UTF8.GetBytes(secret));
         var signature = Convert.ToHexString(hmac.ComputeHash(Encoding.UTF8.GetBytes(canonicalData))).ToLowerInvariant();
 
@@ -35,6 +47,12 @@ public sealed class ConfiguredDirectPaymentGateway : IDirectPaymentGateway
         builder.Query = $"{query}orderId={Uri.EscapeDataString(orderId.ToString("D"))}" +
                         $"&amount={Uri.EscapeDataString(amountText)}" +
                         $"&currency={Uri.EscapeDataString(currency)}" +
+                        (string.IsNullOrWhiteSpace(bankCode)
+                            ? string.Empty
+                            : $"&bankCode={Uri.EscapeDataString(bankCode)}") +
+                        (string.IsNullOrWhiteSpace(returnUrl)
+                            ? string.Empty
+                            : $"&returnUrl={Uri.EscapeDataString(returnUrl)}") +
                         $"&signature={signature}";
         return builder.Uri.ToString();
     }

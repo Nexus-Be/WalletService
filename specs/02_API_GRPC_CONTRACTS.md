@@ -107,16 +107,20 @@ The CSV-defined wallet workflows that need request metadata or return values not
 
 | Method and path | Access | Purpose |
 |:---|:---|:---|
-| `GET /api/v1/wallets/{userId}/balance` | BUYER / SELLER (self), ADMIN | Balance, locked balance, and available balance |
-| `GET /api/v1/wallets/{userId}/transactions` | BUYER / SELLER (self), ADMIN | Filtered and paginated ledger history (`type`, `fromDate`, `toDate`, `page`, `pageSize`) |
-| `POST /api/v1/wallet/topups` | BUYER / SELLER | Initiate a VNPay top-up |
-| `GET /api/v1/wallet/vnpay/ipn` | VNPay callback; signature required | Idempotently process the VNPay IPN |
-| `POST /api/v1/wallet/payments` | BUYER / SELLER | Initiate a configured direct-gateway payment |
-| `POST /api/v1/wallet/withdrawals` | SELLER | Lock available funds and submit a withdrawal request |
-| `POST /api/v1/admin/withdrawals/{withdrawalId}` | ADMIN / SUPPORT_STAFF | Approve or reject a pending withdrawal |
-| `POST /api/v1/admin/wallets/{userId}/adjustments` | ADMIN | Credit/debit with an audit record |
+| `GET /api/v1/wallets/me` | BUYER / SELLER / ADMIN | Current caller's balance, locked balance, and available balance |
+| `GET /api/v1/wallets/transactions` | BUYER / SELLER / ADMIN | Current caller's filtered/paginated ledger (`type`, `fromDate`, `toDate`, `page`, `limit`) |
+| `POST /api/v1/wallets/topups/vnpay` | BUYER / SELLER | Initiate a VNPay top-up (`amount`, `bankCode`, `returnUrl`) |
+| `POST /api/v1/wallets/vnpay/ipn` | VNPay callback; signature required | Idempotently process the VNPay IPN body |
+| `POST /api/v1/wallets/checkout/direct` | BUYER / SELLER | Initiate direct-gateway payment (`orderId`, `amount`, `gateway`, optional `bankCode`, `returnUrl`) |
+| `POST /api/v1/wallets/withdrawals` | SELLER | Lock available funds and submit a withdrawal (`bankCode`, `accountNumber`, `accountHolderName`) |
+| `PATCH /api/v1/admin/wallets/withdrawals/{id}` | ADMIN / SUPPORT_STAFF | Approve or reject a pending withdrawal |
+| `POST /api/v1/admin/wallets/{walletId}/adjustments` | ADMIN | Credit/debit with an audit record |
 
-These endpoints are additive and do not change the shared protobuf schema. The VNPay IPN endpoint is the only unauthenticated route; it validates VNPay's HMAC-SHA512 signature before processing. Direct gateways use a configured HTTPS URL and HMAC-SHA512 signature over `orderId|amount|currency`; each provider must accept those query parameters.
+Successful HTTP responses use the shared `ApiResponse<T>` or `ApiResponse<PagedData<T>>` envelope, except for VNPay IPN, which returns the provider's `{ "RspCode": "...", "Message": "..." }` response. Errors use the shared RFC 9110-style error envelope.
+
+These endpoints are additive and do not change the shared protobuf schema. The VNPay IPN endpoint is the only unauthenticated route; it validates VNPay's HMAC-SHA512 signature before processing. Direct gateways use a configured HTTPS URL and HMAC-SHA512 signature over the order, amount, currency, and optional bank/return URL parameters; each provider must accept those query parameters.
+
+Withdrawal requests follow the agreed endpoint contract's zero-fee response (`fee: 0`); the full requested amount is locked and later deducted on approval.
 
 The legacy gRPC `Deposit` RPC now creates a pending VNPay top-up and returns the payment URL in `WalletTransaction.note`; it never credits the wallet before a signed IPN. The legacy `Withdraw` RPC returns `UNIMPLEMENTED` because its protobuf request cannot carry the required bank details or approval state; use the withdrawal HTTP endpoints instead.
 

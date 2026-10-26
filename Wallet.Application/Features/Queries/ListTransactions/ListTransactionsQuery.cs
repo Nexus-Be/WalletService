@@ -44,10 +44,28 @@ public class ListTransactionsQueryHandler : IRequestHandler<ListTransactionsQuer
 
         if (!string.IsNullOrWhiteSpace(request.Type))
         {
-            if (!Enum.TryParse<WalletTransactionType>(request.Type.Trim(), true, out var txType))
-                throw new ArgumentException("Transaction type is invalid.", nameof(request.Type));
+            var types = request.Type.Trim().ToUpperInvariant() switch
+            {
+                "ALL" => Array.Empty<WalletTransactionType>(),
+                "DEPOSIT" => new[] { WalletTransactionType.TopupVnpay },
+                "WITHDRAWAL" => new[]
+                {
+                    WalletTransactionType.WithdrawalDebit,
+                    WalletTransactionType.WithdrawalReversal
+                },
+                "PAYMENT" => new[]
+                {
+                    WalletTransactionType.PurchaseDebit,
+                    WalletTransactionType.DirectGatewayPayment
+                },
+                "REFUND" => new[] { WalletTransactionType.RefundCredit },
+                _ when Enum.TryParse<WalletTransactionType>(request.Type.Trim(), true, out var txType) =>
+                    new[] { txType },
+                _ => throw new ArgumentException("Transaction type is invalid.", nameof(request.Type))
+            };
 
-            query = query.Where(t => t.Type == txType);
+            if (types.Length > 0)
+                query = query.Where(t => types.Contains(t.Type));
         }
 
         if (request.FromDate.HasValue)
