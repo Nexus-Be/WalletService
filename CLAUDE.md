@@ -108,6 +108,10 @@ Khi bắt đầu làm việc tại WalletService, AI Agent **BẮT BUỘC PHẢI
    — *Hiện trạng:* ❌ service **không có authentication** nhưng vẫn ưu tiên `x-user-id` (`Wallet.Api/Services/WalletGrpcService.cs:28,48,68,96,124`). Không được viết tài liệu mô tả đây là “bảo mật”.
 6. **CẤM MÔ TẢ TÍNH NĂNG CHƯA CÓ LÀ ĐÃ CÓ**: VNPay topup/IPN, rút tiền qua ngân hàng (`WithdrawalRequest`), `AuditLog` **chưa được triển khai** (0 đường ghi). Xem `specs/04_DATA_PERSISTENCE.md` mục 3.
 7. **CẤM COMMIT SECRET**: `Wallet.Api/appsettings.json` hiện **đang được track** và chứa mật khẩu DB/RabbitMQ (`:10`,`:16`). Mọi thay đổi tiếp theo không được thêm secret mới; việc gỡ file này khỏi git là P0.
+8. **CẤM TỰ Ý SỬA ĐỔI BIẾN MÔI TRƯỜNG, SECRET VÀ KEY BÍ MẬT (MANDATORY HUMAN-IN-THE-LOOP FOR SECRETS)**:
+   - **Tuyệt đối CẤM mọi AI Coding Agent tự ý sửa đổi, thay thế, xóa hoặc ghi đè các biến môi trường (`.env`, `.env.*`), Connection Strings, API Keys, JWT Secrets, chứng chỉ hoặc bất kỳ thông tin bí mật (credentials/secrets) nào trong toàn bộ hệ thống.**
+   - **Bắt buộc phải xin ý kiến và nhận được sự đồng ý rõ ràng (explicit approval) từ người dùng trước khi thực hiện bất kỳ thay đổi nào liên quan đến biến môi trường hoặc tài khoản bí mật.**
+   - Khi phát hiện cấu hình môi trường, connection string hoặc secret key có vấn đề hoặc cần cập nhật, Agent **CHỈ ĐƯỢC PHÉP báo cáo hiện trạng, đề xuất phương án và chờ người dùng xác nhận**, tuyệt đối không tự ý can thiệp.
 
 ---
 
