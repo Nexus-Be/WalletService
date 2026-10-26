@@ -1,13 +1,14 @@
 namespace Wallet.Api.Services;
 
 using System.Globalization;
+using System.Net;
+using FluentValidation;
 using Grpc.Core;
 using MediatR;
 using ShoppingCart.Contracts.V1;
 using global::Wallet.Application.DTOs;
-using global::Wallet.Application.Features.Commands.Deposit;
+using global::Wallet.Application.Features.Commands.Topups;
 using global::Wallet.Application.Features.Commands.Transfer;
-using global::Wallet.Application.Features.Commands.Withdraw;
 using global::Wallet.Application.Features.Queries.GetWallet;
 using global::Wallet.Application.Features.Queries.ListTransactions;
 using global::Wallet.Domain.Exceptions;
@@ -23,14 +24,27 @@ public class WalletGrpcService : WalletApi.WalletApiBase
         _logger = logger;
     }
 
-    public override async Task<ShoppingCart.Contracts.V1.Wallet> GetWallet(UserRequest request, ServerCallContext context)
+    public override async Task<ShoppingCart.Contracts.V1.Wallet> GetWallet(UserRequest request,
+        ServerCallContext context)
     {
-        var effectiveUserId = context.RequestHeaders.Get("x-user-id")?.Value ?? request.UserId;
+        var callerUserId = GetAuthenticatedUserId(context, "BUYER", "SELLER", "ADMIN");
+        var effectiveUserId = HasRole(context, "ADMIN") ? request.UserId : callerUserId;
+        if (!Guid.TryParse(effectiveUserId, out _) || string.IsNullOrWhiteSpace(effectiveUserId))
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "UserId không hợp lệ."));
 
-        if (string.IsNullOrWhiteSpace(effectiveUserId))
-            throw new RpcException(new Status(StatusCode.InvalidArgument, "UserId không được để trống."));
-
-        var result = await _mediator.Send(new GetWalletQuery(effectiveUserId), context.CancellationToken);
+        WalletDto result;
+        try
+        {
+            result = await _mediator.Send(new GetWalletQuery(effectiveUserId), context.CancellationToken);
+        }
+        catch (WalletNotFoundException ex)
+        {
+            throw new RpcException(new Status(StatusCode.NotFound, ex.Message));
+        }
+        catch (ArgumentException ex)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, ex.Message));
+        }
 
         return new ShoppingCart.Contracts.V1.Wallet
         {
@@ -45,62 +59,75 @@ public class WalletGrpcService : WalletApi.WalletApiBase
 
     public override async Task<WalletTransaction> Deposit(WalletDepositRequest request, ServerCallContext context)
     {
-        var effectiveUserId = context.RequestHeaders.Get("x-user-id")?.Value ?? request.UserId;
+        var effectiveUserId = GetAuthenticatedUserId(context, "BUYER", "SELLER");
 
-        if (!decimal.TryParse(request.Amount, NumberStyles.Number, CultureInfo.InvariantCulture, out var amount) || amount <= 0)
+        if (!decimal.TryParse(request.Amount, NumberStyles.Number, CultureInfo.InvariantCulture, out var amount) ||
+            amount <= 0)
             throw new RpcException(new Status(StatusCode.InvalidArgument, "Số tiền nạp không hợp lệ."));
+        if (!string.IsNullOrWhiteSpace(request.Currency) &&
+            !string.Equals(request.Currency, "VND", StringComparison.OrdinalIgnoreCase))
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "Chỉ hỗ trợ nạp ví bằng VND."));
+        if (!string.Equals(request.PaymentMethod, "VNPAY", StringComparison.OrdinalIgnoreCase))
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "Nạp tiền phải được thực hiện qua VNPay."));
 
         try
         {
-            var result = await _mediator.Send(new DepositCommand(effectiveUserId, amount, request.Currency, request.PaymentMethod), context.CancellationToken);
-
-            return MapTransaction(result);
+            var result = await _mediator.Send(
+                new InitiateVnPayTopupCommand(
+                    effectiveUserId,
+                    amount,
+                    GetClientIpAddress(context)),
+                context.CancellationToken);
+            return new WalletTransaction
+            {
+                Id = result.TopupId,
+                WalletId = result.WalletId,
+                UserId = result.UserId,
+                Type = "TopupVnpay",
+                Amount = result.Amount.ToString("0.00", CultureInfo.InvariantCulture),
+                Currency = "VND",
+                BalanceAfter = result.Balance.ToString("0.00", CultureInfo.InvariantCulture),
+                Status = "PENDING",
+                Note = result.PaymentUrl,
+                CreatedAt = DateTimeOffset.UtcNow.ToString("o")
+            };
         }
-        catch (Exception ex)
+        catch (ValidationException ex)
         {
-            _logger.LogError(ex, "Lỗi khi xử lý nạp tiền cho user {UserId}", effectiveUserId);
-            throw new RpcException(new Status(StatusCode.Internal, ex.Message));
-        }
-    }
-
-    public override async Task<WalletTransaction> Withdraw(WalletWithdrawRequest request, ServerCallContext context)
-    {
-        var effectiveUserId = context.RequestHeaders.Get("x-user-id")?.Value ?? request.UserId;
-
-        if (!decimal.TryParse(request.Amount, NumberStyles.Number, CultureInfo.InvariantCulture, out var amount) || amount <= 0)
-            throw new RpcException(new Status(StatusCode.InvalidArgument, "Số tiền rút không hợp lệ."));
-
-        try
-        {
-            var result = await _mediator.Send(new WithdrawCommand(effectiveUserId, amount, request.Currency, request.BankAccount), context.CancellationToken);
-
-            return MapTransaction(result);
-        }
-        catch (InsufficientBalanceException ex)
-        {
-            throw new RpcException(new Status(StatusCode.FailedPrecondition, ex.Message));
+            throw new RpcException(new Status(StatusCode.InvalidArgument, ex.Message));
         }
         catch (WalletNotFoundException ex)
         {
             throw new RpcException(new Status(StatusCode.NotFound, ex.Message));
         }
-        catch (Exception ex)
+        catch (InvalidOperationException ex)
         {
-            _logger.LogError(ex, "Lỗi khi rút tiền cho user {UserId}", effectiveUserId);
-            throw new RpcException(new Status(StatusCode.Internal, ex.Message));
+            _logger.LogError(ex, "Lỗi khi xử lý nạp tiền cho user {UserId}", effectiveUserId);
+            throw new RpcException(new Status(StatusCode.FailedPrecondition, ex.Message));
         }
+    }
+
+    public override Task<WalletTransaction> Withdraw(WalletWithdrawRequest request, ServerCallContext context)
+    {
+        throw new RpcException(new Status(
+            StatusCode.Unimplemented,
+            "Rút tiền yêu cầu thông tin ngân hàng đầy đủ và phê duyệt; sử dụng POST /api/v1/wallet/withdrawals."));
     }
 
     public override async Task<WalletTransaction> Transfer(WalletTransferRequest request, ServerCallContext context)
     {
-        var effectiveSenderId = context.RequestHeaders.Get("x-user-id")?.Value ?? request.SenderUserId;
+        var effectiveSenderId = GetAuthenticatedUserId(context, "BUYER", "SELLER");
 
-        if (!decimal.TryParse(request.Amount, NumberStyles.Number, CultureInfo.InvariantCulture, out var amount) || amount <= 0)
+        if (!decimal.TryParse(request.Amount, NumberStyles.Number, CultureInfo.InvariantCulture, out var amount) ||
+            amount <= 0)
             throw new RpcException(new Status(StatusCode.InvalidArgument, "Số tiền chuyển không hợp lệ."));
 
         try
         {
-            var result = await _mediator.Send(new TransferCommand(effectiveSenderId, request.RecipientUserId, amount, request.Note), context.CancellationToken);
+            var result =
+                await _mediator.Send(
+                    new TransferCommand(effectiveSenderId, request.RecipientUserId, amount, request.Note),
+                    context.CancellationToken);
 
             return MapTransaction(result);
         }
@@ -112,20 +139,39 @@ public class WalletGrpcService : WalletApi.WalletApiBase
         {
             throw new RpcException(new Status(StatusCode.NotFound, ex.Message));
         }
-        catch (Exception ex)
+        catch (BusinessRuleValidationException ex)
         {
-            _logger.LogError(ex, "Lỗi khi chuyển tiền từ user {Sender} sang user {Recipient}", effectiveSenderId, request.RecipientUserId);
-            throw new RpcException(new Status(StatusCode.Internal, ex.Message));
+            throw new RpcException(new Status(StatusCode.FailedPrecondition, ex.Message));
+        }
+        catch (ValidationException ex)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, ex.Message));
         }
     }
 
-    public override async Task<WalletTransactionPage> ListTransactions(WalletTransactionsRequest request, ServerCallContext context)
+    public override async Task<WalletTransactionPage> ListTransactions(WalletTransactionsRequest request,
+        ServerCallContext context)
     {
-        var effectiveUserId = context.RequestHeaders.Get("x-user-id")?.Value ?? request.UserId;
+        var callerUserId = GetAuthenticatedUserId(context, "BUYER", "SELLER", "ADMIN");
+        var effectiveUserId = HasRole(context, "ADMIN") ? request.UserId : callerUserId;
+        if (!Guid.TryParse(effectiveUserId, out _) || string.IsNullOrWhiteSpace(effectiveUserId))
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "UserId không hợp lệ."));
 
-        var result = await _mediator.Send(
-            new ListTransactionsQuery(effectiveUserId, request.Page, request.PageSize, request.Type),
-            context.CancellationToken);
+        WalletTransactionPageDto result;
+        try
+        {
+            result = await _mediator.Send(
+                new ListTransactionsQuery(effectiveUserId, request.Page, request.PageSize, request.Type),
+                context.CancellationToken);
+        }
+        catch (ValidationException ex)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, ex.Message));
+        }
+        catch (ArgumentException ex)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, ex.Message));
+        }
 
         var page = new WalletTransactionPage
         {
@@ -155,5 +201,62 @@ public class WalletGrpcService : WalletApi.WalletApiBase
             Note = dto.Note,
             CreatedAt = dto.CreatedAt.ToString("o")
         };
+    }
+
+    private static string GetClientIpAddress(ServerCallContext context)
+    {
+        var forwardedClientIp = context.RequestHeaders.Get("x-client-ip")?.Value;
+        if (!string.IsNullOrWhiteSpace(forwardedClientIp))
+        {
+            if (!IPAddress.TryParse(forwardedClientIp, out _))
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "Địa chỉ IP của yêu cầu không hợp lệ."));
+            return forwardedClientIp;
+        }
+
+        var peer = context.Peer;
+        var separatorIndex = peer.IndexOf(':');
+        if (separatorIndex < 0)
+            throw new RpcException(
+                new Status(StatusCode.InvalidArgument, "Không xác định được địa chỉ IP của yêu cầu."));
+
+        var endpoint = peer[(separatorIndex + 1)..];
+        string address;
+        if (endpoint.StartsWith("[", StringComparison.Ordinal))
+        {
+            var closingBracketIndex = endpoint.IndexOf(']');
+            if (closingBracketIndex <= 1)
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "Địa chỉ IP của yêu cầu không hợp lệ."));
+            address = endpoint[1..closingBracketIndex];
+        }
+        else
+        {
+            var portSeparator = endpoint.LastIndexOf(':');
+            if (portSeparator <= 0)
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "Địa chỉ IP của yêu cầu không hợp lệ."));
+            address = endpoint[..portSeparator];
+        }
+
+        if (!IPAddress.TryParse(address, out var ipAddress))
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "Địa chỉ IP của yêu cầu không hợp lệ."));
+
+        return ipAddress.ToString();
+    }
+
+    private static string GetAuthenticatedUserId(ServerCallContext context, params string[] allowedRoles)
+    {
+        var userId = context.RequestHeaders.Get("x-user-id")?.Value;
+        if (!Guid.TryParse(userId, out var parsedUserId) || parsedUserId == Guid.Empty)
+            throw new RpcException(new Status(StatusCode.Unauthenticated, "Missing or invalid x-user-id metadata."));
+        if (!HasRole(context, allowedRoles))
+            throw new RpcException(new Status(StatusCode.PermissionDenied, "The caller does not have the required role."));
+
+        return parsedUserId.ToString();
+    }
+
+    private static bool HasRole(ServerCallContext context, params string[] allowedRoles)
+    {
+        var roles = context.RequestHeaders.Get("x-user-role")?.Value ?? string.Empty;
+        return roles.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Any(role => allowedRoles.Contains(role, StringComparer.OrdinalIgnoreCase));
     }
 }

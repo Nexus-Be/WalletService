@@ -2,102 +2,52 @@ namespace Wallet.Application.Consumers;
 
 using System.Globalization;
 using MassTransit;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Wallet.Application.Common.Interfaces;
-using Wallet.Domain.Entities;
-using Wallet.Domain.Enums;
 using Wallet.Domain.Events;
-using Wallet.Domain.Exceptions;
 
-public class StockReservedConsumer : IConsumer<IStockReservedEvent>
+public sealed class StockReservedConsumer : IConsumer<IStockReservedEvent>
 {
-    private readonly IWalletDbContext _context;
+    private readonly WalletDebitProcessor _processor;
     private readonly ILogger<StockReservedConsumer> _logger;
 
-    public StockReservedConsumer(IWalletDbContext context, ILogger<StockReservedConsumer> logger)
+    public StockReservedConsumer(WalletDebitProcessor processor, ILogger<StockReservedConsumer> logger)
     {
-        _context = context;
+        _processor = processor;
         _logger = logger;
     }
 
     public async Task Consume(ConsumeContext<IStockReservedEvent> context)
     {
         var message = context.Message;
-        _logger.LogInformation("Nhận StockReservedEvent cho đơn hàng {OrderId}, UserId {UserId}, Số tiền {Amount}",
-            message.OrderId, message.UserId, message.TotalAmount);
+        _logger.LogInformation(
+            "Received stock reservation for order {OrderId}, user {UserId}, amount {Amount}",
+            message.OrderId,
+            message.UserId,
+            message.TotalAmount);
 
-        if (!decimal.TryParse(message.TotalAmount, NumberStyles.Number, CultureInfo.InvariantCulture, out var requiredAmount) || requiredAmount <= 0)
+        if (!Guid.TryParse(message.OrderId, out var orderId) || orderId == Guid.Empty ||
+            !Guid.TryParse(message.UserId, out var userId) || userId == Guid.Empty ||
+            !decimal.TryParse(message.TotalAmount, NumberStyles.Number, CultureInfo.InvariantCulture, out var amount))
         {
-            _logger.LogWarning("Số tiền đơn hàng không hợp lệ: {TotalAmount}", message.TotalAmount);
-            await context.Publish<IPaymentFailedEvent>(new
-            {
-                OrderId = message.OrderId,
-                Reason = "Số tiền thanh toán không hợp lệ",
-                Timestamp = DateTimeOffset.UtcNow
-            });
+            await PublishFailure(context, message.OrderId, "Dữ liệu thanh toán không hợp lệ");
             return;
         }
 
-        _ = Guid.TryParse(message.UserId, out var uid);
+        var result = await _processor.ProcessAsync(orderId, userId, amount, true, context.CancellationToken);
+        if (!result.Succeeded)
+            _logger.LogWarning("Payment failed for order {OrderId}: {Reason}", orderId, result.FailureReason);
+    }
 
-        var wallet = await _context.Wallets
-            .FirstOrDefaultAsync(w => w.UserId == uid, context.CancellationToken);
-
-        if (wallet == null)
+    private static Task PublishFailure(
+        ConsumeContext<IStockReservedEvent> context,
+        string orderId,
+        string reason)
+    {
+        return context.Publish<IPaymentFailedEvent>(new
         {
-            _logger.LogWarning("Không tìm thấy ví cho User {UserId}", message.UserId);
-            await context.Publish<IPaymentFailedEvent>(new
-            {
-                OrderId = message.OrderId,
-                Reason = "Người dùng chưa có tài khoản ví",
-                Timestamp = DateTimeOffset.UtcNow
-            });
-            return;
-        }
-
-        try
-        {
-            var balanceBefore = wallet.Balance;
-            wallet.Deduct(requiredAmount);
-
-            var tx = new WalletTransaction
-            {
-                WalletId = wallet.Id,
-                UserId = wallet.UserId.ToString(),
-                Type = WalletTransactionType.PurchaseDebit,
-                Amount = requiredAmount,
-                Currency = wallet.Currency.ToString(),
-                BalanceBefore = balanceBefore,
-                BalanceAfter = wallet.Balance,
-                Status = TransactionStatus.Success,
-                Note = $"Thanh toán đơn hàng #{message.OrderId}"
-            };
-
-            _context.WalletTransactions.Add(tx);
-            await _context.SaveChangesAsync(context.CancellationToken);
-
-            _logger.LogInformation("Thanh toán thành công đơn hàng {OrderId}. Số dư còn lại: {Balance}",
-                message.OrderId, wallet.Balance);
-
-            await context.Publish<IPaymentCompletedEvent>(new
-            {
-                OrderId = message.OrderId,
-                TransactionId = tx.Id.ToString(),
-                Amount = requiredAmount.ToString("0.00", CultureInfo.InvariantCulture),
-                Timestamp = DateTimeOffset.UtcNow
-            });
-        }
-        catch (InsufficientBalanceException ex)
-        {
-            _logger.LogWarning("Số dư ví không đủ để thanh toán đơn {OrderId}: {Message}", message.OrderId, ex.Message);
-
-            await context.Publish<IPaymentFailedEvent>(new
-            {
-                OrderId = message.OrderId,
-                Reason = "Số dư ví không đủ để thanh toán đơn hàng",
-                Timestamp = DateTimeOffset.UtcNow
-            });
-        }
+            OrderId = orderId,
+            Reason = reason,
+            Timestamp = DateTimeOffset.UtcNow
+        });
     }
 }
