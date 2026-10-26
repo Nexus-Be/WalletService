@@ -9,8 +9,7 @@ using Wallet.Domain.Entities;
 using Wallet.Domain.Enums;
 using Wallet.Domain.Exceptions;
 
-public record TransferCommand(string SenderUserId, string RecipientUserId, decimal Amount, string Note)
-    : IRequest<WalletTransactionDto>;
+public record TransferCommand(string SenderUserId, string RecipientUserId, decimal Amount, string Note) : IRequest<WalletTransactionDto>;
 
 public class TransferCommandValidator : AbstractValidator<TransferCommand>
 {
@@ -18,15 +17,8 @@ public class TransferCommandValidator : AbstractValidator<TransferCommand>
     {
         RuleFor(x => x.SenderUserId).NotEmpty().WithMessage("Người gửi không được để trống.");
         RuleFor(x => x.RecipientUserId).NotEmpty().WithMessage("Người nhận không được để trống.");
-        RuleFor(x => x.SenderUserId).Must(x => Guid.TryParse(x, out var userId) && userId != Guid.Empty)
-            .WithMessage("Người gửi không hợp lệ.");
-        RuleFor(x => x.RecipientUserId).Must(x => Guid.TryParse(x, out var userId) && userId != Guid.Empty)
-            .WithMessage("Người nhận không hợp lệ.");
         RuleFor(x => x.Amount).GreaterThan(0).WithMessage("Số tiền chuyển phải lớn hơn 0.");
-        RuleFor(x => x.Amount).Must(x => decimal.Round(x, 2) == x)
-            .WithMessage("Số tiền chỉ được có tối đa hai chữ số thập phân.");
-        RuleFor(x => x).Must(x => x.SenderUserId != x.RecipientUserId)
-            .WithMessage("Không thể chuyển tiền cho chính mình.");
+        RuleFor(x => x).Must(x => x.SenderUserId != x.RecipientUserId).WithMessage("Không thể chuyển tiền cho chính mình.");
     }
 }
 
@@ -41,23 +33,29 @@ public class TransferCommandHandler : IRequestHandler<TransferCommand, WalletTra
 
     public async Task<WalletTransactionDto> Handle(TransferCommand request, CancellationToken cancellationToken)
     {
-        var senderGuid = Guid.Parse(request.SenderUserId);
-        var recipientGuid = Guid.Parse(request.RecipientUserId);
-        await using var dbTransaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+        _ = Guid.TryParse(request.SenderUserId, out var senderGuid);
+        _ = Guid.TryParse(request.RecipientUserId, out var recipientGuid);
 
-        var firstUserId = senderGuid.CompareTo(recipientGuid) < 0 ? senderGuid : recipientGuid;
-        var secondUserId = firstUserId == senderGuid ? recipientGuid : senderGuid;
-        var firstWallet = await _context.LockWalletByUserIdAsync(firstUserId, cancellationToken);
-        var secondWallet = await _context.LockWalletByUserIdAsync(secondUserId, cancellationToken);
-        var senderWallet = firstUserId == senderGuid ? firstWallet : secondWallet;
-        var recipientWallet = firstUserId == recipientGuid ? firstWallet : secondWallet;
+        var senderWallet = await _context.Wallets
+            .FirstOrDefaultAsync(w => w.UserId == senderGuid, cancellationToken);
 
-        if (senderWallet is null)
+        if (senderWallet == null)
             throw new WalletNotFoundException(request.SenderUserId);
-        if (recipientWallet is null)
-            throw new WalletNotFoundException(request.RecipientUserId);
-        if (senderWallet.Currency != recipientWallet.Currency)
-            throw new BusinessRuleValidationException("Wallet currencies do not match.");
+
+        var recipientWallet = await _context.Wallets
+            .FirstOrDefaultAsync(w => w.UserId == recipientGuid, cancellationToken);
+
+        if (recipientWallet == null)
+        {
+            recipientWallet = new WalletAccount
+            {
+                UserId = recipientGuid != Guid.Empty ? recipientGuid : Guid.NewGuid(),
+                Balance = 0m,
+                Currency = senderWallet.Currency,
+                Status = "ACTIVE"
+            };
+            _context.Wallets.Add(recipientWallet);
+        }
 
         // Deduct from sender
         var senderBefore = senderWallet.Balance;
@@ -71,22 +69,20 @@ public class TransferCommandHandler : IRequestHandler<TransferCommand, WalletTra
         {
             WalletId = senderWallet.Id,
             UserId = senderWallet.UserId.ToString(),
-            Type = WalletTransactionType.TransferOut,
+            Type = WalletTransactionType.AdjustmentDebit,
             Amount = request.Amount,
             Currency = senderWallet.Currency.ToString(),
             BalanceBefore = senderBefore,
             BalanceAfter = senderWallet.Balance,
             Status = TransactionStatus.Success,
-            Note = string.IsNullOrWhiteSpace(request.Note)
-                ? $"Chuyển tiền tới user {request.RecipientUserId}"
-                : request.Note
+            Note = string.IsNullOrWhiteSpace(request.Note) ? $"Chuyển tiền tới user {request.RecipientUserId}" : request.Note
         };
 
         var recipientTx = new WalletTransaction
         {
             WalletId = recipientWallet.Id,
             UserId = recipientWallet.UserId.ToString(),
-            Type = WalletTransactionType.TransferIn,
+            Type = WalletTransactionType.AdjustmentCredit,
             Amount = request.Amount,
             Currency = recipientWallet.Currency.ToString(),
             BalanceBefore = recipientBefore,
@@ -99,7 +95,6 @@ public class TransferCommandHandler : IRequestHandler<TransferCommand, WalletTra
         _context.WalletTransactions.Add(recipientTx);
 
         await _context.SaveChangesAsync(cancellationToken);
-        await dbTransaction.CommitAsync(cancellationToken);
 
         return new WalletTransactionDto
         {

@@ -6,31 +6,25 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Wallet.Application.Common.Interfaces;
 using Wallet.Application.Consumers;
-using Wallet.Infrastructure.Payments;
 using Wallet.Infrastructure.Persistence;
 
 public static class InfrastructureDependencyInjection
 {
-    public static IServiceCollection AddInfrastructureServices(this IServiceCollection services,
-        IConfiguration configuration)
+    public static IServiceCollection AddInfrastructureServices(this IServiceCollection services, IConfiguration configuration)
     {
-        var connectionString = configuration.GetConnectionString("DefaultConnection")
-                               ?? "Host=localhost;Port=5439;Database=wallet_db;Username=postgres;Password=postgres";
+        var connectionString = configuration.GetConnectionString("DefaultConnection") 
+            ?? "Host=localhost;Port=5439;Database=wallet_db;Username=postgres;Password=postgres";
 
         services.AddDbContext<WalletDbContext>(options =>
         {
             options.UseNpgsql(connectionString, b =>
             {
                 b.MigrationsAssembly(typeof(WalletDbContext).Assembly.FullName);
-                b.EnableRetryOnFailure(maxRetryCount: 5, maxRetryDelay: TimeSpan.FromSeconds(10),
-                    errorCodesToAdd: null);
+                b.EnableRetryOnFailure(maxRetryCount: 5, maxRetryDelay: TimeSpan.FromSeconds(10), errorCodesToAdd: null);
             });
         });
 
         services.AddScoped<IWalletDbContext>(sp => sp.GetRequiredService<WalletDbContext>());
-        services.AddScoped<WalletDebitProcessor>();
-        services.AddSingleton<IVnPayService, VnPayService>();
-        services.AddSingleton<IDirectPaymentGateway, ConfiguredDirectPaymentGateway>();
 
         // MassTransit 8.4.1 / 8.3.0 + RabbitMQ + Transactional Outbox
         services.AddMassTransit(x =>
@@ -38,9 +32,6 @@ public static class InfrastructureDependencyInjection
             x.SetKebabCaseEndpointNameFormatter();
 
             x.AddConsumer<StockReservedConsumer>();
-            x.AddConsumer<UserRegisteredConsumer>();
-            x.AddConsumer<OrderCheckoutRequestedConsumer>();
-            x.AddConsumer<OrderCancelledConsumer>();
 
             x.AddEntityFrameworkOutbox<WalletDbContext>(o =>
             {
