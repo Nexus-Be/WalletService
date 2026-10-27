@@ -20,5 +20,7 @@ public class VnpayIpnLogConfiguration : IEntityTypeConfiguration<VnpayIpnLog>
             .WithMany(t => t.IpnLogs)
             .HasForeignKey(l => l.VnpTxnRef)
             .HasPrincipalKey(t => t.VnpTxnRef);
+
+        builder.HasQueryFilter(x => !x.IsDeleted);
     }
 }
