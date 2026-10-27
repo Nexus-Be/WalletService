@@ -21,9 +21,7 @@ services:
     restart: unless-stopped
 
   wallet-service:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: oaktree293/walletservice:latest
     container_name: nexus-wallet-service
     ports:
       - "${WALLET_SERVICE_PORT:-8008}:8008"
