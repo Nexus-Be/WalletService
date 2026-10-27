@@ -66,7 +66,7 @@ public sealed class WalletDebitProcessor
         await using var dbTransaction = await _context.Database.BeginTransactionAsync(cancellationToken);
         if (amount <= 0)
         {
-            const string reason = "Số tiền thanh toán không hợp lệ";
+            const string reason = "Payment amount is invalid.";
             await PublishFailureAsync(orderId, reason, legacyEventContract, cancellationToken);
             await _context.SaveChangesAsync(cancellationToken);
             await dbTransaction.CommitAsync(cancellationToken);
@@ -76,7 +76,7 @@ public sealed class WalletDebitProcessor
         var wallet = await _context.LockWalletByUserIdAsync(userId, cancellationToken);
         if (wallet is null)
         {
-            const string reason = "Người dùng chưa có tài khoản ví";
+            const string reason = "User does not have a wallet account.";
             await PublishFailureAsync(orderId, reason, legacyEventContract, cancellationToken);
             await _context.SaveChangesAsync(cancellationToken);
             await dbTransaction.CommitAsync(cancellationToken);
@@ -105,7 +105,7 @@ public sealed class WalletDebitProcessor
                 return new WalletDebitResult(true, existing.Id.ToString(), wallet.Balance, null);
             }
 
-            const string reason = "Giao dịch thanh toán đã tồn tại với dữ liệu khác";
+            const string reason = "A payment transaction already exists with different data.";
             await PublishFailureAsync(orderId, reason, legacyEventContract, cancellationToken);
             await _context.SaveChangesAsync(cancellationToken);
             await dbTransaction.CommitAsync(cancellationToken);
@@ -114,7 +114,7 @@ public sealed class WalletDebitProcessor
 
         if (!string.Equals(wallet.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase))
         {
-            const string reason = "Ví không ở trạng thái hoạt động";
+            const string reason = "Wallet is not active.";
             await PublishFailureAsync(orderId, reason, legacyEventContract, cancellationToken);
             await _context.SaveChangesAsync(cancellationToken);
             await dbTransaction.CommitAsync(cancellationToken);
@@ -123,7 +123,7 @@ public sealed class WalletDebitProcessor
 
         if (wallet.AvailableBalance < amount)
         {
-            const string reason = "Số dư ví không đủ để thanh toán đơn hàng";
+            const string reason = "Insufficient wallet balance to pay for the order.";
             await PublishFailureAsync(orderId, reason, legacyEventContract, cancellationToken);
             await _context.SaveChangesAsync(cancellationToken);
             await dbTransaction.CommitAsync(cancellationToken);
@@ -143,7 +143,7 @@ public sealed class WalletDebitProcessor
             BalanceAfter = wallet.Balance,
             ReferenceId = orderId,
             Status = TransactionStatus.Success,
-            Note = $"Thanh toán đơn hàng #{orderId}"
+            Note = $"Payment for order #{orderId}"
         };
         _context.WalletTransactions.Add(walletTransaction);
         await PublishSuccessAsync(
@@ -222,7 +222,7 @@ public sealed class OrderCheckoutRequestedConsumer : IConsumer<IOrderCheckoutReq
             !Guid.TryParse(message.UserId, out var userId) || userId == Guid.Empty ||
             !decimal.TryParse(message.Amount, NumberStyles.Number, CultureInfo.InvariantCulture, out var amount))
         {
-            await PublishFailure(context, message.OrderId, "Dữ liệu thanh toán không hợp lệ");
+            await PublishFailure(context, message.OrderId, "Payment data is invalid.");
             return;
         }
 
@@ -332,7 +332,7 @@ public sealed class OrderCancelledConsumer : IConsumer<IOrderCancelledEvent>
             BalanceAfter = wallet.Balance,
             ReferenceId = cancellationId,
             Status = TransactionStatus.Success,
-            Note = $"Hoàn tiền đơn hàng #{orderId}: {message.Reason}"
+            Note = $"Refund for order #{orderId}: {message.Reason}"
         };
         _context.WalletTransactions.Add(refund);
         await _publishEndpoint.Publish<IWalletRefundedEvent>(new

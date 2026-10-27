@@ -29,7 +29,7 @@ public sealed class StockReservedConsumer : IConsumer<IStockReservedEvent>
             !Guid.TryParse(message.UserId, out var userId) || userId == Guid.Empty ||
             !decimal.TryParse(message.TotalAmount, NumberStyles.Number, CultureInfo.InvariantCulture, out var amount))
         {
-            await PublishFailure(context, message.OrderId, "Dữ liệu thanh toán không hợp lệ");
+            await PublishFailure(context, message.OrderId, "Payment data is invalid.");
             return;
         }
 

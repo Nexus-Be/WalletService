@@ -12,9 +12,9 @@ public class WithdrawCommandValidator : AbstractValidator<WithdrawCommand>
 {
     public WithdrawCommandValidator()
     {
-        RuleFor(x => x.UserId).NotEmpty().WithMessage("UserId không được để trống.");
-        RuleFor(x => x.Amount).GreaterThan(0).WithMessage("Số tiền rút phải lớn hơn 0.");
-        RuleFor(x => x.BankAccount).NotEmpty().WithMessage("Tài khoản ngân hàng không được để trống.");
+        RuleFor(x => x.UserId).NotEmpty().WithMessage("UserId must not be empty.");
+        RuleFor(x => x.Amount).GreaterThan(0).WithMessage("Withdrawal amount must be greater than zero.");
+        RuleFor(x => x.BankAccount).NotEmpty().WithMessage("Bank account must not be empty.");
     }
 }
 

@@ -10,6 +10,7 @@ COPY ["Wallet.Api/Wallet.Api.csproj", "Wallet.Api/"]
 COPY ["Wallet.Application/Wallet.Application.csproj", "Wallet.Application/"]
 COPY ["Wallet.Domain/Wallet.Domain.csproj", "Wallet.Domain/"]
 COPY ["Wallet.Infrastructure/Wallet.Infrastructure.csproj", "Wallet.Infrastructure/"]
+COPY ["Wallet.Tests/Wallet.Tests.csproj", "Wallet.Tests/"]
 RUN dotnet restore "Wallet.sln"
 COPY . .
 RUN dotnet build "Wallet.Api/Wallet.Api.csproj" -c Release -o /app/build

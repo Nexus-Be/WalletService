@@ -16,17 +16,17 @@ public class TransferCommandValidator : AbstractValidator<TransferCommand>
 {
     public TransferCommandValidator()
     {
-        RuleFor(x => x.SenderUserId).NotEmpty().WithMessage("Người gửi không được để trống.");
-        RuleFor(x => x.RecipientUserId).NotEmpty().WithMessage("Người nhận không được để trống.");
+        RuleFor(x => x.SenderUserId).NotEmpty().WithMessage("Sender user ID must not be empty.");
+        RuleFor(x => x.RecipientUserId).NotEmpty().WithMessage("Recipient user ID must not be empty.");
         RuleFor(x => x.SenderUserId).Must(x => Guid.TryParse(x, out var userId) && userId != Guid.Empty)
-            .WithMessage("Người gửi không hợp lệ.");
+            .WithMessage("Sender user ID is invalid.");
         RuleFor(x => x.RecipientUserId).Must(x => Guid.TryParse(x, out var userId) && userId != Guid.Empty)
-            .WithMessage("Người nhận không hợp lệ.");
-        RuleFor(x => x.Amount).GreaterThan(0).WithMessage("Số tiền chuyển phải lớn hơn 0.");
+            .WithMessage("Recipient user ID is invalid.");
+        RuleFor(x => x.Amount).GreaterThan(0).WithMessage("Transfer amount must be greater than zero.");
         RuleFor(x => x.Amount).Must(x => decimal.Round(x, 2) == x)
-            .WithMessage("Số tiền chỉ được có tối đa hai chữ số thập phân.");
+            .WithMessage("Transfer amount must have no more than two decimal places.");
         RuleFor(x => x).Must(x => x.SenderUserId != x.RecipientUserId)
-            .WithMessage("Không thể chuyển tiền cho chính mình.");
+            .WithMessage("Cannot transfer funds to yourself.");
     }
 }
 
@@ -78,7 +78,7 @@ public class TransferCommandHandler : IRequestHandler<TransferCommand, WalletTra
             BalanceAfter = senderWallet.Balance,
             Status = TransactionStatus.Success,
             Note = string.IsNullOrWhiteSpace(request.Note)
-                ? $"Chuyển tiền tới user {request.RecipientUserId}"
+                ? $"Transfer to user {request.RecipientUserId}"
                 : request.Note
         };
 
@@ -92,7 +92,9 @@ public class TransferCommandHandler : IRequestHandler<TransferCommand, WalletTra
             BalanceBefore = recipientBefore,
             BalanceAfter = recipientWallet.Balance,
             Status = TransactionStatus.Success,
-            Note = string.IsNullOrWhiteSpace(request.Note) ? $"Nhận tiền từ user {request.SenderUserId}" : request.Note
+            Note = string.IsNullOrWhiteSpace(request.Note)
+                ? $"Received transfer from user {request.SenderUserId}"
+                : request.Note
         };
 
         _context.WalletTransactions.Add(senderTx);

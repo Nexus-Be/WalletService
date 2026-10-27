@@ -79,7 +79,7 @@ public sealed class InitiateDirectGatewayPaymentCommandHandler
                 existingTransaction.Amount != request.Amount ||
                 !string.Equals(
                     existingTransaction.Note,
-                    $"Thanh toán đơn hàng qua {request.Gateway.Trim()}",
+                    $"Payment for order via {request.Gateway.Trim()}",
                     StringComparison.Ordinal))
                 throw new BusinessRuleValidationException("Order already has a direct payment transaction.");
 
@@ -133,7 +133,7 @@ public sealed class InitiateDirectGatewayPaymentCommandHandler
             BalanceAfter = wallet.Balance,
             ReferenceId = orderId,
             Status = TransactionStatus.Pending,
-            Note = $"Thanh toán đơn hàng qua {request.Gateway.Trim()}"
+            Note = $"Payment for order via {request.Gateway.Trim()}"
         };
         _context.WalletTransactions.Add(transaction);
         await _context.SaveChangesAsync(cancellationToken);
@@ -332,7 +332,7 @@ public sealed class ProcessWithdrawalCommandHandler : IRequestHandler<ProcessWit
                 ReferenceId = withdrawal.Id,
                 Status = TransactionStatus.Success,
                 Note =
-                    $"Rút tiền tới {withdrawal.BankName}, {withdrawal.BankAccountNumber}; phí {withdrawal.Fee.ToString("0.00", CultureInfo.InvariantCulture)}"
+                    $"Withdrawal to {withdrawal.BankName}, {withdrawal.BankAccountNumber}; fee {withdrawal.Fee.ToString("0.00", CultureInfo.InvariantCulture)}"
             };
             _context.WalletTransactions.Add(debit);
             transactionId = debit.Id.ToString();

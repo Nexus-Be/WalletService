@@ -12,8 +12,8 @@ public class DepositCommandValidator : AbstractValidator<DepositCommand>
 {
     public DepositCommandValidator()
     {
-        RuleFor(x => x.UserId).NotEmpty().WithMessage("UserId không được để trống.");
-        RuleFor(x => x.Amount).GreaterThan(0).WithMessage("Số tiền nạp phải lớn hơn 0.");
+        RuleFor(x => x.UserId).NotEmpty().WithMessage("UserId must not be empty.");
+        RuleFor(x => x.Amount).GreaterThan(0).WithMessage("Deposit amount must be greater than zero.");
     }
 }
 

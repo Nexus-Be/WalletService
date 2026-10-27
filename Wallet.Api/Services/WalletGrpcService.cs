@@ -30,7 +30,7 @@ public class WalletGrpcService : WalletApi.WalletApiBase
         var callerUserId = GetAuthenticatedUserId(context, "BUYER", "SELLER", "ADMIN");
         var effectiveUserId = HasRole(context, "ADMIN") ? request.UserId : callerUserId;
         if (!Guid.TryParse(effectiveUserId, out _) || string.IsNullOrWhiteSpace(effectiveUserId))
-            throw new RpcException(new Status(StatusCode.InvalidArgument, "UserId không hợp lệ."));
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "UserId is invalid."));
 
         WalletDto result;
         try
@@ -63,12 +63,12 @@ public class WalletGrpcService : WalletApi.WalletApiBase
 
         if (!decimal.TryParse(request.Amount, NumberStyles.Number, CultureInfo.InvariantCulture, out var amount) ||
             amount <= 0)
-            throw new RpcException(new Status(StatusCode.InvalidArgument, "Số tiền nạp không hợp lệ."));
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "Deposit amount is invalid."));
         if (!string.IsNullOrWhiteSpace(request.Currency) &&
             !string.Equals(request.Currency, "VND", StringComparison.OrdinalIgnoreCase))
-            throw new RpcException(new Status(StatusCode.InvalidArgument, "Chỉ hỗ trợ nạp ví bằng VND."));
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "Wallet top-ups are only supported in VND."));
         if (!string.Equals(request.PaymentMethod, "VNPAY", StringComparison.OrdinalIgnoreCase))
-            throw new RpcException(new Status(StatusCode.InvalidArgument, "Nạp tiền phải được thực hiện qua VNPay."));
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "Deposits must be made through VNPay."));
 
         try
         {
@@ -102,7 +102,7 @@ public class WalletGrpcService : WalletApi.WalletApiBase
         }
         catch (InvalidOperationException ex)
         {
-            _logger.LogError(ex, "Lỗi khi xử lý nạp tiền cho user {UserId}", effectiveUserId);
+            _logger.LogError(ex, "Error processing deposit for user {UserId}", effectiveUserId);
             throw new RpcException(new Status(StatusCode.FailedPrecondition, ex.Message));
         }
     }
@@ -111,7 +111,7 @@ public class WalletGrpcService : WalletApi.WalletApiBase
     {
         throw new RpcException(new Status(
             StatusCode.Unimplemented,
-            "Rút tiền yêu cầu thông tin ngân hàng đầy đủ và phê duyệt; sử dụng POST /api/v1/wallet/withdrawals."));
+            "Withdrawals require complete bank details and approval; use POST /api/v1/wallet/withdrawals."));
     }
 
     public override async Task<WalletTransaction> Transfer(WalletTransferRequest request, ServerCallContext context)
@@ -120,7 +120,7 @@ public class WalletGrpcService : WalletApi.WalletApiBase
 
         if (!decimal.TryParse(request.Amount, NumberStyles.Number, CultureInfo.InvariantCulture, out var amount) ||
             amount <= 0)
-            throw new RpcException(new Status(StatusCode.InvalidArgument, "Số tiền chuyển không hợp lệ."));
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "Transfer amount is invalid."));
 
         try
         {
@@ -155,7 +155,7 @@ public class WalletGrpcService : WalletApi.WalletApiBase
         var callerUserId = GetAuthenticatedUserId(context, "BUYER", "SELLER", "ADMIN");
         var effectiveUserId = HasRole(context, "ADMIN") ? request.UserId : callerUserId;
         if (!Guid.TryParse(effectiveUserId, out _) || string.IsNullOrWhiteSpace(effectiveUserId))
-            throw new RpcException(new Status(StatusCode.InvalidArgument, "UserId không hợp lệ."));
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "UserId is invalid."));
 
         WalletTransactionPageDto result;
         try
@@ -209,7 +209,7 @@ public class WalletGrpcService : WalletApi.WalletApiBase
         if (!string.IsNullOrWhiteSpace(forwardedClientIp))
         {
             if (!IPAddress.TryParse(forwardedClientIp, out _))
-                throw new RpcException(new Status(StatusCode.InvalidArgument, "Địa chỉ IP của yêu cầu không hợp lệ."));
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "The request IP address is invalid."));
             return forwardedClientIp;
         }
 
@@ -217,7 +217,7 @@ public class WalletGrpcService : WalletApi.WalletApiBase
         var separatorIndex = peer.IndexOf(':');
         if (separatorIndex < 0)
             throw new RpcException(
-                new Status(StatusCode.InvalidArgument, "Không xác định được địa chỉ IP của yêu cầu."));
+                new Status(StatusCode.InvalidArgument, "Unable to determine the request IP address."));
 
         var endpoint = peer[(separatorIndex + 1)..];
         string address;
@@ -225,19 +225,19 @@ public class WalletGrpcService : WalletApi.WalletApiBase
         {
             var closingBracketIndex = endpoint.IndexOf(']');
             if (closingBracketIndex <= 1)
-                throw new RpcException(new Status(StatusCode.InvalidArgument, "Địa chỉ IP của yêu cầu không hợp lệ."));
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "The request IP address is invalid."));
             address = endpoint[1..closingBracketIndex];
         }
         else
         {
             var portSeparator = endpoint.LastIndexOf(':');
             if (portSeparator <= 0)
-                throw new RpcException(new Status(StatusCode.InvalidArgument, "Địa chỉ IP của yêu cầu không hợp lệ."));
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "The request IP address is invalid."));
             address = endpoint[..portSeparator];
         }
 
         if (!IPAddress.TryParse(address, out var ipAddress))
-            throw new RpcException(new Status(StatusCode.InvalidArgument, "Địa chỉ IP của yêu cầu không hợp lệ."));
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "The request IP address is invalid."));
 
         return ipAddress.ToString();
     }
