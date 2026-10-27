@@ -115,11 +115,38 @@ message WalletTransactionPage {
 
 ## 3. QUY ƯỚC HEADER & ĐỊNH DANH
 
-| Quy ước | Thực tế trong code | Trạng thái | Bằng chứng (file:line) |
-|:---|:---|:---:|:---|
-| Gateway truyền `x-user-id` (UUID giải mã từ JWT) xuống gRPC metadata | Có đọc header này ở cả 5 rpc | ⚠️ | `Wallet.Api/Services/WalletGrpcService.cs:28,48,68,96,124` |
-| “Service ưu tiên `x-user-id` thay cho `request.UserId` **để bảo mật**” | Có ưu tiên header, **nhưng không có bước xác thực nào** — client tự kết nối trực tiếp port 8008 vẫn giả mạo được header hoặc bỏ trống để dùng `request.UserId` | ❌ Không phải bảo mật | Không có `AddAuthentication`/`JwtBearer`/`UseAuthentication` trong repo; `Program.cs` không có auth middleware |
-| Định dạng tiền: chuỗi decimal 2 chữ số, `InvariantCulture` | Đúng | ✅ | `WalletGrpcService.cs:39` (`balance`), `:151,153` (`amount`, `balance_after`) |
-| Đơn vị tiền tệ mặc định `VND` | Ví mới luôn tạo với `CurrencyCode.Vnd` | ✅ | `Wallet.Application/Features/Commands/Deposit/DepositCommand.cs:44`; `GetWalletQuery.cs:32-42` |
+1. **Header Truyền Xuống Từ Gateway**:
+   - `x-user-id`: Mã UUID định danh của người dùng đã được giải mã từ JWT token tại Gateway.
+   - `x-user-role`: Vai trò đã được Gateway xác thực (`BUYER`, `SELLER`, `ADMIN`, `SUPPORT_STAFF`); service từ chối request thiếu identity/role.
+   - `x-client-ip`: Địa chỉ IP gốc của client cho yêu cầu tạo URL VNPay.
+   - Khi `x-user-id` có mặt trong gRPC Metadata, Service ưu tiên sử dụng giá trị này thay cho `request.UserId` để bảo mật.
+2. **Định Dạng Tiền Tệ**:
+   - `balance`, `amount`, `balance_after` luôn ở dạng chuỗi decimal có đúng 2 chữ số thập phân theo chuẩn InvariantCulture (ví dụ: `"500000.00"`).
+   - Đơn vị tiền tệ mặc định là `"VND"`.
 
-> **Cảnh báo:** đừng mô tả header `x-user-id` là cơ chế bảo mật trong bất kỳ tài liệu nào. Trạng thái thật là **❌ chưa có authentication** — đây là P0 trước khi mở service ra ngoài mạng nội bộ.
+---
+
+## 4. WALLET OPERATIONS NOT REPRESENTED IN THE LEGACY PROTO
+
+The CSV-defined wallet workflows that need request metadata or return values not present in the legacy protobuf messages are exposed as HTTP endpoints on Wallet.Api. The Gateway must proxy these paths and set trusted `x-user-id`, `x-user-role`, and (for top-ups) `x-client-ip` headers after validating the caller; it must strip client-supplied identity headers.
+
+| Method and path | Access | Purpose |
+|:---|:---|:---|
+| `GET /api/v1/wallets/me` | BUYER / SELLER / ADMIN | Current caller's balance, locked balance, and available balance |
+| `GET /api/v1/wallets/transactions` | BUYER / SELLER / ADMIN | Current caller's filtered/paginated ledger (`type`, `fromDate`, `toDate`, `page`, `limit`) |
+| `POST /api/v1/wallets/topups/vnpay` | BUYER / SELLER | Initiate a VNPay top-up (`amount`, `bankCode`, `returnUrl`) |
+| `POST /api/v1/wallets/vnpay/ipn` | VNPay callback; signature required | Idempotently process the VNPay IPN body |
+| `POST /api/v1/wallets/checkout/direct` | BUYER / SELLER | Initiate direct-gateway payment (`orderId`, `amount`, `gateway`, optional `bankCode`, `returnUrl`) |
+| `POST /api/v1/wallets/withdrawals` | SELLER | Lock available funds and submit a withdrawal (`bankCode`, `accountNumber`, `accountHolderName`) |
+| `PATCH /api/v1/admin/wallets/withdrawals/{id}` | ADMIN / SUPPORT_STAFF | Approve or reject a pending withdrawal |
+| `POST /api/v1/admin/wallets/{walletId}/adjustments` | ADMIN | Credit/debit with an audit record |
+
+Successful HTTP responses use the shared `ApiResponse<T>` or `ApiResponse<PagedData<T>>` envelope, except for VNPay IPN, which returns the provider's `{ "RspCode": "...", "Message": "..." }` response. Errors use the shared RFC 9110-style error envelope.
+
+These endpoints are additive and do not change the shared protobuf schema. The VNPay IPN endpoint is the only unauthenticated route; it validates VNPay's HMAC-SHA512 signature before processing. Direct gateways use a configured HTTPS URL and HMAC-SHA512 signature over the order, amount, currency, and optional bank/return URL parameters; each provider must accept those query parameters.
+
+Withdrawal requests follow the agreed endpoint contract's zero-fee response (`fee: 0`); the full requested amount is locked and later deducted on approval.
+
+The legacy gRPC `Deposit` RPC now creates a pending VNPay top-up and returns the payment URL in `WalletTransaction.note`; it never credits the wallet before a signed IPN. The legacy `Withdraw` RPC returns `UNIMPLEMENTED` because its protobuf request cannot carry the required bank details or approval state; use the withdrawal HTTP endpoints instead.
+
+Configure VNPay under `VnPay` and direct providers under `PaymentGateways:{gatewayCode}`. Never use the example placeholder secrets in a deployed environment.

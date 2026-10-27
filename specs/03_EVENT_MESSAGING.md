@@ -50,13 +50,16 @@ WalletService được thiết kế đóng vai trò bước thanh toán của **
 
 ## 3. ĐẢM BẢO TÍNH TOÀN VẸN (IDEMPOTENCY & OUTBOX)
 
-| Hạng mục | Thực tế trong code | Trạng thái | Bằng chứng (file:line) |
-|:---|:---|:---:|:---|
-| EF Core Outbox của MassTransit | Đã bật: `AddEntityFrameworkOutbox<WalletDbContext>` + `UsePostgres()` + `UseBusOutbox()` | ✅ | `Wallet.Infrastructure/InfrastructureDependencyInjection.cs:36-40` |
-| Bảng Outbox/Inbox được map vào DbContext | Đủ 3: `AddInboxStateEntity`, `AddOutboxMessageEntity`, `AddOutboxStateEntity` | ✅ | `Wallet.Infrastructure/Persistence/WalletDbContext.cs:31-33` |
-| Bảng tồn tại trong migration | `InboxState` (`:85`), `OutboxState` (`:108`), `OutboxMessage` (`:146`) | ✅ | `Wallet.Infrastructure/Migrations/20261024103202_InitialWalletSchema.cs` |
-| **Nguyên tử**: trừ tiền + phát event trong **một** transaction DB | Chỉ dựa vào một `SaveChangesAsync` (`StockReservedConsumer.cs:78`); publish gọi **sau** đó (`:83`) và **không** có `BeginTransaction` nào trong repo | ⚠️ Chưa chứng minh | grep `BeginTransaction|Database.BeginTransactionAsync` trên `*.cs` = 0 |
-| **Idempotent consumer** (bảng `InboxState`) | Bật same-endpoint inbox qua `AddEntityFrameworkOutbox`; chưa có test chứng minh chặn trùng | ⚠️ | `InfrastructureDependencyInjection.cs:36-40` |
-| **Retry policy / DLQ** | Không có `UseMessageRetry`, `UseDelayedRedelivery`, `ConfigureDeadLetterQueue`, không có `cfg.ReceiveEndpoint(..., e => e.UseMessageRetry(...))` | ❌ CHƯA CÓ | `InfrastructureDependencyInjection.cs:42-56` chỉ có `Host` + `ConfigureEndpoints` |
-| **Endpoint naming** | Kebab-case | ✅ | `InfrastructureDependencyInjection.cs:32` (`SetKebabCaseEndpointNameFormatter`) |
-| **Ghi chú lỗi thời trong code** | Comment ghi `// MassTransit 8.4.1 / 8.3.0` trong khi package thật là `8.3.0` | ⚠️ | `InfrastructureDependencyInjection.cs:29`; `Wallet.Infrastructure/Wallet.Infrastructure.csproj:9` |
+1. **Transactional Outbox Pattern**:
+   - Sử dụng EF Core Outbox của MassTransit (`AddEntityFrameworkOutbox<WalletDbContext>`).
+   - Đảm bảo việc trừ tiền ví và việc phát hành `PaymentCompletedEvent` / `PaymentFailedEvent` nằm chung trong một Database Transaction duy nhất.
+2. **Idempotent Consumer**:
+   - MassTransit tự động ghi nhận bảng `InboxState` để chặn việc xử lý lặp lại nếu cùng một sự kiện `StockReservedEvent` được gửi tới nhiều lần.
+
+---
+
+## 4. WALLET WORKFLOW EVENTS
+
+The application also consumes `IUserRegisteredEvent` to create an active VND wallet, `IOrderCheckoutRequestedEvent` to debit a buyer's available balance, and `IOrderCancelledEvent` to refund a paid order. Checkout debits are keyed by the order ID; duplicate requests do not debit the wallet twice. `StockReservedEvent` remains supported for the existing checkout flow and publishes its legacy payment result events.
+
+Wallet operation results are published as `IWalletTopupInitiatedEvent`, `IWalletTopupSucceededEvent`, `IWalletTopupFailedEvent`, `IWalletDebitSucceededEvent`, `IWalletDebitFailedEvent`, `IWalletRefundedEvent`, `IWithdrawalRequestedEvent`, `IWithdrawalApprovedEvent`, `IWithdrawalRejectedEvent`, `IDirectPaymentInitiatedEvent`, and `IDirectPaymentFailedEvent`. The external services must use the same event property names and payload types when publishing/consuming these contracts.

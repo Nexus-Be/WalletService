@@ -178,9 +178,11 @@ Chỉ có **một** migration được track: `Wallet.Infrastructure/Migrations/
 
 ## 5. DỮ LIỆU HẠT GIỐNG (SEED) — `Wallet.Infrastructure/Persistence/Seeds/WalletSeedData.cs`
 
-| Dữ liệu | Số lượng | Chi tiết | Trạng thái | Bằng chứng (file:line) |
-|:---|:---:|:---|:---:|:---|
-| `WalletAccount` | 5 | 1 ví `system` (số dư 1 tỷ), `admin`, `staff`, `seller`, `buyer` | ✅ | `WalletSeedData.cs:26` |
-| `BankAccount` | 1 | Vietcombank, `IsDefault = true` | ✅ | `WalletSeedData.cs:90` |
-| `WalletTransaction` | 1 | type `PurchaseDebit`, 850000, `ReferenceId` trỏ SubOrder | ✅ | `WalletSeedData.cs:106-119` |
-| Đăng ký seed | — | `Seeds.WalletSeedData.SeedAll(modelBuilder)` | ✅ | `Wallet.Infrastructure/Persistence/WalletDbContext.cs:28` |
+```sql
+CREATE UNIQUE INDEX ix_wallets_user_id ON wallets (user_id);
+CREATE INDEX ix_wallet_transactions_user_id ON wallet_transactions (user_id);
+CREATE INDEX ix_wallet_transactions_created_at ON wallet_transactions (created_at DESC);
+CREATE INDEX ix_bank_accounts_user_id ON bank_accounts (user_id);
+```
+
+Balance-changing requests that reserve, debit, refund, or adjust funds run in a database transaction and lock the wallet row with PostgreSQL `SELECT ... FOR UPDATE`. `available_balance` is computed as `balance - locked_balance`; pending withdrawals increase only `locked_balance`, approval reduces both balances, and rejection only releases the locked amount. Every admin adjustment and withdrawal state change writes an `AuditLog`.

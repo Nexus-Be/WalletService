@@ -2,74 +2,27 @@ namespace Wallet.Application.Features.Commands.Withdraw;
 
 using FluentValidation;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
-using Wallet.Application.Common.Interfaces;
 using Wallet.Application.DTOs;
-using Wallet.Domain.Entities;
-using Wallet.Domain.Enums;
 using Wallet.Domain.Exceptions;
 
-public record WithdrawCommand(string UserId, decimal Amount, string Currency, string BankAccount) : IRequest<WalletTransactionDto>;
+public record WithdrawCommand(string UserId, decimal Amount, string Currency, string BankAccount)
+    : IRequest<WalletTransactionDto>;
 
 public class WithdrawCommandValidator : AbstractValidator<WithdrawCommand>
 {
     public WithdrawCommandValidator()
     {
-        RuleFor(x => x.UserId).NotEmpty().WithMessage("UserId không được để trống.");
-        RuleFor(x => x.Amount).GreaterThan(0).WithMessage("Số tiền rút phải lớn hơn 0.");
-        RuleFor(x => x.BankAccount).NotEmpty().WithMessage("Tài khoản ngân hàng không được để trống.");
+        RuleFor(x => x.UserId).NotEmpty().WithMessage("UserId must not be empty.");
+        RuleFor(x => x.Amount).GreaterThan(0).WithMessage("Withdrawal amount must be greater than zero.");
+        RuleFor(x => x.BankAccount).NotEmpty().WithMessage("Bank account must not be empty.");
     }
 }
 
 public class WithdrawCommandHandler : IRequestHandler<WithdrawCommand, WalletTransactionDto>
 {
-    private readonly IWalletDbContext _context;
-
-    public WithdrawCommandHandler(IWalletDbContext context)
+    public Task<WalletTransactionDto> Handle(WithdrawCommand request, CancellationToken cancellationToken)
     {
-        _context = context;
-    }
-
-    public async Task<WalletTransactionDto> Handle(WithdrawCommand request, CancellationToken cancellationToken)
-    {
-        _ = Guid.TryParse(request.UserId, out var uid);
-
-        var wallet = await _context.Wallets
-            .FirstOrDefaultAsync(w => w.UserId == uid, cancellationToken);
-
-        if (wallet == null)
-            throw new WalletNotFoundException(request.UserId);
-
-        wallet.Withdraw(request.Amount);
-
-        var transaction = new WalletTransaction
-        {
-            WalletId = wallet.Id,
-            UserId = wallet.UserId.ToString(),
-            Type = WalletTransactionType.WithdrawalDebit,
-            Amount = request.Amount,
-            Currency = wallet.Currency.ToString(),
-            BalanceBefore = wallet.Balance + request.Amount,
-            BalanceAfter = wallet.Balance,
-            Status = TransactionStatus.Success,
-            Note = $"Rút tiền về tài khoản ngân hàng: {request.BankAccount}"
-        };
-
-        _context.WalletTransactions.Add(transaction);
-        await _context.SaveChangesAsync(cancellationToken);
-
-        return new WalletTransactionDto
-        {
-            Id = transaction.Id.ToString(),
-            WalletId = transaction.WalletId.ToString(),
-            UserId = transaction.UserId,
-            Type = transaction.Type.ToString(),
-            Amount = transaction.Amount,
-            Currency = transaction.Currency,
-            BalanceAfter = transaction.BalanceAfter,
-            Status = transaction.Status.ToString(),
-            Note = transaction.Note ?? string.Empty,
-            CreatedAt = transaction.CreatedAt
-        };
+        throw new BusinessRuleValidationException(
+            "Direct wallet withdrawal is disabled. Submit a withdrawal request for staff approval.");
     }
 }

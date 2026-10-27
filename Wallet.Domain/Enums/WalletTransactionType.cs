@@ -12,5 +12,7 @@ public enum WalletTransactionType
     PlatformFeeCredit = 7,
     AdjustmentCredit = 8,
     AdjustmentDebit = 9,
-    DirectVnpayDebit = 10
+    DirectGatewayPayment = 10,
+    TransferIn = 11,
+    TransferOut = 12
 }

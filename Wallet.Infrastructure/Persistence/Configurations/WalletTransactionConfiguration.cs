@@ -14,6 +14,8 @@ public class WalletTransactionConfiguration : IEntityTypeConfiguration<WalletTra
         builder.Property(t => t.BalanceBefore).HasPrecision(18, 2);
         builder.Property(t => t.BalanceAfter).HasPrecision(18, 2);
         builder.Property(t => t.Status).HasConversion<string>();
+        builder.HasIndex(t => new { t.UserId, t.CreatedAt });
+        builder.HasIndex(t => new { t.ReferenceId, t.Type });
 
         builder.HasOne(t => t.Wallet)
             .WithMany(w => w.Transactions)

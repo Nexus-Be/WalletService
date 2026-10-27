@@ -22,11 +22,11 @@ public class InsufficientBalanceException : DomainException
     public InsufficientBalanceException(string message) : base(message) { }
 
     public InsufficientBalanceException(decimal currentBalance, decimal requestedAmount)
-        : base($"Số dư ví không đủ. Hiện tại: {currentBalance}, yêu cầu: {requestedAmount}") { }
+        : base($"Insufficient wallet balance. Current: {currentBalance}, requested: {requestedAmount}") { }
 }
 
 public class WalletNotFoundException : DomainException
 {
     public WalletNotFoundException(string userId)
-        : base($"Không tìm thấy ví của người dùng '{userId}'.") { }
+        : base($"Wallet for user '{userId}' was not found.") { }
 }
