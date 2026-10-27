@@ -1,65 +1,25 @@
 # =============================================================================
 # NEXUS WALLET SERVICE - DOCKER COMPOSE
 # =============================================================================
-# Khởi chạy độc lập Wallet Service:
-#   CSDL chính lưu trên Neon Cloud (PostgreSQL)
-#   docker compose up -d
+# Start Wallet Service and the API Gateway:
+#   docker compose up -d --build
+#
+# PostgreSQL is hosted externally (for example, on Neon Cloud). Configure
+# CONNECTION_STRING in the local environment or .env file before starting.
 # =============================================================================
 
 services:
   api-gateway:
     image: oaktree293/apigateway:latest
     ports:
-      - "8080:8080"
+      - "${API_GATEWAY_PORT:-8000}:8000"
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
       Services__WalletService: http://wallet-service:8008
     depends_on:
       - wallet-service
-
-  wallet-service:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: nexus-wallet-service
-    ports:
-      - "8008:8008"
-    environment:
-      ASPNETCORE_ENVIRONMENT: Development
-      ConnectionStrings__DefaultConnection: "Host=db;Port=5432;Database=wallet_db;Username=postgres;Password=${POSTGRES_PASSWORD:-postgres}"
-      RabbitMq__Host: host.docker.internal
-      RabbitMq__Port: 5672
-      RabbitMq__User: guest
-      RabbitMq__Password: guest
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://host.docker.internal:4317
-    depends_on:
-      db:
-        condition: service_healthy
     restart: unless-stopped
 
-  db:
-    image: postgres:16-alpine
-    container_name: nexus-wallet-db
-    environment:
-      POSTGRES_DB: wallet_db
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-MatkhaucuaTui123@}
-    ports:
-      - "${WALLET_DB_PORT:-5440}:5432"
-    volumes:
-      - wallet_db_data:/var/lib/postgresql/data
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d wallet_db"]
-      interval: 1m
-      timeout: 30s
-      retries: 5
-      start_period: 60s
-
-volumes:
-  wallet_db_data:
-    name: nexus-be_wallet_db_data
-  # 1. Ứng dụng Wallet Service gRPC (Port 8008)
   wallet-service:
     build:
       context: .
@@ -70,13 +30,13 @@ volumes:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
-      - ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT:-Development}
-      - ConnectionStrings__DefaultConnection=${CONNECTION_STRING}
-      - RabbitMq__Host=${RABBITMQ_HOST:-rabbitmq}
-      - RabbitMq__Port=${RABBITMQ_PORT:-5672}
-      - RabbitMq__User=${RABBITMQ_USER:-guest}
-      - RabbitMq__Password=${RABBITMQ_PASSWORD:-guest}
-      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://tempo:4317}
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      ConnectionStrings__DefaultConnection: ${CONNECTION_STRING:?Set CONNECTION_STRING in your environment or .env file}
+      RabbitMq__Host: ${RABBITMQ_HOST:-rabbitmq}
+      RabbitMq__Port: ${RABBITMQ_PORT:-5672}
+      RabbitMq__User: ${RABBITMQ_USER:-guest}
+      RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://tempo:4317}
     restart: unless-stopped
 
 networks:
