@@ -33,10 +33,3 @@ public class WalletDbContext : DbContext, IWalletDbContext
         modelBuilder.AddOutboxStateEntity();
     }
 }
-
-public class AppDbContext : WalletDbContext
-{
-    public AppDbContext(DbContextOptions<WalletDbContext> options) : base(options)
-    {
-    }
-}
