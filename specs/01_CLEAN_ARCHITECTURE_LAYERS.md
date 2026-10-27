@@ -1,12 +1,18 @@
 # 01 — PHÂN TẦNG CLEAN ARCHITECTURE & QUY TẮC PHỤ THUỘC (WALLET SERVICE)
 
+> **Trạng thái triển khai (2026-10-24):** ⚠️ MỘT PHẦN — 4 tầng Clean Architecture đúng chiều phụ thuộc, không dùng Repository Pattern, 5/5 handler CQRS là thật; nhưng `Wallet.Domain` không "zero dependency" (có `MediatR.Contracts 2.0.1`), tồn tại **2 file `BaseEntity` trùng khái niệm**, tên file DI lệch 6/7 repo khác, và **index mô tả trong tài liệu cũ không tồn tại**.
+> **Nguồn sự thật:** code (`Wallet.Domain/Base/BaseEntity.cs:3`, `Wallet.Application/Common/Interfaces/IWalletDbContext.cs:6`, `Wallet.Infrastructure/Migrations/20261024103202_InitialWalletSchema.cs:335-405`, 4 file `.csproj`).
+> **Cập nhật lần cuối:** 2026-10-24.
+
+> **Lệch format so với 6/7 repo backend còn lại:** Wallet và Log dùng `ApplicationDependencyInjection.cs` / `InfrastructureDependencyInjection.cs` (Auction, Catalog, Commerce, Fulfillment, Notification, User dùng `DependencyInjection.cs`); interface DbContext đặt tên **`IWalletDbContext`** trong `Wallet.Application/Common/Interfaces/`; `Wallet.Domain` có 2 khái niệm base trùng: `Wallet.Domain/Base/BaseEntity.cs:3` (`BaseEntity<TKey>`) và `Wallet.Domain/Common/BaseEntity.cs:3` (`BaseEntity : BaseEntity<Guid>`); 3/4 `.csproj` có BOM UTF-8 (`Wallet.Application`, `Wallet.Domain`, `Wallet.Infrastructure`), riêng `Wallet.Api/Wallet.Api.csproj` không có BOM và thụt lề 8 space thay vì 4.
+
 Solution `Wallet.sln` bao gồm 4 project tương ứng với 4 tầng kiến trúc sạch (Clean Architecture):
 
 ```
 Wallet.sln
 ├── Wallet.Domain/           # Lõi thực thể (WalletAccount, WalletTransaction, BankAccount, Domain Events, Exceptions)
 ├── Wallet.Application/      # Use cases CQRS (Commands, Queries, DTOs, Event Consumers, FluentValidation)
-├── Wallet.Infrastructure/   # EF Core DbContext, PostgreSQL mappings, MassTransit Outbox Pattern
+├── Wallet.Infrastructure/   # EF Core DbContext, PostgreSQL mappings, MassTransit Outbox Pattern, Migrations
 └── Wallet.Api/              # Điểm khởi chạy gRPC Server & Web API (Program.cs, DI setup, OpenTelemetry)
 ```
 
@@ -24,25 +30,38 @@ Wallet.sln
 [ Wallet.Infrastructure ] ──┘
 ```
 
-- **`Wallet.Domain`**: Lớp trung tâm, độc lập 100%, không tham chiếu bất kỳ project tầng ngoài nào. Chứa Entity `WalletAccount`, `WalletTransaction`, `BankAccount`, và các Exceptions nghiệp vụ (`InsufficientBalanceException`, `WalletNotFoundException`).
-- **`Wallet.Application`**: Phụ thuộc vào `Wallet.Domain`. Khai báo interface `IWalletDbContext`, các Commands CQRS (`DepositCommand`, `WithdrawCommand`, `TransferCommand`), Queries (`GetWalletQuery`, `ListTransactionsQuery`), các DTOs và Consumers nghe RabbitMQ (`StockReservedConsumer`).
-- **`Wallet.Infrastructure`**: Phụ thuộc `Wallet.Application` và `Wallet.Domain`. Chứa `WalletDbContext`, cấu hình EntityTypeConfiguration Fluent API, migrations, và tích hợp MassTransit EntityFramework Outbox (`AddInboxStateEntity`, `AddOutboxMessageEntity`).
-- **`Wallet.Api`**: Điểm khởi động gRPC Server, đăng ký `app.MapGrpcService<WalletGrpcService>()`, tích hợp OpenTelemetry Distributed Tracing và Swagger.
+| Tầng | Vai trò | Trạng thái | Bằng chứng (file:line) |
+|:---|:---|:---:|:---|
+| `Wallet.Domain` | Lớp trung tâm: entity, enum, domain event, exception nghiệp vụ | ✅ (không thuần zero-dependency) | Tham chiếu project: **không có**; nhưng có package `MediatR.Contracts 2.0.1` (`Wallet.Domain/Wallet.Domain.csproj:10`) **không được dùng ở bất kỳ file `.cs` nào** (grep `MediatR` trong `Wallet.Domain/` = 0) |
+| `Wallet.Application` | Phụ thuộc `Domain`; khai báo `IWalletDbContext`, Commands/Queries, DTO, Consumer | ✅ | `Wallet.Application/Wallet.Application.csproj:4`, `Wallet.Application/Common/Interfaces/IWalletDbContext.cs:6`, `Wallet.Application/ApplicationDependencyInjection.cs:17-21` |
+| `Wallet.Infrastructure` | Phụ thuộc `Application` + `Domain`; `WalletDbContext`, configurations, migrations, MassTransit Outbox | ✅ | `Wallet.Infrastructure/Wallet.Infrastructure.csproj:4-5`, `Wallet.Infrastructure/Persistence/WalletDbContext.cs:8` |
+| `Wallet.Api` | Host gRPC + HTTP; map `WalletGrpcService`, OpenTelemetry, Swagger | ✅ | `Wallet.Api/Wallet.Api.csproj:30-31`, `Wallet.Api/Program.cs:19,23,37-42,47` |
 
 ---
 
 ## 2. QUY CHUẨN CODE TỪNG TẦNG
 
-1. **`Wallet.Domain`**:
-   - Entities: `WalletAccount`, `WalletTransaction`, `BankAccount`.
-   - Mọi biến động số dư phải được bao gói trong các methods của entity: `Deposit(amount)`, `Withdraw(amount)`, `Deduct(amount)`.
-   - Tuyệt đối cấm gán trực tiếp `wallet.Balance = ...` từ bên ngoài domain entity.
+| Tầng | Quy chuẩn | Trạng thái | Bằng chứng (file:line) |
+|:---|:---|:---:|:---|
+| Domain | Mọi biến động số dư phải đi qua method entity: `Deposit(amount)`, `Withdraw(amount)`, `Deduct(amount)`; cấm gán trực tiếp `wallet.Balance = ...` | ✅ | `Wallet.Domain/Entities/WalletAccount.cs:20,29,41`; handler chỉ gọi method (`Wallet.Application/Features/Commands/Transfer/TransferCommand.cs:63,70`) |
+| Domain | Thực thể ví tên `WalletAccount` (KHÔNG có entity `Wallet`); enum loại giao dịch là `WalletTransactionType` | ✅ | `Wallet.Domain/Entities/WalletAccount.cs:7`, `Wallet.Domain/Enums/WalletTransactionType.cs` |
+| Application | Tách `Commands/` và `Queries/` qua MediatR | ✅ | `Wallet.Application/Features/Commands/**`, `Wallet.Application/Features/Queries/**` |
+| Application | `ValidationBehavior` tự động chạy FluentValidation trước handler | ✅ | `Wallet.Application/Common/Behaviors/ValidationBehavior.cs:6,30`; đăng ký pipeline `ApplicationDependencyInjection.cs:20` |
+| Application | Query phân trang luôn `.AsNoTracking()` + `Skip/Take`, tối đa 100 item/trang | ✅ | `Wallet.Application/Features/Queries/ListTransactions/ListTransactionsQuery.cs:26` (AsNoTracking), `:23` (cap 100) |
+| Infrastructure | Index trên trường tìm kiếm thường xuyên: `UserId` unique trên bảng `Wallets` **và** `(UserId, CreatedAt)` trên `WalletTransactions` | ⚠️ chỉ phần 1 đúng | Có `IX_Wallets_UserId` UNIQUE (`Wallet.Infrastructure/Migrations/20261024103202_InitialWalletSchema.cs:382-386`); **KHÔNG có** index `(UserId, CreatedAt)` trên `WalletTransactions` — chỉ có `IX_WalletTransactions_WalletId` (`:400`) |
+| Infrastructure | Transactional Outbox Pattern để bảo toàn tin nhắn RabbitMQ | ⚠️ | Cấu hình `Wallet.Infrastructure/InfrastructureDependencyInjection.cs:36-40` (`AddEntityFrameworkOutbox` + `UseBusOutbox`) và map 3 bảng (`Wallet.Infrastructure/Persistence/WalletDbContext.cs:31-33`); **không có retry/DLQ**, **không có test** chứng minh outbox ghi bảng |
 
-2. **`Wallet.Application`**:
-   - Tách biệt rõ ràng `Commands/` và `Queries/` qua `MediatR`.
-   - Áp dụng `ValidationBehavior` tự động kích hoạt FluentValidation trước khi handler được gọi.
-   - Với các Queries phân trang (`ListTransactions`): luôn dùng `.AsNoTracking()` và `.Skip().Take()` theo `page` và `pageSize` (tối đa 100 items/trang).
+---
 
-3. **`Wallet.Infrastructure`**:
-   - Cấu hình Index trên các trường tìm kiếm thường xuyên: `UserId` (Unique Index trên bảng `wallets`), `UserId` và `CreatedAt` trên bảng `wallet_transactions`.
-   - Áp dụng Transactional Outbox Pattern để bảo toàn tin nhắn RabbitMQ.
+## 3. DANH MỤC INDEX THẬT TRONG MIGRATION (KHÔNG SUY DIỄN)
+
+| Index | Bảng | Unique | Bằng chứng (file:line) |
+|:---|:---|:---:|:---|
+| `IX_Wallets_UserId` | `Wallets` | ✅ | `Wallet.Infrastructure/Migrations/20261024103202_InitialWalletSchema.cs:382-386` |
+| `IX_WalletTransactions_WalletId` | `WalletTransactions` | ❌ | `.../20261024103202_InitialWalletSchema.cs:400` |
+| `IX_WalletTopups_WalletId` | `WalletTopups` | ❌ | `.../20261024103202_InitialWalletSchema.cs:395` |
+| `IX_WalletTopups_VnpTxnRef` | `WalletTopups` | ✅ | `.../20261024103202_InitialWalletSchema.cs:389` |
+| `IX_WithdrawalRequests_WalletId` | `WithdrawalRequests` | ❌ | `.../20261024103202_InitialWalletSchema.cs:405` |
+| `IX_VnpayIpnLogs_VnpTxnRef` | `VnpayIpnLogs` | ❌ | `.../20261024103202_InitialWalletSchema.cs:378` |
+| `IX_DirectPaymentOrders_OrderId` | `DirectPaymentOrders` | ❌ | `.../20261024103202_InitialWalletSchema.cs:335` |
+| `IX_DirectPaymentOrders_VnpTxnRef` | `DirectPaymentOrders` | ✅ | `.../20261024103202_InitialWalletSchema.cs:340` |

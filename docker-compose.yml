@@ -1,3 +1,10 @@
+# =============================================================================
+# NEXUS WALLET SERVICE - DOCKER COMPOSE
+# =============================================================================
+# Khởi chạy độc lập Wallet Service kèm Cơ sở dữ liệu riêng:
+#   docker compose up -d
+# =============================================================================
+
 services:
   api-gateway:
     image: oaktree293/apigateway:latest
@@ -34,18 +41,20 @@ services:
     container_name: nexus-wallet-db
     environment:
       POSTGRES_DB: wallet_db
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-MatkhaucuaTui123@}
     ports:
-      - "5439:5432"
+      - "${WALLET_DB_PORT:-5440}:5432"
     volumes:
       - wallet_db_data:/var/lib/postgresql/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d wallet_db"]
-      interval: 5s
-      timeout: 3s
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d wallet_db"]
+      interval: 1m
+      timeout: 30s
       retries: 5
+      start_period: 60s
 
 volumes:
   wallet_db_data:
+    name: nexus-be_wallet_db_data

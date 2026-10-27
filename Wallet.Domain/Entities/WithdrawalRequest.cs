@@ -18,5 +18,5 @@ public class WithdrawalRequest : BaseEntity<Guid>
     public DateTimeOffset? ProcessedAt { get; set; }
 
     // Navigation
-    public Wallet? Wallet { get; set; }
+    public WalletAccount? Wallet { get; set; }
 }

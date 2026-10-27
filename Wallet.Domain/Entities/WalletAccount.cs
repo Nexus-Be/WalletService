@@ -1,12 +1,22 @@
 namespace Wallet.Domain.Entities;
 
-using global::Wallet.Domain.Enums;
-using global::Wallet.Domain.Exceptions;
+using Wallet.Domain.Base;
+using Wallet.Domain.Enums;
+using Wallet.Domain.Exceptions;
 
-public class WalletAccount : Wallet
+public class WalletAccount : AuditableEntity<Guid>
 {
+    public required Guid UserId { get; set; }
+    public decimal Balance { get; set; }
+    public decimal LockedBalance { get; set; }
+    public required CurrencyCode Currency { get; set; } = CurrencyCode.Vnd;
     public string Status { get; set; } = "ACTIVE";
     public decimal AvailableBalance => Balance - LockedBalance;
+
+    // Navigation
+    public ICollection<WalletTransaction> Transactions { get; set; } = new List<WalletTransaction>();
+    public ICollection<WalletTopup> Topups { get; set; } = new List<WalletTopup>();
+    public ICollection<WithdrawalRequest> WithdrawalRequests { get; set; } = new List<WithdrawalRequest>();
 
     public void Deposit(decimal amount)
     {

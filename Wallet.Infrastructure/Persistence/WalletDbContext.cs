@@ -18,6 +18,7 @@ public class WalletDbContext : DbContext, IWalletDbContext
     public DbSet<WalletTransaction> WalletTransactions => Set<WalletTransaction>();
     public DbSet<BankAccount> BankAccounts => Set<BankAccount>();
     public DbSet<WalletTopup> WalletTopups => Set<WalletTopup>();
+    public DbSet<DirectPaymentOrder> DirectPaymentOrders => Set<DirectPaymentOrder>();
     public DbSet<WithdrawalRequest> WithdrawalRequests => Set<WithdrawalRequest>();
     public DbSet<VnpayIpnLog> VnpayIpnLogs => Set<VnpayIpnLog>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
@@ -74,6 +75,7 @@ public class WalletDbContext : DbContext, IWalletDbContext
         base.OnModelCreating(modelBuilder);
 
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(WalletDbContext).Assembly);
+        Seeds.WalletSeedData.SeedAll(modelBuilder);
 
         // MassTransit Transactional Outbox entities
         modelBuilder.AddInboxStateEntity();
