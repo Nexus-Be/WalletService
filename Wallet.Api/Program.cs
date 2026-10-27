@@ -68,6 +68,7 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
+app.MapControllers();
 app.MapGet("/health", () => Results.Ok(new { status = "Healthy", service = "Wallet.Api" }));
 app.MapGet("/", () => "Communication with gRPC endpoints must be made through a gRPC client. WalletService is running.");
 

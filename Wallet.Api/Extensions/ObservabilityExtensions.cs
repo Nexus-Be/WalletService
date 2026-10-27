@@ -15,7 +15,6 @@ public static class ObservabilityExtensions
             {
                 t.AddAspNetCoreInstrumentation()
                  .AddHttpClientInstrumentation()
-                 .AddSource("Grpc.Net.Client")
                  .AddSource("MassTransit");
 
                 if (!string.IsNullOrEmpty(otlpEndpoint))
