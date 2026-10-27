@@ -2,7 +2,7 @@
 # NEXUS WALLET SERVICE - DOCKER COMPOSE
 # =============================================================================
 # Start Wallet Service and the API Gateway:
-#   docker compose up -d
+#   docker compose up -d --build
 #
 # PostgreSQL is hosted externally (for example, on Neon Cloud). Configure
 # CONNECTION_STRING in the local environment or .env file before starting.
