@@ -10,17 +10,20 @@
 
 services:
 
+  # 1. Ứng dụng Wallet Service RESTful Web API (Port 8008)
   wallet-service:
     image: oaktree293/walletservice
     container_name: nexus-wallet-service
+    ports:
+      - "${WALLET_SERVICE_PORT:-8008}:8008"
     environment:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
-      ConnectionStrings__DefaultConnection: ${CONNECTION_STRING:?Set CONNECTION_STRING in your environment or .env file}
-      RabbitMq__Host: ${RABBITMQ_HOST}
-      RabbitMq__Port: ${RABBITMQ_PORT}
-      RabbitMq__User: ${RABBITMQ_USER}
-      RabbitMq__Password: ${RABBITMQ_PASSWORD}
-      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+      ConnectionStrings__DefaultConnection: ${WALLET_CONNECTION_STRING:-${CONNECTION_STRING:?Set CONNECTION_STRING in your environment or .env file}}
+      RabbitMq__Host: ${RABBITMQ_HOST:-rabbitmq}
+      RabbitMq__Port: ${RABBITMQ_PORT:-5672}
+      RabbitMq__User: ${RABBITMQ_USER:-guest}
+      RabbitMq__Password: ${RABBITMQ_PASSWORD:-guest}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://tempo:4317}
     restart: unless-stopped
 
 networks:
