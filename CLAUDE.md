@@ -102,8 +102,10 @@ Khi bắt đầu làm việc tại WalletService, AI Agent **BẮT BUỘC PHẢI
    — *Hiện trạng:* ✅ (`Wallet.Domain/Entities/WalletAccount.cs:20-48`).
 3. **CẤU HÌNH PORT 8008 VÀ DATABASE 5440 LÀ BẤT BIẾN**.
    — *Hiện trạng:* ✅ khi chạy container (`Dockerfile:3-4`, `docker-compose.yml:19,37`); ❌ khi `dotnet run` vì `Wallet.Api/Properties/launchSettings.json:17,27` bind `5096`/`7218`. **Sửa `launchSettings.json` là việc PHẢI làm, không phải tuỳ chọn.**
-4. **HỢP ĐỒNG PROTOBUF PHẢI NẰM TRONG REPO VÀ PHẢI ĐƯỢC ĐỐI CHIẾU TRƯỚC KHI SỬA**: file hợp đồng của service là `Wallet.Api/Contracts/shop.proto`; sửa rpc/message mà chưa đối chiếu với bản chuẩn (thuộc repository ApiGateway) là **cấm**.
-   — *Hiện trạng:* ⚠️ bản trong repo là bản trôi nổi — md5 `8a7d8698a0607cfb8a41c30a7d7b4492`, byte-identical với bản của Log service, khác bản Gateway/User ⇒ **chưa có nguồn sự thật duy nhất**.
+4. **CẤM SỬ DỤNG gRPC CHO CÁC DỊCH VỤ ĐỒNG BỘ - BẮT BUỘC DÙNG 100% RESTFUL API**:
+   - Toàn bộ giao tiếp đồng bộ giữa API Gateway và WalletService (hoặc giữa các microservices) bắt buộc phải sử dụng chuẩn **RESTful Web API** (JSON qua HTTP/1.1 hoặc HTTP/2).
+   - Tuyệt đối **CẤM** triển khai hoặc sử dụng gRPC Server/Client cho các dịch vụ đồng bộ trong toàn bộ hệ thống.
+   - Toàn bộ các hợp đồng Protobuf (`.proto`) trôi nổi đã được loại bỏ hoàn toàn khỏi WalletService. Mọi API expose qua REST Controller (`WalletsController.cs`).
 5. **CẤM TIN HEADER NHƯ MỘT CƠ CHẾ BẢO MẬT**: `x-user-id` chỉ là metadata Gateway chuyển xuống; không được dùng nó thay cho xác thực.
    — *Hiện trạng:* ❌ service **không có authentication** nhưng vẫn ưu tiên `x-user-id` (`Wallet.Api/Services/WalletGrpcService.cs:28,48,68,96,124`). Không được viết tài liệu mô tả đây là “bảo mật”.
 6. **CẤM MÔ TẢ TÍNH NĂNG CHƯA CÓ LÀ ĐÃ CÓ**: VNPay topup/IPN, rút tiền qua ngân hàng (`WithdrawalRequest`), `AuditLog` **chưa được triển khai** (0 đường ghi). Xem `specs/04_DATA_PERSISTENCE.md` mục 3.

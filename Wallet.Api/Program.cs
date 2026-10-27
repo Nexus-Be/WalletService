@@ -1,7 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Wallet.Api.Extensions;
 using Wallet.Api.Middleware;
-using Wallet.Api.Services;
 using Wallet.Application;
 using Wallet.Infrastructure;
 using Wallet.Infrastructure.Persistence;
@@ -15,12 +14,8 @@ builder.Services.AddServiceObservability(builder.Configuration, "Wallet.Api");
 builder.Services.AddApplicationServices();
 builder.Services.AddInfrastructureServices(builder.Configuration);
 
-// 3. gRPC Server
-builder.Services.AddGrpc(options =>
-{
-    options.EnableDetailedErrors = builder.Environment.IsDevelopment();
-});
-builder.Services.AddGrpcReflection();
+// 3. REST MVC Controllers
+builder.Services.AddControllers();
 
 // 4. Swagger / OpenAPI & JSON Serialization
 builder.Services.AddEndpointsApiExplorer();
@@ -42,13 +37,9 @@ if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
-    app.MapGrpcReflectionService();
 }
 
 app.UseHttpsRedirection();
-
-// 5. Map gRPC Services
-app.MapGrpcService<WalletGrpcService>();
 
 // Automatically apply database migrations on startup if relational DB is available
 using (var scope = app.Services.CreateScope())
@@ -67,7 +58,7 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
+app.MapControllers();
 app.MapGet("/health", () => Results.Ok(new { status = "Healthy", service = "Wallet.Api" }));
-app.MapGet("/", () => "Communication with gRPC endpoints must be made through a gRPC client. WalletService is running.");
 
 app.Run();
