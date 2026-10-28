@@ -9,11 +9,9 @@ public class WalletTransactionConfiguration : IEntityTypeConfiguration<WalletTra
     public void Configure(EntityTypeBuilder<WalletTransaction> builder)
     {
         builder.HasKey(t => t.Id);
-        builder.Property(t => t.Type).HasConversion<string>();
         builder.Property(t => t.Amount).HasPrecision(18, 2);
         builder.Property(t => t.BalanceBefore).HasPrecision(18, 2);
         builder.Property(t => t.BalanceAfter).HasPrecision(18, 2);
-        builder.Property(t => t.Status).HasConversion<string>();
         builder.HasIndex(t => new { t.UserId, t.CreatedAt });
         builder.HasIndex(t => new { t.ReferenceId, t.Type });
 

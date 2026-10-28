@@ -14,7 +14,6 @@ public class VnpayIpnLogConfiguration : IEntityTypeConfiguration<VnpayIpnLog>
         builder.Property(x => x.VnpTransactionNo).HasMaxLength(100);
         builder.Property(x => x.ClientIp).HasMaxLength(50);
         builder.Property(x => x.RawPayload).HasColumnType("jsonb");
-        builder.Property(x => x.ProcessingStatus).HasConversion<string>();
 
         builder.HasOne(l => l.WalletTopup)
             .WithMany(t => t.IpnLogs)

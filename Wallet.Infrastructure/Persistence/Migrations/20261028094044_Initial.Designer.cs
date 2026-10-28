@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Wallet.Infrastructure.Persistence;
@@ -10,10 +11,12 @@ using Wallet.Infrastructure.Persistence;
 
 namespace Wallet.Infrastructure.Persistence.Migrations
 {
-    [DbContext(typeof(WalletDbContext))]
-    partial class WalletDbContextModelSnapshot : ModelSnapshot
+    [DbContext(typeof(AppDbContext))]
+    [Migration("20261028094044_Initial")]
+    partial class Initial
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -196,9 +199,8 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<string>("Action")
-                        .IsRequired()
-                        .HasColumnType("text");
+                    b.Property<int>("Action")
+                        .HasColumnType("integer");
 
                     b.Property<string>("ChangedColumns")
                         .HasColumnType("jsonb");
@@ -340,10 +342,8 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     b.Property<string>("RawResponse")
                         .HasColumnType("jsonb");
 
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -386,9 +386,8 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
 
-                    b.Property<string>("ProcessingStatus")
-                        .IsRequired()
-                        .HasColumnType("text");
+                    b.Property<int>("ProcessingStatus")
+                        .HasColumnType("integer");
 
                     b.Property<string>("RawPayload")
                         .HasColumnType("jsonb");
@@ -432,10 +431,8 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("CreatedBy")
                         .HasColumnType("uuid");
 
-                    b.Property<string>("Currency")
-                        .IsRequired()
-                        .HasMaxLength(10)
-                        .HasColumnType("character varying(10)");
+                    b.Property<int>("Currency")
+                        .HasColumnType("integer");
 
                     b.Property<DateTimeOffset?>("DeletedAt")
                         .HasColumnType("timestamp with time zone");
@@ -475,7 +472,7 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                             Balance = 1000000000m,
                             CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             CreatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
-                            Currency = "Vnd",
+                            Currency = 0,
                             IsDeleted = false,
                             LockedBalance = 0m,
                             Status = "ACTIVE",
@@ -489,7 +486,7 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                             Balance = 10000000m,
                             CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             CreatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
-                            Currency = "Vnd",
+                            Currency = 0,
                             IsDeleted = false,
                             LockedBalance = 0m,
                             Status = "ACTIVE",
@@ -503,7 +500,7 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                             Balance = 5000000m,
                             CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             CreatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
-                            Currency = "Vnd",
+                            Currency = 0,
                             IsDeleted = false,
                             LockedBalance = 0m,
                             Status = "ACTIVE",
@@ -517,7 +514,7 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                             Balance = 50000000m,
                             CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             CreatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
-                            Currency = "Vnd",
+                            Currency = 0,
                             IsDeleted = false,
                             LockedBalance = 0m,
                             Status = "ACTIVE",
@@ -531,7 +528,7 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                             Balance = 20000000m,
                             CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             CreatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
-                            Currency = "Vnd",
+                            Currency = 0,
                             IsDeleted = false,
                             LockedBalance = 0m,
                             Status = "ACTIVE",
@@ -563,9 +560,8 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     b.Property<string>("RawResponse")
                         .HasColumnType("jsonb");
 
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("text");
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -632,13 +628,11 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("ReferenceId")
                         .HasColumnType("uuid");
 
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("text");
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
 
-                    b.Property<string>("Type")
-                        .IsRequired()
-                        .HasColumnType("text");
+                    b.Property<int>("Type")
+                        .HasColumnType("integer");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -652,6 +646,10 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("WalletId");
+
+                    b.HasIndex("ReferenceId", "Type");
+
+                    b.HasIndex("UserId", "CreatedAt");
 
                     b.ToTable("WalletTransactions");
 
@@ -667,8 +665,8 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                             IsDeleted = false,
                             Note = "Thanh toán đơn hàng SUB-20260101-0001",
                             ReferenceId = new Guid("02000000-0000-0000-0000-000000000001"),
-                            Status = "Success",
-                            Type = "PurchaseDebit",
+                            Status = 1,
+                            Type = 1,
                             UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             UserId = "dddddddd-4444-4444-4444-444444444444",
                             WalletId = new Guid("99999999-4444-4444-4444-444444444444")
@@ -727,9 +725,8 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("ProcessedBy")
                         .HasColumnType("uuid");
 
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("text");
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");

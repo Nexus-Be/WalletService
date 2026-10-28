@@ -18,7 +18,6 @@ public class DirectPaymentOrderConfiguration : IEntityTypeConfiguration<DirectPa
 
         builder.Property(x => x.VnpTransactionNo).HasMaxLength(100);
         builder.Property(x => x.Amount).HasPrecision(18, 2).IsRequired();
-        builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(50).IsRequired();
         builder.Property(x => x.RawResponse).HasColumnType("jsonb");
 
         builder.HasMany(d => d.IpnLogs)

@@ -9,7 +9,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Wallet.Infrastructure.Persistence.Migrations
 {
     /// <inheritdoc />
-    public partial class InitialWalletSchema : Migration
+    public partial class Initial : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -23,7 +23,7 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     TraceId = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
                     UserId = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
                     UserName = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: true),
-                    Action = table.Column<string>(type: "text", nullable: false),
+                    Action = table.Column<int>(type: "integer", nullable: false),
                     EntityName = table.Column<string>(type: "character varying(150)", maxLength: 150, nullable: false),
                     EntityId = table.Column<string>(type: "character varying(150)", maxLength: 150, nullable: false),
                     OldValues = table.Column<string>(type: "jsonb", nullable: true),
@@ -68,7 +68,7 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     VnpTxnRef = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
                     VnpTransactionNo = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
                     Amount = table.Column<decimal>(type: "numeric(18,2)", precision: 18, scale: 2, nullable: false),
-                    Status = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
+                    Status = table.Column<int>(type: "integer", nullable: false),
                     RawResponse = table.Column<string>(type: "jsonb", nullable: true),
                     CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     UpdatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
@@ -128,7 +128,7 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     UserId = table.Column<Guid>(type: "uuid", nullable: false),
                     Balance = table.Column<decimal>(type: "numeric(18,2)", precision: 18, scale: 2, nullable: false),
                     LockedBalance = table.Column<decimal>(type: "numeric(18,2)", precision: 18, scale: 2, nullable: false),
-                    Currency = table.Column<string>(type: "character varying(10)", maxLength: 10, nullable: false),
+                    Currency = table.Column<int>(type: "integer", nullable: false),
                     Status = table.Column<string>(type: "character varying(30)", maxLength: 30, nullable: false),
                     CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     UpdatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
@@ -194,7 +194,7 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     VnpTransactionNo = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
                     VnpBankCode = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true),
                     Amount = table.Column<decimal>(type: "numeric(18,2)", precision: 18, scale: 2, nullable: false),
-                    Status = table.Column<string>(type: "text", nullable: false),
+                    Status = table.Column<int>(type: "integer", nullable: false),
                     RawResponse = table.Column<string>(type: "jsonb", nullable: true),
                     CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     UpdatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
@@ -219,12 +219,12 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                 {
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
                     WalletId = table.Column<Guid>(type: "uuid", nullable: false),
-                    Type = table.Column<string>(type: "text", nullable: false),
+                    Type = table.Column<int>(type: "integer", nullable: false),
                     Amount = table.Column<decimal>(type: "numeric(18,2)", precision: 18, scale: 2, nullable: false),
                     BalanceBefore = table.Column<decimal>(type: "numeric(18,2)", precision: 18, scale: 2, nullable: false),
                     BalanceAfter = table.Column<decimal>(type: "numeric(18,2)", precision: 18, scale: 2, nullable: false),
                     ReferenceId = table.Column<Guid>(type: "uuid", nullable: true),
-                    Status = table.Column<string>(type: "text", nullable: false),
+                    Status = table.Column<int>(type: "integer", nullable: false),
                     UserId = table.Column<string>(type: "text", nullable: true),
                     Currency = table.Column<string>(type: "text", nullable: true),
                     Note = table.Column<string>(type: "text", nullable: true),
@@ -256,7 +256,7 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     BankName = table.Column<string>(type: "character varying(150)", maxLength: 150, nullable: false),
                     BankAccountNumber = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
                     BankAccountHolder = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
-                    Status = table.Column<string>(type: "text", nullable: false),
+                    Status = table.Column<int>(type: "integer", nullable: false),
                     ProcessedBy = table.Column<Guid>(type: "uuid", nullable: true),
                     GatewayReferenceId = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
                     ProcessedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
@@ -286,7 +286,7 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     VnpTransactionNo = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
                     ClientIp = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true),
                     RawPayload = table.Column<string>(type: "jsonb", nullable: true),
-                    ProcessingStatus = table.Column<string>(type: "text", nullable: false),
+                    ProcessingStatus = table.Column<int>(type: "integer", nullable: false),
                     CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     UpdatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     IsDeleted = table.Column<bool>(type: "boolean", nullable: false),
@@ -319,17 +319,17 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                 columns: new[] { "Id", "Balance", "CreatedAt", "CreatedBy", "Currency", "DeletedAt", "IsDeleted", "LockedBalance", "Status", "UpdatedAt", "UpdatedBy", "UserId" },
                 values: new object[,]
                 {
-                    { new Guid("99999999-1111-1111-1111-111111111111"), 10000000m, new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), new Guid("00000000-0000-0000-0000-000000000000"), "Vnd", null, false, 0m, "ACTIVE", new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), new Guid("00000000-0000-0000-0000-000000000000"), new Guid("aaaaaaaa-1111-1111-1111-111111111111") },
-                    { new Guid("99999999-2222-2222-2222-222222222222"), 5000000m, new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), new Guid("00000000-0000-0000-0000-000000000000"), "Vnd", null, false, 0m, "ACTIVE", new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), new Guid("00000000-0000-0000-0000-000000000000"), new Guid("bbbbbbbb-2222-2222-2222-222222222222") },
-                    { new Guid("99999999-3333-3333-3333-333333333333"), 50000000m, new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), new Guid("00000000-0000-0000-0000-000000000000"), "Vnd", null, false, 0m, "ACTIVE", new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), new Guid("00000000-0000-0000-0000-000000000000"), new Guid("cccccccc-3333-3333-3333-333333333333") },
-                    { new Guid("99999999-4444-4444-4444-444444444444"), 20000000m, new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), new Guid("00000000-0000-0000-0000-000000000000"), "Vnd", null, false, 0m, "ACTIVE", new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), new Guid("00000000-0000-0000-0000-000000000000"), new Guid("dddddddd-4444-4444-4444-444444444444") },
-                    { new Guid("99999999-9999-9999-9999-999999999999"), 1000000000m, new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), new Guid("00000000-0000-0000-0000-000000000000"), "Vnd", null, false, 0m, "ACTIVE", new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), new Guid("00000000-0000-0000-0000-000000000000"), new Guid("00000000-0000-0000-0000-000000000001") }
+                    { new Guid("99999999-1111-1111-1111-111111111111"), 10000000m, new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), new Guid("00000000-0000-0000-0000-000000000000"), 0, null, false, 0m, "ACTIVE", new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), new Guid("00000000-0000-0000-0000-000000000000"), new Guid("aaaaaaaa-1111-1111-1111-111111111111") },
+                    { new Guid("99999999-2222-2222-2222-222222222222"), 5000000m, new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), new Guid("00000000-0000-0000-0000-000000000000"), 0, null, false, 0m, "ACTIVE", new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), new Guid("00000000-0000-0000-0000-000000000000"), new Guid("bbbbbbbb-2222-2222-2222-222222222222") },
+                    { new Guid("99999999-3333-3333-3333-333333333333"), 50000000m, new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), new Guid("00000000-0000-0000-0000-000000000000"), 0, null, false, 0m, "ACTIVE", new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), new Guid("00000000-0000-0000-0000-000000000000"), new Guid("cccccccc-3333-3333-3333-333333333333") },
+                    { new Guid("99999999-4444-4444-4444-444444444444"), 20000000m, new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), new Guid("00000000-0000-0000-0000-000000000000"), 0, null, false, 0m, "ACTIVE", new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), new Guid("00000000-0000-0000-0000-000000000000"), new Guid("dddddddd-4444-4444-4444-444444444444") },
+                    { new Guid("99999999-9999-9999-9999-999999999999"), 1000000000m, new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), new Guid("00000000-0000-0000-0000-000000000000"), 0, null, false, 0m, "ACTIVE", new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), new Guid("00000000-0000-0000-0000-000000000000"), new Guid("00000000-0000-0000-0000-000000000001") }
                 });
 
             migrationBuilder.InsertData(
                 table: "WalletTransactions",
                 columns: new[] { "Id", "Amount", "BalanceAfter", "BalanceBefore", "CreatedAt", "Currency", "DeletedAt", "IsDeleted", "Note", "ReferenceId", "Status", "Type", "UpdatedAt", "UserId", "WalletId" },
-                values: new object[] { new Guid("99999999-4444-4444-4444-444444444401"), 850000m, 20000000m, 20850000m, new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), "VND", null, false, "Thanh toán đơn hàng SUB-20260101-0001", new Guid("02000000-0000-0000-0000-000000000001"), "Success", "PurchaseDebit", new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), "dddddddd-4444-4444-4444-444444444444", new Guid("99999999-4444-4444-4444-444444444444") });
+                values: new object[] { new Guid("99999999-4444-4444-4444-444444444401"), 850000m, 20000000m, 20850000m, new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), "VND", null, false, "Thanh toán đơn hàng SUB-20260101-0001", new Guid("02000000-0000-0000-0000-000000000001"), 1, 1, new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), "dddddddd-4444-4444-4444-444444444444", new Guid("99999999-4444-4444-4444-444444444444") });
 
             migrationBuilder.CreateIndex(
                 name: "IX_DirectPaymentOrders_OrderId",
@@ -395,6 +395,16 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                 name: "IX_WalletTopups_WalletId",
                 table: "WalletTopups",
                 column: "WalletId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_WalletTransactions_ReferenceId_Type",
+                table: "WalletTransactions",
+                columns: new[] { "ReferenceId", "Type" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_WalletTransactions_UserId_CreatedAt",
+                table: "WalletTransactions",
+                columns: new[] { "UserId", "CreatedAt" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_WalletTransactions_WalletId",
