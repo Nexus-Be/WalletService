@@ -1,7 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Wallet.Api.Extensions;
 using Wallet.Api.Middleware;
-using Wallet.Api.Services;
 using Wallet.Application;
 using Wallet.Infrastructure;
 using Wallet.Infrastructure.Persistence;
@@ -39,11 +38,6 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
-
-app.UseHttpsRedirection();
-
-// 5. Map Endpoints
-app.MapWalletHttpEndpoints();
 
 // Automatically apply database migrations on startup if relational DB is available
 using (var scope = app.Services.CreateScope())

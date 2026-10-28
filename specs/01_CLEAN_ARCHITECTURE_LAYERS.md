@@ -1,8 +1,8 @@
 # 01 — PHÂN TẦNG CLEAN ARCHITECTURE & QUY TẮC PHỤ THUỘC (WALLET SERVICE)
 
-> **Trạng thái triển khai (2026-10-24):** ⚠️ MỘT PHẦN — 4 tầng Clean Architecture đúng chiều phụ thuộc, không dùng Repository Pattern, 5/5 handler CQRS là thật; nhưng `Wallet.Domain` không "zero dependency" (có `MediatR.Contracts 2.0.1`), tồn tại **2 file `BaseEntity` trùng khái niệm**, tên file DI lệch 6/7 repo khác, và **index mô tả trong tài liệu cũ không tồn tại**.
-> **Nguồn sự thật:** code (`Wallet.Domain/Base/BaseEntity.cs:3`, `Wallet.Application/Common/Interfaces/IWalletDbContext.cs:6`, `Wallet.Infrastructure/Migrations/20261024103202_InitialWalletSchema.cs:335-405`, 4 file `.csproj`).
-> **Cập nhật lần cuối:** 2026-10-24.
+> **Trạng thái triển khai (2026-10-29):** ✅ ĐÃ CHUẨN HÓA — 4 tầng Clean Architecture chuẩn hóa: Inbound Consumers được phân vùng rõ ràng theo nguồn phát tại `Wallet.Application/Consumers/` (`Commerce/` và `User/`), đóng gói DI đăng ký MassTransit qua `ConsumerExtensions.cs`, giao tiếp đồng bộ 100% RESTful qua `WalletsController.cs`.
+> **Nguồn sự thật:** code (`Wallet.sln`, `Wallet.Application/Consumers/`, `Wallet.Infrastructure/InfrastructureDependencyInjection.cs`, `Wallet.Api/Controllers/WalletsController.cs`).
+> **Cập nhật lần cuối:** 2026-10-29.
 
 > **Lệch format so với 6/7 repo backend còn lại:** Wallet và Log dùng `ApplicationDependencyInjection.cs` / `InfrastructureDependencyInjection.cs` (Auction, Catalog, Commerce, Fulfillment, Notification, User dùng `DependencyInjection.cs`); interface DbContext đặt tên **`IWalletDbContext`** trong `Wallet.Application/Common/Interfaces/`; `Wallet.Domain` có 2 khái niệm base trùng: `Wallet.Domain/Base/BaseEntity.cs:3` (`BaseEntity<TKey>`) và `Wallet.Domain/Common/BaseEntity.cs:3` (`BaseEntity : BaseEntity<Guid>`); 3/4 `.csproj` có BOM UTF-8 (`Wallet.Application`, `Wallet.Domain`, `Wallet.Infrastructure`), riêng `Wallet.Api/Wallet.Api.csproj` không có BOM và thụt lề 8 space thay vì 4.
 

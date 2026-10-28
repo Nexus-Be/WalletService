@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Wallet.Application.Common.Interfaces;
 using Wallet.Application.Consumers;
+using Wallet.Application.Consumers.Commerce;
 using Wallet.Infrastructure.Payments;
 using Wallet.Infrastructure.Persistence;
 
@@ -39,10 +40,7 @@ public static class InfrastructureDependencyInjection
         {
             x.SetKebabCaseEndpointNameFormatter();
 
-            x.AddConsumer<StockReservedConsumer>();
-            x.AddConsumer<UserRegisteredConsumer>();
-            x.AddConsumer<OrderCheckoutRequestedConsumer>();
-            x.AddConsumer<OrderCancelledConsumer>();
+            x.AddApplicationConsumers();
 
             x.AddEntityFrameworkOutbox<WalletDbContext>(o =>
             {

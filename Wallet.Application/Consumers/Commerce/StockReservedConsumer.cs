@@ -1,6 +1,8 @@
-namespace Wallet.Application.Consumers;
+namespace Wallet.Application.Consumers.Commerce;
 
+using System;
 using System.Globalization;
+using System.Threading.Tasks;
 using MassTransit;
 using Microsoft.Extensions.Logging;
 using Wallet.Domain.Events;
