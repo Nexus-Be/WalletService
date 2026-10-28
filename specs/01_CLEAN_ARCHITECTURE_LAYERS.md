@@ -65,3 +65,20 @@ Wallet.sln
 | `IX_VnpayIpnLogs_VnpTxnRef` | `VnpayIpnLogs` | ❌ | `.../20261024103202_InitialWalletSchema.cs:378` |
 | `IX_DirectPaymentOrders_OrderId` | `DirectPaymentOrders` | ❌ | `.../20261024103202_InitialWalletSchema.cs:335` |
 | `IX_DirectPaymentOrders_VnpTxnRef` | `DirectPaymentOrders` | ✅ | `.../20261024103202_InitialWalletSchema.cs:340` |
+
+---
+
+## 4. QUY CHUẨN CẤU TRÚC CHUẨN HÓA (SERVICE BLUEPRINT)
+1. **Giao tiếp đồng bộ (RESTful)**:
+   - `Wallet.Api/Controllers/`: Thin Dispatcher Controller, chỉ nhận request, gọi Service Interface trong Application, trả về `IActionResult`. Tuyệt đối cấm logic nghiệp vụ, cấm map anonymous object, cấm khai báo class DTO trong file controller.
+   - `Wallet.Application/`: Chứa các Request/Response DTOs dùng chung cho Controller, Query/Command handlers.
+2. **Giao tiếp bất đồng bộ (RabbitMQ MassTransit)**:
+   - `Wallet.Application/Contracts/`: Chứa các Integration Events (ví dụ: `PaymentCompletedIntegrationEvent`, `PaymentFailedIntegrationEvent`).
+   - `Wallet.Infrastructure/Consumers/`: Chứa các MassTransit Consumer xử lý sự kiện trừ tiền/hoàn tiền.
+3. **Quản lý Dependency Injection**:
+   - `Wallet.Application/`: Đăng ký Application/MediatR Services.
+   - `Wallet.Infrastructure/`: Đăng ký `WalletDbContext`, MassTransit Bus, Consumers.
+4. **Validation**:
+   - Input format validation đặt tại Request DTOs qua Data Annotations hoặc FluentValidation.
+   - Business validation đặt tại Application Services hoặc Domain Exceptions.
+
