@@ -15,7 +15,6 @@ public class WithdrawalRequestConfiguration : IEntityTypeConfiguration<Withdrawa
         builder.Property(x => x.BankName).HasMaxLength(150);
         builder.Property(x => x.BankAccountNumber).HasMaxLength(100);
         builder.Property(x => x.BankAccountHolder).HasMaxLength(255);
-        builder.Property(x => x.Status).HasConversion<string>();
         builder.Property(x => x.GatewayReferenceId).HasMaxLength(100);
 
         builder.HasOne(r => r.Wallet)

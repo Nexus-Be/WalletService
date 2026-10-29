@@ -1,8 +1,8 @@
-using Wallet.Domain.Common;
+using global::Wallet.Domain.Base;
 
 namespace Wallet.Domain.Entities;
 
-public class BankAccount : BaseEntity
+public class BankAccount : BaseEntity<Guid>
 {
     public string UserId { get; set; } = string.Empty;
     public string BankName { get; set; } = string.Empty;

@@ -1,26 +1,26 @@
+namespace Wallet.Api.Extensions;
+
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
-namespace Wallet.Api.Extensions;
-
 public static class ObservabilityExtensions
 {
-    public static IServiceCollection AddServiceObservability(this IServiceCollection services,
-        IConfiguration configuration, string serviceName)
+    public static IServiceCollection AddServiceObservability(this IServiceCollection services, IConfiguration configuration, string serviceName)
     {
-        var otlpEndpoint = configuration["OTEL_EXPORTER_OTLP_ENDPOINT"] ??
-                           configuration["Otel:Endpoint"] ?? "http://localhost:4317";
+        var otlpEndpoint = configuration["OTEL_EXPORTER_OTLP_ENDPOINT"] ?? configuration["Otel:Endpoint"] ?? "http://localhost:4317";
 
         services.AddOpenTelemetry()
             .ConfigureResource(r => r.AddService(serviceName))
             .WithTracing(t =>
             {
                 t.AddAspNetCoreInstrumentation()
-                    .AddHttpClientInstrumentation()
-                    .AddSource("Grpc.Net.Client")
-                    .AddSource("MassTransit");
+                 .AddHttpClientInstrumentation()
+                 .AddSource("MassTransit");
 
-                if (!string.IsNullOrEmpty(otlpEndpoint)) t.AddOtlpExporter(o => o.Endpoint = new Uri(otlpEndpoint));
+                if (!string.IsNullOrEmpty(otlpEndpoint))
+                {
+                    t.AddOtlpExporter(o => o.Endpoint = new Uri(otlpEndpoint));
+                }
             });
 
         return services;

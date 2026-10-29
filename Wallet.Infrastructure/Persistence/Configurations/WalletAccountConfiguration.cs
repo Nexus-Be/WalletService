@@ -12,7 +12,6 @@ public class WalletAccountConfiguration : IEntityTypeConfiguration<WalletAccount
         builder.HasIndex(w => w.UserId).IsUnique();
         builder.Property(w => w.Balance).HasPrecision(18, 2);
         builder.Property(w => w.LockedBalance).HasPrecision(18, 2);
-        builder.Property(w => w.Currency).HasConversion<string>().HasMaxLength(10);
         builder.Property(w => w.Status).HasMaxLength(30);
 
         builder.HasMany(w => w.Transactions)

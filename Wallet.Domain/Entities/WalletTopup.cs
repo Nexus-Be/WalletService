@@ -14,6 +14,6 @@ public class WalletTopup : BaseEntity<Guid>
     public string? RawResponse { get; set; }
 
     // Navigation
-    public Wallet? Wallet { get; set; }
+    public WalletAccount? Wallet { get; set; }
     public ICollection<VnpayIpnLog> IpnLogs { get; set; } = new List<VnpayIpnLog>();
 }

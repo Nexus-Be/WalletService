@@ -5,6 +5,8 @@ public class WalletDto
     public string Id { get; set; } = string.Empty;
     public string UserId { get; set; } = string.Empty;
     public decimal Balance { get; set; }
+    public decimal LockedBalance { get; set; }
+    public decimal AvailableBalance { get; set; }
     public string Currency { get; set; } = "VND";
     public string Status { get; set; } = "ACTIVE";
     public DateTimeOffset UpdatedAt { get; set; }
@@ -28,4 +30,6 @@ public class WalletTransactionPageDto
 {
     public IReadOnlyList<WalletTransactionDto> Items { get; set; } = Array.Empty<WalletTransactionDto>();
     public int Total { get; set; }
+    public int Page { get; set; }
+    public int PageSize { get; set; }
 }

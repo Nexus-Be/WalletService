@@ -14,7 +14,6 @@ public class WalletTopupConfiguration : IEntityTypeConfiguration<WalletTopup>
         builder.Property(x => x.VnpTransactionNo).HasMaxLength(100);
         builder.Property(x => x.VnpBankCode).HasMaxLength(50);
         builder.Property(x => x.Amount).HasPrecision(18, 2);
-        builder.Property(x => x.Status).HasConversion<string>();
         builder.Property(x => x.RawResponse).HasColumnType("jsonb");
 
         builder.HasOne(t => t.Wallet)
