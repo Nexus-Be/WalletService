@@ -1,9 +1,9 @@
-namespace Wallet.Infrastructure.Persistence;
-
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using Wallet.Application.Common.Interfaces;
 using Wallet.Domain.Entities;
+
+namespace Wallet.Infrastructure.Persistence;
 
 public class WalletDbContext : DbContext, IWalletDbContext
 {
@@ -11,13 +11,14 @@ public class WalletDbContext : DbContext, IWalletDbContext
     {
     }
 
-    public DbSet<WalletAccount> Wallets => Set<WalletAccount>();
-    public DbSet<WalletTransaction> WalletTransactions => Set<WalletTransaction>();
-    public DbSet<BankAccount> BankAccounts => Set<BankAccount>();
     public DbSet<WalletTopup> WalletTopups => Set<WalletTopup>();
     public DbSet<WithdrawalRequest> WithdrawalRequests => Set<WithdrawalRequest>();
     public DbSet<VnpayIpnLog> VnpayIpnLogs => Set<VnpayIpnLog>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+
+    public DbSet<WalletAccount> Wallets => Set<WalletAccount>();
+    public DbSet<WalletTransaction> WalletTransactions => Set<WalletTransaction>();
+    public DbSet<BankAccount> BankAccounts => Set<BankAccount>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -1,7 +1,7 @@
-namespace Wallet.Application.Common.Interfaces;
-
 using Microsoft.EntityFrameworkCore;
 using Wallet.Domain.Entities;
+
+namespace Wallet.Application.Common.Interfaces;
 
 public interface IWalletDbContext
 {

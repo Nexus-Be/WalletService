@@ -1,5 +1,3 @@
-namespace Wallet.Application.Features.Commands.Withdraw;
-
 using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -9,7 +7,10 @@ using Wallet.Domain.Entities;
 using Wallet.Domain.Enums;
 using Wallet.Domain.Exceptions;
 
-public record WithdrawCommand(string UserId, decimal Amount, string Currency, string BankAccount) : IRequest<WalletTransactionDto>;
+namespace Wallet.Application.Features.Commands.Withdraw;
+
+public record WithdrawCommand(string UserId, decimal Amount, string Currency, string BankAccount)
+    : IRequest<WalletTransactionDto>;
 
 public class WithdrawCommandValidator : AbstractValidator<WithdrawCommand>
 {

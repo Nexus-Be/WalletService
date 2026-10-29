@@ -7,31 +7,31 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Google.Protobuf" Version="3.28.2" />
-        <PackageReference Include="Grpc.AspNetCore" Version="2.66.0" />
+        <PackageReference Include="Google.Protobuf" Version="3.28.2"/>
+        <PackageReference Include="Grpc.AspNetCore" Version="2.66.0"/>
         <PackageReference Include="Grpc.Tools" Version="2.66.0">
-          <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-          <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+            <PrivateAssets>all</PrivateAssets>
         </PackageReference>
-        <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.29" />
+        <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.29"/>
         <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.10">
-          <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-          <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+            <PrivateAssets>all</PrivateAssets>
         </PackageReference>
-        <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.18.0" />
-        <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.18.0" />
-        <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.18.0" />
-        <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.18.0" />
-        <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
+        <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.18.0"/>
+        <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.18.0"/>
+        <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.18.0"/>
+        <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.18.0"/>
+        <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2"/>
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Wallet.Application\Wallet.Application.csproj" />
-      <ProjectReference Include="..\Wallet.Infrastructure\Wallet.Infrastructure.csproj" />
+        <ProjectReference Include="..\Wallet.Application\Wallet.Application.csproj"/>
+        <ProjectReference Include="..\Wallet.Infrastructure\Wallet.Infrastructure.csproj"/>
     </ItemGroup>
 
     <ItemGroup>
-      <Protobuf Include="Contracts/shop.proto" GrpcServices="Server" />
+        <Protobuf Include="Contracts/shop.proto" GrpcServices="Server"/>
     </ItemGroup>
 
 </Project>

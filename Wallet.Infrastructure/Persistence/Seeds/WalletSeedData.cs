@@ -1,8 +1,8 @@
-namespace Wallet.Infrastructure.Persistence.Seeds;
-
 using Microsoft.EntityFrameworkCore;
 using Wallet.Domain.Entities;
 using Wallet.Domain.Enums;
+
+namespace Wallet.Infrastructure.Persistence.Seeds;
 
 public static class WalletSeedData
 {

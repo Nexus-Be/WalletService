@@ -1,5 +1,3 @@
-namespace Wallet.Application.Features.Commands.Deposit;
-
 using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -8,7 +6,10 @@ using Wallet.Application.DTOs;
 using Wallet.Domain.Entities;
 using Wallet.Domain.Enums;
 
-public record DepositCommand(string UserId, decimal Amount, string Currency, string PaymentMethod) : IRequest<WalletTransactionDto>;
+namespace Wallet.Application.Features.Commands.Deposit;
+
+public record DepositCommand(string UserId, decimal Amount, string Currency, string PaymentMethod)
+    : IRequest<WalletTransactionDto>;
 
 public class DepositCommandValidator : AbstractValidator<DepositCommand>
 {

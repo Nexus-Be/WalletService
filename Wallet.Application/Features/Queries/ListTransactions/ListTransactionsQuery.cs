@@ -1,12 +1,13 @@
-namespace Wallet.Application.Features.Queries.ListTransactions;
-
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Wallet.Application.Common.Interfaces;
 using Wallet.Application.DTOs;
 using Wallet.Domain.Enums;
 
-public record ListTransactionsQuery(string UserId, int Page, int PageSize, string? Type) : IRequest<WalletTransactionPageDto>;
+namespace Wallet.Application.Features.Queries.ListTransactions;
+
+public record ListTransactionsQuery(string UserId, int Page, int PageSize, string? Type)
+    : IRequest<WalletTransactionPageDto>;
 
 public class ListTransactionsQueryHandler : IRequestHandler<ListTransactionsQuery, WalletTransactionPageDto>
 {
@@ -17,7 +18,8 @@ public class ListTransactionsQueryHandler : IRequestHandler<ListTransactionsQuer
         _context = context;
     }
 
-    public async Task<WalletTransactionPageDto> Handle(ListTransactionsQuery request, CancellationToken cancellationToken)
+    public async Task<WalletTransactionPageDto> Handle(ListTransactionsQuery request,
+        CancellationToken cancellationToken)
     {
         var page = request.Page <= 0 ? 1 : request.Page;
         var pageSize = request.PageSize <= 0 ? 10 : Math.Min(request.PageSize, 100);
@@ -26,10 +28,9 @@ public class ListTransactionsQueryHandler : IRequestHandler<ListTransactionsQuer
             .AsNoTracking()
             .Where(t => t.UserId == request.UserId);
 
-        if (!string.IsNullOrWhiteSpace(request.Type) && Enum.TryParse<WalletTransactionType>(request.Type.Trim(), true, out var txType))
-        {
+        if (!string.IsNullOrWhiteSpace(request.Type) &&
+            Enum.TryParse<WalletTransactionType>(request.Type.Trim(), true, out var txType))
             query = query.Where(t => t.Type == txType);
-        }
 
         var total = await query.CountAsync(cancellationToken);
 

@@ -1,11 +1,11 @@
-namespace Wallet.Application.Features.Queries.GetWallet;
-
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Wallet.Application.Common.Interfaces;
 using Wallet.Application.DTOs;
 using Wallet.Domain.Entities;
 using Wallet.Domain.Enums;
+
+namespace Wallet.Application.Features.Queries.GetWallet;
 
 public record GetWalletQuery(string UserId) : IRequest<WalletDto>;
 

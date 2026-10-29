@@ -1,10 +1,10 @@
-namespace Wallet.Application;
-
 using System.Reflection;
 using FluentValidation;
 using MediatR;
 using Microsoft.Extensions.DependencyInjection;
 using Wallet.Application.Common.Behaviors;
+
+namespace Wallet.Application;
 
 public static class ApplicationDependencyInjection
 {

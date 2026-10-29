@@ -1,5 +1,3 @@
-namespace Wallet.Application.Features.Commands.Transfer;
-
 using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -9,7 +7,10 @@ using Wallet.Domain.Entities;
 using Wallet.Domain.Enums;
 using Wallet.Domain.Exceptions;
 
-public record TransferCommand(string SenderUserId, string RecipientUserId, decimal Amount, string Note) : IRequest<WalletTransactionDto>;
+namespace Wallet.Application.Features.Commands.Transfer;
+
+public record TransferCommand(string SenderUserId, string RecipientUserId, decimal Amount, string Note)
+    : IRequest<WalletTransactionDto>;
 
 public class TransferCommandValidator : AbstractValidator<TransferCommand>
 {
@@ -18,7 +19,8 @@ public class TransferCommandValidator : AbstractValidator<TransferCommand>
         RuleFor(x => x.SenderUserId).NotEmpty().WithMessage("Người gửi không được để trống.");
         RuleFor(x => x.RecipientUserId).NotEmpty().WithMessage("Người nhận không được để trống.");
         RuleFor(x => x.Amount).GreaterThan(0).WithMessage("Số tiền chuyển phải lớn hơn 0.");
-        RuleFor(x => x).Must(x => x.SenderUserId != x.RecipientUserId).WithMessage("Không thể chuyển tiền cho chính mình.");
+        RuleFor(x => x).Must(x => x.SenderUserId != x.RecipientUserId)
+            .WithMessage("Không thể chuyển tiền cho chính mình.");
     }
 }
 
@@ -75,7 +77,9 @@ public class TransferCommandHandler : IRequestHandler<TransferCommand, WalletTra
             BalanceBefore = senderBefore,
             BalanceAfter = senderWallet.Balance,
             Status = TransactionStatus.Success,
-            Note = string.IsNullOrWhiteSpace(request.Note) ? $"Chuyển tiền tới user {request.RecipientUserId}" : request.Note
+            Note = string.IsNullOrWhiteSpace(request.Note)
+                ? $"Chuyển tiền tới user {request.RecipientUserId}"
+                : request.Note
         };
 
         var recipientTx = new WalletTransaction

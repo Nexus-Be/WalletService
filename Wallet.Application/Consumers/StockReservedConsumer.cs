@@ -1,5 +1,3 @@
-namespace Wallet.Application.Consumers;
-
 using System.Globalization;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
@@ -9,6 +7,8 @@ using Wallet.Domain.Entities;
 using Wallet.Domain.Enums;
 using Wallet.Domain.Events;
 using Wallet.Domain.Exceptions;
+
+namespace Wallet.Application.Consumers;
 
 public class StockReservedConsumer : IConsumer<IStockReservedEvent>
 {
@@ -27,12 +27,13 @@ public class StockReservedConsumer : IConsumer<IStockReservedEvent>
         _logger.LogInformation("Nhận StockReservedEvent cho đơn hàng {OrderId}, UserId {UserId}, Số tiền {Amount}",
             message.OrderId, message.UserId, message.TotalAmount);
 
-        if (!decimal.TryParse(message.TotalAmount, NumberStyles.Number, CultureInfo.InvariantCulture, out var requiredAmount) || requiredAmount <= 0)
+        if (!decimal.TryParse(message.TotalAmount, NumberStyles.Number, CultureInfo.InvariantCulture,
+                out var requiredAmount) || requiredAmount <= 0)
         {
             _logger.LogWarning("Số tiền đơn hàng không hợp lệ: {TotalAmount}", message.TotalAmount);
             await context.Publish<IPaymentFailedEvent>(new
             {
-                OrderId = message.OrderId,
+                message.OrderId,
                 Reason = "Số tiền thanh toán không hợp lệ",
                 Timestamp = DateTimeOffset.UtcNow
             });
@@ -49,7 +50,7 @@ public class StockReservedConsumer : IConsumer<IStockReservedEvent>
             _logger.LogWarning("Không tìm thấy ví cho User {UserId}", message.UserId);
             await context.Publish<IPaymentFailedEvent>(new
             {
-                OrderId = message.OrderId,
+                message.OrderId,
                 Reason = "Người dùng chưa có tài khoản ví",
                 Timestamp = DateTimeOffset.UtcNow
             });
@@ -82,7 +83,7 @@ public class StockReservedConsumer : IConsumer<IStockReservedEvent>
 
             await context.Publish<IPaymentCompletedEvent>(new
             {
-                OrderId = message.OrderId,
+                message.OrderId,
                 TransactionId = tx.Id.ToString(),
                 Amount = requiredAmount.ToString("0.00", CultureInfo.InvariantCulture),
                 Timestamp = DateTimeOffset.UtcNow
@@ -94,7 +95,7 @@ public class StockReservedConsumer : IConsumer<IStockReservedEvent>
 
             await context.Publish<IPaymentFailedEvent>(new
             {
-                OrderId = message.OrderId,
+                message.OrderId,
                 Reason = "Số dư ví không đủ để thanh toán đơn hàng",
                 Timestamp = DateTimeOffset.UtcNow
             });

@@ -13,10 +13,7 @@ builder.Services.AddApplicationServices();
 builder.Services.AddInfrastructureServices(builder.Configuration);
 
 // 3. gRPC Server
-builder.Services.AddGrpc(options =>
-{
-    options.EnableDetailedErrors = builder.Environment.IsDevelopment();
-});
+builder.Services.AddGrpc(options => { options.EnableDetailedErrors = builder.Environment.IsDevelopment(); });
 
 // 4. Swagger / OpenAPI for REST endpoints (if any)
 builder.Services.AddEndpointsApiExplorer();
@@ -35,6 +32,7 @@ app.UseHttpsRedirection();
 // 5. Map gRPC Services
 app.MapGrpcService<WalletGrpcService>();
 
-app.MapGet("/", () => "Communication with gRPC endpoints must be made through a gRPC client. WalletService is running.");
+app.MapGet("/",
+    () => "Communication with gRPC endpoints must be made through a gRPC client. WalletService is running.");
 
 app.Run();

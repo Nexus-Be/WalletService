@@ -1,6 +1,6 @@
-namespace Wallet.Domain.Entities;
+using Wallet.Domain.Common;
 
-using global::Wallet.Domain.Common;
+namespace Wallet.Domain.Entities;
 
 public class BankAccount : BaseEntity
 {

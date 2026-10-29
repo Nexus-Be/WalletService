@@ -1,7 +1,6 @@
-namespace Wallet.Domain.Entities;
+using Wallet.Domain.Exceptions;
 
-using global::Wallet.Domain.Enums;
-using global::Wallet.Domain.Exceptions;
+namespace Wallet.Domain.Entities;
 
 public class WalletAccount : Wallet
 {

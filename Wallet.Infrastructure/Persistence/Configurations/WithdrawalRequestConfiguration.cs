@@ -1,8 +1,8 @@
-namespace Wallet.Infrastructure.Persistence.Configurations;
-
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Wallet.Domain.Entities;
+
+namespace Wallet.Infrastructure.Persistence.Configurations;
 
 public class WithdrawalRequestConfiguration : IEntityTypeConfiguration<WithdrawalRequest>
 {

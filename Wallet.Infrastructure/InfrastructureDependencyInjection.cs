@@ -1,5 +1,3 @@
-namespace Wallet.Infrastructure;
-
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -8,19 +6,22 @@ using Wallet.Application.Common.Interfaces;
 using Wallet.Application.Consumers;
 using Wallet.Infrastructure.Persistence;
 
+namespace Wallet.Infrastructure;
+
 public static class InfrastructureDependencyInjection
 {
-    public static IServiceCollection AddInfrastructureServices(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddInfrastructureServices(this IServiceCollection services,
+        IConfiguration configuration)
     {
-        var connectionString = configuration.GetConnectionString("DefaultConnection") 
-            ?? "Host=localhost;Port=5439;Database=wallet_db;Username=postgres;Password=postgres";
+        var connectionString = configuration.GetConnectionString("DefaultConnection")
+                               ?? "Host=localhost;Port=5439;Database=wallet_db;Username=postgres;Password=postgres";
 
         services.AddDbContext<WalletDbContext>(options =>
         {
             options.UseNpgsql(connectionString, b =>
             {
                 b.MigrationsAssembly(typeof(WalletDbContext).Assembly.FullName);
-                b.EnableRetryOnFailure(maxRetryCount: 5, maxRetryDelay: TimeSpan.FromSeconds(10), errorCodesToAdd: null);
+                b.EnableRetryOnFailure(5, TimeSpan.FromSeconds(10), null);
             });
         });
 
