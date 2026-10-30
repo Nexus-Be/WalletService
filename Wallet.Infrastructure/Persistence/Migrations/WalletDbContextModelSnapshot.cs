@@ -2,7 +2,6 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Wallet.Infrastructure.Persistence;
@@ -11,12 +10,10 @@ using Wallet.Infrastructure.Persistence;
 
 namespace Wallet.Infrastructure.Persistence.Migrations
 {
-    [DbContext(typeof(AppDbContext))]
-    [Migration("20261028094044_Initial")]
-    partial class Initial
+    [DbContext(typeof(WalletDbContext))]
+    partial class WalletDbContextModelSnapshot : ModelSnapshot
     {
-        /// <inheritdoc />
-        protected override void BuildTargetModel(ModelBuilder modelBuilder)
+        protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -24,174 +21,6 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
-
-            modelBuilder.Entity("MassTransit.EntityFrameworkCoreIntegration.InboxState", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<DateTime?>("Consumed")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("ConsumerId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("Delivered")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("ExpirationTime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<long?>("LastSequenceNumber")
-                        .HasColumnType("bigint");
-
-                    b.Property<Guid>("LockId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("MessageId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("ReceiveCount")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("Received")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<byte[]>("RowVersion")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("bytea");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Delivered");
-
-                    b.ToTable("InboxState");
-                });
-
-            modelBuilder.Entity("MassTransit.EntityFrameworkCoreIntegration.OutboxMessage", b =>
-                {
-                    b.Property<long>("SequenceNumber")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("SequenceNumber"));
-
-                    b.Property<string>("Body")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("ContentType")
-                        .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)");
-
-                    b.Property<Guid?>("ConversationId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("CorrelationId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("DestinationAddress")
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)");
-
-                    b.Property<DateTime?>("EnqueueTime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("ExpirationTime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("FaultAddress")
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)");
-
-                    b.Property<string>("Headers")
-                        .HasColumnType("text");
-
-                    b.Property<Guid?>("InboxConsumerId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("InboxMessageId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("InitiatorId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("MessageId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("MessageType")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<Guid?>("OutboxId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Properties")
-                        .HasColumnType("text");
-
-                    b.Property<Guid?>("RequestId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("ResponseAddress")
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)");
-
-                    b.Property<DateTime>("SentTime")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("SourceAddress")
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)");
-
-                    b.HasKey("SequenceNumber");
-
-                    b.HasIndex("EnqueueTime");
-
-                    b.HasIndex("ExpirationTime");
-
-                    b.HasIndex("OutboxId", "SequenceNumber")
-                        .IsUnique();
-
-                    b.HasIndex("InboxMessageId", "InboxConsumerId", "SequenceNumber")
-                        .IsUnique();
-
-                    b.ToTable("OutboxMessage");
-                });
-
-            modelBuilder.Entity("MassTransit.EntityFrameworkCoreIntegration.OutboxState", b =>
-                {
-                    b.Property<Guid>("OutboxId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("Created")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("Delivered")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<long?>("LastSequenceNumber")
-                        .HasColumnType("bigint");
-
-                    b.Property<Guid>("LockId")
-                        .HasColumnType("uuid");
-
-                    b.Property<byte[]>("RowVersion")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("bytea");
-
-                    b.HasKey("OutboxId");
-
-                    b.HasIndex("Created");
-
-                    b.ToTable("OutboxState");
-                });
 
             modelBuilder.Entity("Wallet.Domain.Entities.AuditLog", b =>
                 {
@@ -255,6 +84,26 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("AuditLogs");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("99999999-1111-1111-1111-111111111130"),
+                            Action = 7,
+                            ChangedColumns = "[\"Status\",\"ProcessedBy\",\"ProcessedAt\"]",
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 4, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            EntityId = "99999999-3333-3333-3333-333333333310",
+                            EntityName = "WithdrawalRequest",
+                            IpAddress = "127.0.0.1",
+                            IsSynced = true,
+                            NewValues = "{\"Status\":\"Completed\",\"ProcessedBy\":\"aaaaaaaa-1111-1111-1111-111111111111\"}",
+                            OldValues = "{\"Status\":\"Processing\"}",
+                            ServiceName = "Wallet",
+                            TraceId = "trace-wallet-withdrawal-001",
+                            UserAgent = "NexusAdminPortal/1.0",
+                            UserId = "aaaaaaaa-1111-1111-1111-111111111111",
+                            UserName = "admin@nexus.com"
+                        });
                 });
 
             modelBuilder.Entity("Wallet.Domain.Entities.BankAccount", b =>
@@ -365,6 +214,21 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("DirectPaymentOrders");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("99999999-4444-4444-4444-444444444420"),
+                            Amount = 850000m,
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            IsDeleted = false,
+                            OrderId = new Guid("01000000-0000-0000-0000-000000000001"),
+                            RawResponse = "{\"vnp_ResponseCode\":\"00\",\"vnp_TransactionStatus\":\"00\"}",
+                            Status = 1,
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            VnpTransactionNo = "14285702",
+                            VnpTxnRef = "VNP-PAY-20260101-0001"
+                        });
                 });
 
             modelBuilder.Entity("Wallet.Domain.Entities.VnpayIpnLog", b =>
@@ -413,6 +277,21 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     b.HasIndex("VnpTxnRef");
 
                     b.ToTable("VnpayIpnLogs");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("99999999-4444-4444-4444-444444444430"),
+                            ClientIp = "113.160.22.88",
+                            CreatedAt = new DateTimeOffset(new DateTime(2025, 12, 31, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            IsDeleted = false,
+                            ProcessingStatus = 0,
+                            RawPayload = "{\"vnp_Amount\":1000000000,\"vnp_BankCode\":\"NCB\",\"vnp_ResponseCode\":\"00\"}",
+                            UpdatedAt = new DateTimeOffset(new DateTime(2025, 12, 31, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            VnpResponseCode = "00",
+                            VnpTransactionNo = "14285701",
+                            VnpTxnRef = "VNP-TOPUP-20260101-0001"
+                        });
                 });
 
             modelBuilder.Entity("Wallet.Domain.Entities.WalletAccount", b =>
@@ -590,6 +469,22 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     b.HasIndex("WalletId");
 
                     b.ToTable("WalletTopups");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("99999999-4444-4444-4444-444444444410"),
+                            Amount = 10000000m,
+                            CreatedAt = new DateTimeOffset(new DateTime(2025, 12, 31, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            IsDeleted = false,
+                            RawResponse = "{\"vnp_ResponseCode\":\"00\",\"vnp_TransactionStatus\":\"00\"}",
+                            Status = 1,
+                            UpdatedAt = new DateTimeOffset(new DateTime(2025, 12, 31, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            VnpBankCode = "NCB",
+                            VnpTransactionNo = "14285701",
+                            VnpTxnRef = "VNP-TOPUP-20260101-0001",
+                            WalletId = new Guid("99999999-4444-4444-4444-444444444444")
+                        });
                 });
 
             modelBuilder.Entity("Wallet.Domain.Entities.WalletTransaction", b =>
@@ -739,39 +634,26 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     b.HasIndex("WalletId");
 
                     b.ToTable("WithdrawalRequests");
-                });
 
-            modelBuilder.Entity("MassTransit.EntityFrameworkCoreIntegration.OutboxMessage", b =>
-                {
-                    b.HasOne("MassTransit.EntityFrameworkCoreIntegration.OutboxState", null)
-                        .WithMany()
-                        .HasForeignKey("OutboxId");
-
-                    b.HasOne("MassTransit.EntityFrameworkCoreIntegration.InboxState", null)
-                        .WithMany()
-                        .HasForeignKey("InboxMessageId", "InboxConsumerId")
-                        .HasPrincipalKey("MessageId", "ConsumerId");
-                });
-
-            modelBuilder.Entity("Wallet.Domain.Entities.VnpayIpnLog", b =>
-                {
-                    b.HasOne("Wallet.Domain.Entities.DirectPaymentOrder", "DirectPaymentOrder")
-                        .WithMany("IpnLogs")
-                        .HasForeignKey("VnpTxnRef")
-                        .HasPrincipalKey("VnpTxnRef")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Wallet.Domain.Entities.WalletTopup", "WalletTopup")
-                        .WithMany("IpnLogs")
-                        .HasForeignKey("VnpTxnRef")
-                        .HasPrincipalKey("VnpTxnRef")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("DirectPaymentOrder");
-
-                    b.Navigation("WalletTopup");
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("99999999-3333-3333-3333-333333333310"),
+                            Amount = 5000000m,
+                            BankAccountHolder = "NEXUS OFFICIAL STORE",
+                            BankAccountNumber = "9988776655",
+                            BankName = "Vietcombank",
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 1, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            Fee = 0m,
+                            GatewayReferenceId = "VCB-OUT-20260101-001",
+                            IsDeleted = false,
+                            NetAmount = 5000000m,
+                            ProcessedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 4, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            ProcessedBy = new Guid("aaaaaaaa-1111-1111-1111-111111111111"),
+                            Status = 3,
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 4, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            WalletId = new Guid("99999999-3333-3333-3333-333333333333")
+                        });
                 });
 
             modelBuilder.Entity("Wallet.Domain.Entities.WalletTopup", b =>
@@ -807,11 +689,6 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     b.Navigation("Wallet");
                 });
 
-            modelBuilder.Entity("Wallet.Domain.Entities.DirectPaymentOrder", b =>
-                {
-                    b.Navigation("IpnLogs");
-                });
-
             modelBuilder.Entity("Wallet.Domain.Entities.WalletAccount", b =>
                 {
                     b.Navigation("Topups");
@@ -819,11 +696,6 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     b.Navigation("Transactions");
 
                     b.Navigation("WithdrawalRequests");
-                });
-
-            modelBuilder.Entity("Wallet.Domain.Entities.WalletTopup", b =>
-                {
-                    b.Navigation("IpnLogs");
                 });
 #pragma warning restore 612, 618
         }

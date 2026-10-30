@@ -20,10 +20,7 @@ public class DirectPaymentOrderConfiguration : IEntityTypeConfiguration<DirectPa
         builder.Property(x => x.Amount).HasPrecision(18, 2).IsRequired();
         builder.Property(x => x.RawResponse).HasColumnType("jsonb");
 
-        builder.HasMany(d => d.IpnLogs)
-            .WithOne(l => l.DirectPaymentOrder)
-            .HasForeignKey(l => l.VnpTxnRef)
-            .HasPrincipalKey(d => d.VnpTxnRef);
+        builder.Ignore(d => d.IpnLogs);
 
         builder.HasQueryFilter(x => !x.IsDeleted);
     }

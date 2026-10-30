@@ -15,10 +15,10 @@ public class VnpayIpnLogConfiguration : IEntityTypeConfiguration<VnpayIpnLog>
         builder.Property(x => x.ClientIp).HasMaxLength(50);
         builder.Property(x => x.RawPayload).HasColumnType("jsonb");
 
-        builder.HasOne(l => l.WalletTopup)
-            .WithMany(t => t.IpnLogs)
-            .HasForeignKey(l => l.VnpTxnRef)
-            .HasPrincipalKey(t => t.VnpTxnRef);
+        builder.HasIndex(x => x.VnpTxnRef);
+
+        builder.Ignore(x => x.WalletTopup);
+        builder.Ignore(x => x.DirectPaymentOrder);
 
         builder.HasQueryFilter(x => !x.IsDeleted);
     }

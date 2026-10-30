@@ -1,6 +1,5 @@
 namespace Wallet.Infrastructure.Persistence;
 
-using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
@@ -76,17 +75,5 @@ public class WalletDbContext : DbContext, IWalletDbContext
 
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(WalletDbContext).Assembly);
         Seeds.WalletSeedData.SeedAll(modelBuilder);
-
-        // MassTransit Transactional Outbox entities
-        modelBuilder.AddInboxStateEntity();
-        modelBuilder.AddOutboxMessageEntity();
-        modelBuilder.AddOutboxStateEntity();
-    }
-}
-
-public class AppDbContext : WalletDbContext
-{
-    public AppDbContext(DbContextOptions<WalletDbContext> options) : base(options)
-    {
     }
 }

@@ -122,5 +122,103 @@ public static class WalletSeedData
                 IsDeleted = false
             }
         );
+
+        // 4. Wallet Topup
+        var topupTxnRef = "VNP-TOPUP-20260101-0001";
+        modelBuilder.Entity<WalletTopup>().HasData(
+            new WalletTopup
+            {
+                Id = Guid.Parse("99999999-4444-4444-4444-444444444410"),
+                WalletId = buyerWalletId,
+                VnpTxnRef = topupTxnRef,
+                VnpTransactionNo = "14285701",
+                VnpBankCode = "NCB",
+                Amount = 10000000m,
+                Status = TopupStatus.Success,
+                RawResponse = "{\"vnp_ResponseCode\":\"00\",\"vnp_TransactionStatus\":\"00\"}",
+                CreatedAt = seedDate.AddDays(-1),
+                UpdatedAt = seedDate.AddDays(-1),
+                IsDeleted = false
+            }
+        );
+
+        // 5. Direct Payment Order
+        modelBuilder.Entity<DirectPaymentOrder>().HasData(
+            new DirectPaymentOrder
+            {
+                Id = Guid.Parse("99999999-4444-4444-4444-444444444420"),
+                OrderId = Guid.Parse("01000000-0000-0000-0000-000000000001"), // Commerce Order ID
+                VnpTxnRef = "VNP-PAY-20260101-0001",
+                VnpTransactionNo = "14285702",
+                Amount = 850000m,
+                Status = TopupStatus.Success,
+                RawResponse = "{\"vnp_ResponseCode\":\"00\",\"vnp_TransactionStatus\":\"00\"}",
+                CreatedAt = seedDate,
+                UpdatedAt = seedDate,
+                IsDeleted = false
+            }
+        );
+
+        // 6. Withdrawal Request
+        var withdrawalId = Guid.Parse("99999999-3333-3333-3333-333333333310");
+        modelBuilder.Entity<WithdrawalRequest>().HasData(
+            new WithdrawalRequest
+            {
+                Id = withdrawalId,
+                WalletId = sellerWalletId,
+                Amount = 5000000m,
+                Fee = 0m,
+                NetAmount = 5000000m,
+                BankName = "Vietcombank",
+                BankAccountNumber = "9988776655",
+                BankAccountHolder = "NEXUS OFFICIAL STORE",
+                Status = WithdrawalStatus.Completed,
+                ProcessedBy = adminUserId,
+                GatewayReferenceId = "VCB-OUT-20260101-001",
+                ProcessedAt = seedDate.AddHours(4),
+                CreatedAt = seedDate.AddHours(1),
+                UpdatedAt = seedDate.AddHours(4),
+                IsDeleted = false
+            }
+        );
+
+        // 7. VNPay IPN Log
+        modelBuilder.Entity<VnpayIpnLog>().HasData(
+            new VnpayIpnLog
+            {
+                Id = Guid.Parse("99999999-4444-4444-4444-444444444430"),
+                VnpTxnRef = topupTxnRef,
+                VnpResponseCode = "00",
+                VnpTransactionNo = "14285701",
+                ClientIp = "113.160.22.88",
+                RawPayload = "{\"vnp_Amount\":1000000000,\"vnp_BankCode\":\"NCB\",\"vnp_ResponseCode\":\"00\"}",
+                ProcessingStatus = IpnProcessingStatus.Processed,
+                CreatedAt = seedDate.AddDays(-1),
+                UpdatedAt = seedDate.AddDays(-1),
+                IsDeleted = false
+            }
+        );
+
+        // 8. Audit Log
+        modelBuilder.Entity<AuditLog>().HasData(
+            new AuditLog
+            {
+                Id = Guid.Parse("99999999-1111-1111-1111-111111111130"),
+                ServiceName = "Wallet",
+                TraceId = "trace-wallet-withdrawal-001",
+                UserId = adminUserId.ToString(),
+                UserName = "admin@nexus.com",
+                Action = AuditAction.WithdrawalComplete,
+                EntityName = "WithdrawalRequest",
+                EntityId = withdrawalId.ToString(),
+                OldValues = "{\"Status\":\"Processing\"}",
+                NewValues = "{\"Status\":\"Completed\",\"ProcessedBy\":\"aaaaaaaa-1111-1111-1111-111111111111\"}",
+                ChangedColumns = "[\"Status\",\"ProcessedBy\",\"ProcessedAt\"]",
+                IpAddress = "127.0.0.1",
+                UserAgent = "NexusAdminPortal/1.0",
+                CreatedAt = seedDate.AddHours(4),
+                IsSynced = true
+            }
+        );
     }
 }

@@ -1,6 +1,5 @@
 ﻿using System;
 using Microsoft.EntityFrameworkCore.Migrations;
-using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
@@ -9,7 +8,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Wallet.Infrastructure.Persistence.Migrations
 {
     /// <inheritdoc />
-    public partial class Initial : Migration
+    public partial class InitialCreate : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -78,46 +77,27 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_DirectPaymentOrders", x => x.Id);
-                    table.UniqueConstraint("AK_DirectPaymentOrders_VnpTxnRef", x => x.VnpTxnRef);
                 });
 
             migrationBuilder.CreateTable(
-                name: "InboxState",
+                name: "VnpayIpnLogs",
                 columns: table => new
                 {
-                    Id = table.Column<long>(type: "bigint", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    MessageId = table.Column<Guid>(type: "uuid", nullable: false),
-                    ConsumerId = table.Column<Guid>(type: "uuid", nullable: false),
-                    LockId = table.Column<Guid>(type: "uuid", nullable: false),
-                    RowVersion = table.Column<byte[]>(type: "bytea", rowVersion: true, nullable: true),
-                    Received = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    ReceiveCount = table.Column<int>(type: "integer", nullable: false),
-                    ExpirationTime = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
-                    Consumed = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
-                    Delivered = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
-                    LastSequenceNumber = table.Column<long>(type: "bigint", nullable: true)
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    VnpTxnRef = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
+                    VnpResponseCode = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true),
+                    VnpTransactionNo = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
+                    ClientIp = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true),
+                    RawPayload = table.Column<string>(type: "jsonb", nullable: true),
+                    ProcessingStatus = table.Column<int>(type: "integer", nullable: false),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    IsDeleted = table.Column<bool>(type: "boolean", nullable: false),
+                    DeletedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_InboxState", x => x.Id);
-                    table.UniqueConstraint("AK_InboxState_MessageId_ConsumerId", x => new { x.MessageId, x.ConsumerId });
-                });
-
-            migrationBuilder.CreateTable(
-                name: "OutboxState",
-                columns: table => new
-                {
-                    OutboxId = table.Column<Guid>(type: "uuid", nullable: false),
-                    LockId = table.Column<Guid>(type: "uuid", nullable: false),
-                    RowVersion = table.Column<byte[]>(type: "bytea", rowVersion: true, nullable: true),
-                    Created = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    Delivered = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
-                    LastSequenceNumber = table.Column<long>(type: "bigint", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_OutboxState", x => x.OutboxId);
+                    table.PrimaryKey("PK_VnpayIpnLogs", x => x.Id);
                 });
 
             migrationBuilder.CreateTable(
@@ -143,48 +123,6 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "OutboxMessage",
-                columns: table => new
-                {
-                    SequenceNumber = table.Column<long>(type: "bigint", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    EnqueueTime = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
-                    SentTime = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    Headers = table.Column<string>(type: "text", nullable: true),
-                    Properties = table.Column<string>(type: "text", nullable: true),
-                    InboxMessageId = table.Column<Guid>(type: "uuid", nullable: true),
-                    InboxConsumerId = table.Column<Guid>(type: "uuid", nullable: true),
-                    OutboxId = table.Column<Guid>(type: "uuid", nullable: true),
-                    MessageId = table.Column<Guid>(type: "uuid", nullable: false),
-                    ContentType = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: false),
-                    MessageType = table.Column<string>(type: "text", nullable: false),
-                    Body = table.Column<string>(type: "text", nullable: false),
-                    ConversationId = table.Column<Guid>(type: "uuid", nullable: true),
-                    CorrelationId = table.Column<Guid>(type: "uuid", nullable: true),
-                    InitiatorId = table.Column<Guid>(type: "uuid", nullable: true),
-                    RequestId = table.Column<Guid>(type: "uuid", nullable: true),
-                    SourceAddress = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: true),
-                    DestinationAddress = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: true),
-                    ResponseAddress = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: true),
-                    FaultAddress = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: true),
-                    ExpirationTime = table.Column<DateTime>(type: "timestamp with time zone", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_OutboxMessage", x => x.SequenceNumber);
-                    table.ForeignKey(
-                        name: "FK_OutboxMessage_InboxState_InboxMessageId_InboxConsumerId",
-                        columns: x => new { x.InboxMessageId, x.InboxConsumerId },
-                        principalTable: "InboxState",
-                        principalColumns: new[] { "MessageId", "ConsumerId" });
-                    table.ForeignKey(
-                        name: "FK_OutboxMessage_OutboxState_OutboxId",
-                        column: x => x.OutboxId,
-                        principalTable: "OutboxState",
-                        principalColumn: "OutboxId");
-                });
-
-            migrationBuilder.CreateTable(
                 name: "WalletTopups",
                 columns: table => new
                 {
@@ -204,7 +142,6 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_WalletTopups", x => x.Id);
-                    table.UniqueConstraint("AK_WalletTopups_VnpTxnRef", x => x.VnpTxnRef);
                     table.ForeignKey(
                         name: "FK_WalletTopups_Wallets_WalletId",
                         column: x => x.WalletId,
@@ -276,43 +213,25 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                         onDelete: ReferentialAction.Cascade);
                 });
 
-            migrationBuilder.CreateTable(
-                name: "VnpayIpnLogs",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "uuid", nullable: false),
-                    VnpTxnRef = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
-                    VnpResponseCode = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true),
-                    VnpTransactionNo = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
-                    ClientIp = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true),
-                    RawPayload = table.Column<string>(type: "jsonb", nullable: true),
-                    ProcessingStatus = table.Column<int>(type: "integer", nullable: false),
-                    CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-                    UpdatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-                    IsDeleted = table.Column<bool>(type: "boolean", nullable: false),
-                    DeletedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_VnpayIpnLogs", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_VnpayIpnLogs_DirectPaymentOrders_VnpTxnRef",
-                        column: x => x.VnpTxnRef,
-                        principalTable: "DirectPaymentOrders",
-                        principalColumn: "VnpTxnRef",
-                        onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
-                        name: "FK_VnpayIpnLogs_WalletTopups_VnpTxnRef",
-                        column: x => x.VnpTxnRef,
-                        principalTable: "WalletTopups",
-                        principalColumn: "VnpTxnRef",
-                        onDelete: ReferentialAction.Cascade);
-                });
+            migrationBuilder.InsertData(
+                table: "AuditLogs",
+                columns: new[] { "Id", "Action", "ChangedColumns", "CreatedAt", "EntityId", "EntityName", "IpAddress", "IsSynced", "NewValues", "OldValues", "ServiceName", "TraceId", "UserAgent", "UserId", "UserName" },
+                values: new object[] { new Guid("99999999-1111-1111-1111-111111111130"), 7, "[\"Status\",\"ProcessedBy\",\"ProcessedAt\"]", new DateTimeOffset(new DateTime(2026, 1, 1, 4, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), "99999999-3333-3333-3333-333333333310", "WithdrawalRequest", "127.0.0.1", true, "{\"Status\":\"Completed\",\"ProcessedBy\":\"aaaaaaaa-1111-1111-1111-111111111111\"}", "{\"Status\":\"Processing\"}", "Wallet", "trace-wallet-withdrawal-001", "NexusAdminPortal/1.0", "aaaaaaaa-1111-1111-1111-111111111111", "admin@nexus.com" });
 
             migrationBuilder.InsertData(
                 table: "BankAccounts",
                 columns: new[] { "Id", "AccountHolderName", "AccountNumber", "BankName", "CreatedAt", "DeletedAt", "IsDefault", "IsDeleted", "UpdatedAt", "UserId" },
                 values: new object[] { new Guid("88888888-3333-3333-3333-333333333333"), "NEXUS OFFICIAL STORE", "9988776655", "Vietcombank", new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), null, true, false, new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), "cccccccc-3333-3333-3333-333333333333" });
+
+            migrationBuilder.InsertData(
+                table: "DirectPaymentOrders",
+                columns: new[] { "Id", "Amount", "CreatedAt", "DeletedAt", "IsDeleted", "OrderId", "RawResponse", "Status", "UpdatedAt", "VnpTransactionNo", "VnpTxnRef" },
+                values: new object[] { new Guid("99999999-4444-4444-4444-444444444420"), 850000m, new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), null, false, new Guid("01000000-0000-0000-0000-000000000001"), "{\"vnp_ResponseCode\":\"00\",\"vnp_TransactionStatus\":\"00\"}", 1, new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), "14285702", "VNP-PAY-20260101-0001" });
+
+            migrationBuilder.InsertData(
+                table: "VnpayIpnLogs",
+                columns: new[] { "Id", "ClientIp", "CreatedAt", "DeletedAt", "IsDeleted", "ProcessingStatus", "RawPayload", "UpdatedAt", "VnpResponseCode", "VnpTransactionNo", "VnpTxnRef" },
+                values: new object[] { new Guid("99999999-4444-4444-4444-444444444430"), "113.160.22.88", new DateTimeOffset(new DateTime(2025, 12, 31, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), null, false, 0, "{\"vnp_Amount\":1000000000,\"vnp_BankCode\":\"NCB\",\"vnp_ResponseCode\":\"00\"}", new DateTimeOffset(new DateTime(2025, 12, 31, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), "00", "14285701", "VNP-TOPUP-20260101-0001" });
 
             migrationBuilder.InsertData(
                 table: "Wallets",
@@ -327,9 +246,19 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                 });
 
             migrationBuilder.InsertData(
+                table: "WalletTopups",
+                columns: new[] { "Id", "Amount", "CreatedAt", "DeletedAt", "IsDeleted", "RawResponse", "Status", "UpdatedAt", "VnpBankCode", "VnpTransactionNo", "VnpTxnRef", "WalletId" },
+                values: new object[] { new Guid("99999999-4444-4444-4444-444444444410"), 10000000m, new DateTimeOffset(new DateTime(2025, 12, 31, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), null, false, "{\"vnp_ResponseCode\":\"00\",\"vnp_TransactionStatus\":\"00\"}", 1, new DateTimeOffset(new DateTime(2025, 12, 31, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), "NCB", "14285701", "VNP-TOPUP-20260101-0001", new Guid("99999999-4444-4444-4444-444444444444") });
+
+            migrationBuilder.InsertData(
                 table: "WalletTransactions",
                 columns: new[] { "Id", "Amount", "BalanceAfter", "BalanceBefore", "CreatedAt", "Currency", "DeletedAt", "IsDeleted", "Note", "ReferenceId", "Status", "Type", "UpdatedAt", "UserId", "WalletId" },
                 values: new object[] { new Guid("99999999-4444-4444-4444-444444444401"), 850000m, 20000000m, 20850000m, new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), "VND", null, false, "Thanh toán đơn hàng SUB-20260101-0001", new Guid("02000000-0000-0000-0000-000000000001"), 1, 1, new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), "dddddddd-4444-4444-4444-444444444444", new Guid("99999999-4444-4444-4444-444444444444") });
+
+            migrationBuilder.InsertData(
+                table: "WithdrawalRequests",
+                columns: new[] { "Id", "Amount", "BankAccountHolder", "BankAccountNumber", "BankName", "CreatedAt", "DeletedAt", "Fee", "GatewayReferenceId", "IsDeleted", "NetAmount", "ProcessedAt", "ProcessedBy", "Status", "UpdatedAt", "WalletId" },
+                values: new object[] { new Guid("99999999-3333-3333-3333-333333333310"), 5000000m, "NEXUS OFFICIAL STORE", "9988776655", "Vietcombank", new DateTimeOffset(new DateTime(2026, 1, 1, 1, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), null, 0m, "VCB-OUT-20260101-001", false, 5000000m, new DateTimeOffset(new DateTime(2026, 1, 1, 4, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), new Guid("aaaaaaaa-1111-1111-1111-111111111111"), 3, new DateTimeOffset(new DateTime(2026, 1, 1, 4, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), new Guid("99999999-3333-3333-3333-333333333333") });
 
             migrationBuilder.CreateIndex(
                 name: "IX_DirectPaymentOrders_OrderId",
@@ -341,38 +270,6 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                 table: "DirectPaymentOrders",
                 column: "VnpTxnRef",
                 unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_InboxState_Delivered",
-                table: "InboxState",
-                column: "Delivered");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_OutboxMessage_EnqueueTime",
-                table: "OutboxMessage",
-                column: "EnqueueTime");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_OutboxMessage_ExpirationTime",
-                table: "OutboxMessage",
-                column: "ExpirationTime");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_OutboxMessage_InboxMessageId_InboxConsumerId_SequenceNumber",
-                table: "OutboxMessage",
-                columns: new[] { "InboxMessageId", "InboxConsumerId", "SequenceNumber" },
-                unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_OutboxMessage_OutboxId_SequenceNumber",
-                table: "OutboxMessage",
-                columns: new[] { "OutboxId", "SequenceNumber" },
-                unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_OutboxState_Created",
-                table: "OutboxState",
-                column: "Created");
 
             migrationBuilder.CreateIndex(
                 name: "IX_VnpayIpnLogs_VnpTxnRef",
@@ -427,28 +324,19 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                 name: "BankAccounts");
 
             migrationBuilder.DropTable(
-                name: "OutboxMessage");
+                name: "DirectPaymentOrders");
 
             migrationBuilder.DropTable(
                 name: "VnpayIpnLogs");
+
+            migrationBuilder.DropTable(
+                name: "WalletTopups");
 
             migrationBuilder.DropTable(
                 name: "WalletTransactions");
 
             migrationBuilder.DropTable(
                 name: "WithdrawalRequests");
-
-            migrationBuilder.DropTable(
-                name: "InboxState");
-
-            migrationBuilder.DropTable(
-                name: "OutboxState");
-
-            migrationBuilder.DropTable(
-                name: "DirectPaymentOrders");
-
-            migrationBuilder.DropTable(
-                name: "WalletTopups");
 
             migrationBuilder.DropTable(
                 name: "Wallets");

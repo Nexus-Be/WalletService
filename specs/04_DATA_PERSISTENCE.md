@@ -1,8 +1,8 @@
 # 04 — MÔ HÌNH THỰC THỂ & CƠ SỞ DỮ LIỆU (WALLET SERVICE DATA PERSISTENCE)
 
-> **Trạng thái triển khai (2026-10-24):** ⚠️ MỘT PHẦN — 8 entity ↔ 8 `DbSet` (`Wallet.Infrastructure/Persistence/WalletDbContext.cs:14-21`) và migration duy nhất tạo **11 bảng** (`InboxState`, `OutboxState`, `OutboxMessage`, `Wallets`, `WalletTransactions`, `WalletTopups`, `WithdrawalRequests`, `VnpayIpnLogs`, `AuditLogs`, `BankAccounts`, `DirectPaymentOrders`). Nhưng **6/8 bảng không có đường ghi nào** trong code ứng dụng — chỉ `Wallets` và `WalletTransactions` được handler/consumer dùng.
-> **Nguồn sự thật:** code (`Wallet.Infrastructure/Persistence/WalletDbContext.cs:14-33`, `Wallet.Infrastructure/Migrations/20261024103202_InitialWalletSchema.cs`, `Wallet.Domain/Entities/*`).
-> **Cập nhật lần cuối:** 2026-10-24.
+> **Trạng thái triển khai (2026-10-30):** ✅ ĐÃ CHUẨN HÓA VÀ LÀM SẠCH SCHEMA — Migration `InitialCreate` mới đã dọn sạch 100% các bảng MassTransit (`InboxState`, `OutboxState`, `OutboxMessage`), chỉ giữ lại 8 bảng nghiệp vụ cốt lõi: `Wallets`, `WalletTransactions`, `WalletTopups`, `WithdrawalRequests`, `VnpayIpnLogs`, `AuditLogs`, `BankAccounts`, `DirectPaymentOrders`. Toàn bộ các bảng nghiệp vụ chính đều đã có đường ghi qua `WalletService` và `AdminWalletService`.
+> **Nguồn sự thật:** code (`Wallet.Infrastructure/Persistence/WalletDbContext.cs:14-21`, `Wallet.Infrastructure/Persistence/Migrations/*_InitialCreate.cs`, `Wallet.Domain/Entities/*`).
+> **Cập nhật lần cuối:** 2026-10-30.
 
 > **Hiện trạng:** chỉ Wallet **track `appsettings.json` thật** trong 9 repo (9 repo còn lại chỉ track `*.example.json`) — file này chứa connection string có mật khẩu (`Wallet.Api/appsettings.json:10`) và mật khẩu RabbitMQ (`:16`). Tài liệu này **không in lại** các giá trị đó.
 > Tên bảng là **PascalCase** trong PostgreSQL (EF Core giữ nguyên tên `DbSet`), **không phải snake_case** như tài liệu cũ ngụ ý.

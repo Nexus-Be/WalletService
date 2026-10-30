@@ -20,9 +20,6 @@ public class WalletTopupConfiguration : IEntityTypeConfiguration<WalletTopup>
             .WithMany(w => w.Topups)
             .HasForeignKey(t => t.WalletId);
 
-        builder.HasMany(t => t.IpnLogs)
-            .WithOne(l => l.WalletTopup)
-            .HasForeignKey(l => l.VnpTxnRef)
-            .HasPrincipalKey(t => t.VnpTxnRef);
+        builder.Ignore(t => t.IpnLogs);
     }
 }
