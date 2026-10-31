@@ -30,8 +30,6 @@ public static class DependencyInjection
             options.UseNpgsql(connectionString, b =>
             {
                 b.MigrationsAssembly(typeof(WalletDbContext).Assembly.FullName);
-                b.EnableRetryOnFailure(maxRetryCount: 5, maxRetryDelay: TimeSpan.FromSeconds(10),
-                    errorCodesToAdd: null);
             });
         });
 
