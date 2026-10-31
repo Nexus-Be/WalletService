@@ -1,3 +1,5 @@
+name: nexus-db-wallet
+
 services:
   postgres-wallet:
     image: postgres:16-alpine

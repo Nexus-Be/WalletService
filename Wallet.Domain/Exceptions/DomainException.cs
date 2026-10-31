@@ -2,31 +2,71 @@ namespace Wallet.Domain.Exceptions;
 
 public class DomainException : Exception
 {
-    public DomainException(string message) : base(message) { }
-    public DomainException(string message, Exception innerException) : base(message, innerException) { }
+    public string ErrorCode { get; }
+    public int StatusCode { get; }
+
+    public DomainException(string message) : base(message)
+    {
+        ErrorCode = "DOMAIN_ERROR";
+        StatusCode = 400;
+    }
+
+    public DomainException(string errorCode, string message, int statusCode = 400) : base(message)
+    {
+        ErrorCode = errorCode;
+        StatusCode = statusCode;
+    }
+
+    public DomainException(string message, Exception innerException) : base(message, innerException)
+    {
+        ErrorCode = "DOMAIN_ERROR";
+        StatusCode = 400;
+    }
 }
 
 public class EntityNotFoundException : DomainException
 {
     public EntityNotFoundException(string entityName, object key)
-        : base($"Entity '{entityName}' with key '{key}' was not found.") { }
+        : base("NOT_FOUND", $"Entity '{entityName}' with key '{key}' was not found.", 404)
+    {
+    }
+
+    public EntityNotFoundException(string errorCode, string entityName, object key)
+        : base(errorCode, $"Entity '{entityName}' with key '{key}' was not found.", 404)
+    {
+    }
 }
 
 public class BusinessRuleValidationException : DomainException
 {
-    public BusinessRuleValidationException(string message) : base(message) { }
+    public BusinessRuleValidationException(string message)
+        : base("BUSINESS_RULE_VIOLATION", message, 400)
+    {
+    }
+
+    public BusinessRuleValidationException(string errorCode, string message, int statusCode = 400)
+        : base(errorCode, message, statusCode)
+    {
+    }
 }
 
 public class InsufficientBalanceException : DomainException
 {
-    public InsufficientBalanceException(string message) : base(message) { }
+    public InsufficientBalanceException(string message)
+        : base("INSUFFICIENT_BALANCE", message, 400)
+    {
+    }
 
     public InsufficientBalanceException(decimal currentBalance, decimal requestedAmount)
-        : base($"Insufficient wallet balance. Current: {currentBalance}, requested: {requestedAmount}") { }
+        : base("INSUFFICIENT_BALANCE", $"Insufficient wallet balance. Current: {currentBalance}, requested: {requestedAmount}", 400)
+    {
+    }
 }
 
 public class WalletNotFoundException : DomainException
 {
     public WalletNotFoundException(string userId)
-        : base($"Wallet for user '{userId}' was not found.") { }
+        : base("WALLET_NOT_FOUND", $"Wallet for user '{userId}' was not found.", 404)
+    {
+    }
 }

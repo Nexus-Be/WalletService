@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Storage;
-using Wallet.Application.Common.Interfaces;
+using Wallet.Application.Interfaces;
 using Wallet.Domain.Entities;
 
 public class WalletDbContext : DbContext, IWalletDbContext

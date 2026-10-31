@@ -13,5 +13,6 @@ public class BankAccountConfiguration : IEntityTypeConfiguration<BankAccount>
         builder.Property(x => x.BankName).HasMaxLength(150).IsRequired();
         builder.Property(x => x.AccountNumber).HasMaxLength(100).IsRequired();
         builder.Property(x => x.AccountHolderName).HasMaxLength(255).IsRequired();
+        builder.HasQueryFilter(x => !x.IsDeleted);
     }
 }

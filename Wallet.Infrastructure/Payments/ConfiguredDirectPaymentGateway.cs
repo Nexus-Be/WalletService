@@ -4,7 +4,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Configuration;
-using Wallet.Application.Common.Interfaces;
+using Wallet.Application.Interfaces;
 
 public sealed class ConfiguredDirectPaymentGateway : IDirectPaymentGateway
 {

@@ -35,7 +35,7 @@ Tài liệu này là **Bộ Chỉ Dẫn & Đặc Tả Kỹ Thuật (Spec Kit)** 
 | Message broker | RabbitMQ, `Host=localhost`, `Port=5672`, vhost `/` | ✅ | `Wallet.Api/appsettings.json:12-16`, `docker-compose.yml:43-46` |
 | Đơn vị tiền tệ mặc định | `VND` — mọi message gRPC trả chuỗi decimal 2 chữ số (`InvariantCulture`) | ✅ | `Wallet.Api/Services/WalletGrpcService.cs:39,151,153` |
 | OpenTelemetry endpoint | `http://localhost:4317` (OTLP gRPC) | ✅ | `Wallet.Api/appsettings.json:18-19`, `Wallet.Api/Extensions/ObservabilityExtensions.cs:20-24` |
-| Phiên bản thư viện chính | MassTransit **8.3.0**, MediatR 12.4.1, FluentValidation 11.9.2, EF Core/Npgsql 8.0.10, Grpc.AspNetCore 2.66.0, OpenTelemetry 1.18.0 | ✅ | 4 file `.csproj` |
+| Phiên bản thư viện chính | EF Core/Npgsql 8.0.10, OpenTelemetry 1.18.0, Swashbuckle 6.6.2, xUnit 2.9.2 | ✅ | 4 file `.csproj` |
 
 ---
 
@@ -43,11 +43,11 @@ Tài liệu này là **Bộ Chỉ Dẫn & Đặc Tả Kỹ Thuật (Spec Kit)** 
 
 | Hạng mục | Trạng thái | Bằng chứng (file:line) |
 |:---|:---:|:---|
-| Project/kiểm thử tự động (`Wallet.Tests`, `*.Tests.csproj`, `[Fact]`) | ❌ CHƯA CÓ | `git ls-files` không có file test nào; `dotnet test` không có project để chạy |
+| Project/kiểm thử tự động (`Wallet.Tests`, `*.Tests.csproj`, `[Fact]`) | ✅ CÓ | `Wallet.Tests/` (53 tests: `WalletUseCaseBehaviorTests.cs`, `WalletContractRegressionTests.cs`, `WalletAccountTests.cs`, `WalletRequestValidatorTests.cs`, `AuditLogExtensionsTests.cs`) |
 | Authentication/Authorization (JWT, `AddAuthentication`) | ❌ CHƯA CÓ | grep `AddAuthentication|UseAuthentication|JwtBearer|RequireAuthorization` trên `*.cs` = 0 |
-| Endpoint nạp tiền VNPay / IPN handler | ❌ CHƯA CÓ | không nơi nào dùng `WalletTopups`/`VnpayIpnLogs`; `Wallet.Application/Common/Interfaces/IWalletDbContext.cs:6` thậm chí không khai 2 DbSet này |
-| API tạo `WithdrawalRequest` (rút tiền qua ngân hàng) | ❌ CHƯA CÓ | `WithdrawCommandHandler` chỉ trừ số dư, không tạo bản ghi (`Wallet.Application/Features/Commands/Withdraw/WithdrawCommand.cs:24-60`) |
-| Ghi `AuditLog` | ❌ CHƯA CÓ | grep `AuditLogs` ngoài DbContext/Interface/Migration = 0 |
-| Controller REST | ❌ CHƯA CÓ | `Wallet.Api/Program.cs` không gọi `MapControllers()`; chỉ có `GET /health` (`:66`) và `GET /` (`:67`) |
-| Retry policy / DLQ cho RabbitMQ | ❌ CHƯA CÓ | grep `UseMessageRetry|UseDelayedRedelivery|ConfigureDeadLetterQueue` = 0 |
+| Endpoint nạp tiền VNPay / IPN handler | ✅ CÓ | `WalletsController.TopupVnPay()` + `ProcessVnPayIpnCommandHandler`; `IWalletDbContext` khai `WalletTopups` và `VnpayIpnLogs` |
+| API tạo `WithdrawalRequest` (rút tiền qua ngân hàng) | ⚠️ PARTIAL | `RequestWithdrawalCommandHandler` tồn tại nhưng luôn ném `BusinessRuleValidationException`; chưa có luồng tạo bản ghi + khóa tiền |
+| Ghi `AuditLog` | ✅ CÓ | `AuditLogExtensions.AddAuditLog(...)` dùng trong topup, IPN, duyệt rút tiền, điều chỉnh số dư, tạo ví |
+| Controller REST | ✅ CÓ | `Wallet.Api/Controllers/Public/` + `Controllers/Internal/`; `Program.cs` gọi `app.MapControllers()` |
+| Retry policy / DLQ cho RabbitMQ | 🚫 KHÔNG ÁP DỤNG | Broker đã bị bãi bỏ; giao tiếp liên service dùng REST đồng bộ |
 | Công cụ `dotnet-ef` được vendor trong repo | ❌ CHƯA CÓ | không có thư mục `.tools/`; dùng `dotnet ef` từ máy dev |

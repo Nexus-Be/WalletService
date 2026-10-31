@@ -13,6 +13,7 @@ public class WalletAccountConfiguration : IEntityTypeConfiguration<WalletAccount
         builder.Property(w => w.Balance).HasPrecision(18, 2);
         builder.Property(w => w.LockedBalance).HasPrecision(18, 2);
         builder.Property(w => w.Status).HasMaxLength(30);
+        builder.HasQueryFilter(w => !w.IsDeleted);
 
         builder.HasMany(w => w.Transactions)
             .WithOne()

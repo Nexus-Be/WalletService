@@ -166,11 +166,11 @@ Chỉ có **một** migration được track: `Wallet.Infrastructure/Migrations/
 
 | Hạng mục | Thực tế | Trạng thái | Bằng chứng (file:line) |
 |:---|:---|:---:|:---|
-| `IWalletDbContext` khai báo gì | Chỉ **4** `DbSet`: `Wallets`, `WalletTransactions`, `BankAccounts`, `DirectPaymentOrders` + `SaveChangesAsync` | ⚠️ thiếu 4 DbSet so với `WalletDbContext` | `Wallet.Application/Common/Interfaces/IWalletDbContext.cs:6` |
+| `IWalletDbContext` khai báo gì | **7** `DbSet`: `Wallets`, `WalletTransactions`, `BankAccounts`, `WalletTopups`, `VnpayIpnLogs`, `WithdrawalRequests`, `AuditLogs` + `Database`, `SaveChangesAsync`, 4 lock helper (`LockWalletByUserIdAsync`, `LockWalletByIdAsync`, `LockTopupByReferenceAsync`, `LockWithdrawalRequestAsync`) | ✅ | `Wallet.Application/Interfaces/IWalletDbContext.cs` |
 | Connection + retry | `UseNpgsql` + `EnableRetryOnFailure(5, 10s)` | ✅ | `Wallet.Infrastructure/InfrastructureDependencyInjection.cs:20-24` |
 | Đăng ký DI | `AddScoped<IWalletDbContext>(sp => sp.GetRequiredService<WalletDbContext>())` | ✅ | `InfrastructureDependencyInjection.cs:27` |
-| Soft delete tự động | Chỉ `DirectPaymentOrder` có `HasQueryFilter`; `Wallets`, `WalletTransactions`, `WalletTopups`, `WithdrawalRequests` **không** có ⇒ bản ghi `IsDeleted=true` vẫn hiện ra | ❌ không đồng nhất | `DirectPaymentOrderConfiguration.cs:29` |
-| Enum lưu dạng chuỗi | `WalletAccount.Currency`/`Status`, `WalletTransaction.Type`/`Status`, `VnpayIpnLog.ProcessingStatus`, `AuditLog.Action` | ✅ | `WalletAccountConfiguration.cs:15-16`, `WalletTransactionConfiguration.cs:12,16`, `VnpayIpnLogConfiguration.cs:17`, `AuditLogConfiguration.cs:16` |
+| Soft delete tự động | `HasQueryFilter(x => !x.IsDeleted)` trên `DirectPaymentOrder`, `VnpayIpnLog`, `WalletAccount`, `WalletTransaction`, `WalletTopup`, `WithdrawalRequest`, `BankAccount` | ✅ | `Wallet.Infrastructure/Persistence/Configurations/*Configuration.cs` |
+| Enum lưu dạng integer | Không có `HasConversion<string>()`; toàn bộ enum (`CurrencyCode`, `WalletTransactionType`, `TransactionStatus`, `TopupStatus`, `WithdrawalStatus`, `AuditAction`) lưu `integer`. Riêng `WalletAccount.Status` là `varchar(30)` (legacy) và được chuẩn hóa PascalCase ở biên API | ✅ | `Wallet.Infrastructure/Persistence/Configurations/` |
 | Cột `jsonb` | `WalletTopup.RawResponse`, `DirectPaymentOrder.RawResponse`, `VnpayIpnLog.RawPayload`, `AuditLog.OldValues/NewValues/ChangedColumns` | ✅ | `WalletTopupConfiguration.cs:18`, `DirectPaymentOrderConfiguration.cs:22`, `AuditLogConfiguration.cs:19-21` |
 | Auto-migrate khi khởi động | Chạy `Database.Migrate()` trong `try/catch`, **nuốt lỗi** chỉ log warning | ⚠️ che giấu lỗi DB | `Wallet.Api/Program.cs:49-64` |
 

@@ -43,7 +43,7 @@ public static class EnumExtensions
             throw new ArgumentException($"Enum value for '{typeof(TEnum).Name}' cannot be empty. Valid values are: {string.Join(", ", Enum.GetNames<TEnum>())}.");
         }
 
-        if (Enum.TryParse<TEnum>(value.Trim(), ignoreCase: true, out var result))
+        if (TryToEnum<TEnum>(value, out var result))
         {
             return result;
         }
@@ -65,13 +65,28 @@ public static class EnumExtensions
     /// </summary>
     public static bool TryToEnum<TEnum>(this string? value, out TEnum result) where TEnum : struct, Enum
     {
+        result = default;
+
         if (string.IsNullOrWhiteSpace(value))
         {
-            result = default;
             return false;
         }
 
-        return Enum.TryParse<TEnum>(value.Trim(), ignoreCase: true, out result);
+        var trimmed = value.Trim();
+
+        // Raw numeric tokens are rejected so callers cannot bypass the documented string contract.
+        if (IsNumericToken(trimmed))
+        {
+            return false;
+        }
+
+        return Enum.TryParse<TEnum>(trimmed, ignoreCase: true, out result) && Enum.IsDefined(result);
+    }
+
+    private static bool IsNumericToken(string value)
+    {
+        var digits = value[0] == '-' ? value[1..] : value;
+        return digits.Length > 0 && digits.All(char.IsDigit);
     }
 
     /// <summary>

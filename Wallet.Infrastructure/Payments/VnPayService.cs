@@ -5,7 +5,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Configuration;
-using Wallet.Application.Common.Interfaces;
+using Wallet.Application.Interfaces;
 
 public sealed class VnPayService : IVnPayService
 {
@@ -85,9 +85,16 @@ public sealed class VnPayService : IVnPayService
 
     private string GetRequired(string key)
     {
-        var value = _configuration[$"VnPay:{key}"];
+        var envKeyUpper = $"VNPAY_{key.ToUpperInvariant()}";
+        var envKeySnake = $"VNPAY_{System.Text.RegularExpressions.Regex.Replace(key, "(\\B[A-Z])", "_$1").ToUpperInvariant()}";
+        var value = _configuration[$"VnPay:{key}"]
+            ?? _configuration[envKeyUpper]
+            ?? _configuration[envKeySnake]
+            ?? Environment.GetEnvironmentVariable(envKeyUpper)
+            ?? Environment.GetEnvironmentVariable(envKeySnake);
+
         if (string.IsNullOrWhiteSpace(value) || value.StartsWith("<", StringComparison.Ordinal))
-            throw new InvalidOperationException($"VNPay configuration value 'VnPay:{key}' is missing.");
+            throw new InvalidOperationException($"VNPay configuration value 'VnPay:{key}' or environment variable '{envKeySnake}' is missing.");
 
         return value;
     }
