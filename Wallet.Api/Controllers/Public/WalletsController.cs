@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Wallet.Api.Extensions;
 using Wallet.Api.Filters;
+using Wallet.Application.Features.Checkout.Commands.CheckoutDirect;
 using Wallet.Application.Features.Topups.Commands.TopupVnPay;
 using Wallet.Application.Features.Transfers.Commands.Transfer;
 using Wallet.Application.Features.VnPay.Commands.ProcessVnPayIpn;
@@ -174,6 +175,24 @@ public sealed class WalletsController : ControllerBase
             return BadRequest(new { errorCode = "VAL_INVALID_SIGNATURE", message = result.Message });
         }
 
+        return Ok(result);
+    }
+
+    /// <summary>Processes direct order checkout payment from the user wallet.</summary>
+    [HttpPost("checkout/direct")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<ActionResult<DirectPaymentResponse>> CheckoutDirect(
+        [FromBody] CheckoutDirectCommand command,
+        [FromHeader(Name = "x-user-id")] string? userIdHeader,
+        CancellationToken cancellationToken)
+    {
+        _logger.LogInformation(
+            "[REST Wallet] Initiating direct payment for user '{UserId}', order '{OrderId}'",
+            userIdHeader,
+            command.OrderId);
+        var result = await _sender.Send(
+            command with { UserId = userIdHeader ?? string.Empty },
+            cancellationToken);
         return Ok(result);
     }
 }

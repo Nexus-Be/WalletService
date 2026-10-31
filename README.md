@@ -49,10 +49,9 @@ src/Services/Wallet/
 │
 ├── Wallet.Api/                         # Host REST API
 │   ├── Controllers/Public/             # WalletsController, AdminWalletsController
-│   ├── Controllers/Internal/           # InternalWalletsController
 │   ├── Extensions/                     # HttpContext, Observability, ServiceDefaults
 │   ├── Filters/                        # RequireRoleAttribute
-│   ├── Middleware/                     # GlobalExceptionHandler, InternalServiceAuth
+│   ├── Middleware/                     # GlobalExceptionHandler
 │   └── Program.cs
 │
 └── scripts/verify-wallet-architecture.sh   # Chặn agent phá kiến trúc CQRS
@@ -111,7 +110,7 @@ curl http://localhost:8008/health
 | IPN VNPay | ✅ | `ProcessVnPayIpnCommand` |
 | Return callback VNPay | ✅ | `ProcessVnPayReturnQuery` |
 | Chuyển tiền nội bộ | ✅ | `TransferCommand` |
-| Thanh toán đơn trực tiếp (internal) | ✅ | `CheckoutDirectCommand` |
+| Thanh toán đơn trực tiếp (liên service) | ✅ | `CheckoutDirectCommand` |
 | Duyệt / từ chối rút tiền | ✅ | `ProcessWithdrawalCommand` |
 | Điều chỉnh số dư thủ công | ✅ | `AdjustWalletBalanceCommand` |
 | Tạo yêu cầu rút tiền cho người dùng | ⚠️ Vô hiệu | `RequestWithdrawalCommand` luôn trả `BUSINESS_RULE_VIOLATION` |

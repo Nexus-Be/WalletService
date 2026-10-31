@@ -11,7 +11,7 @@
 * `Wallet.Domain`: Entities (`WalletAccount`, `WalletTransaction`, `WalletTopup`, `WithdrawalRequest`, `BankAccount`, `AuditLog`), Enums (`TransactionStatus`, `WalletTransactionType`, `TopupStatus`, `WithdrawalStatus`, `WithdrawalDecision`, `BalanceAdjustmentType`, `AuditAction`, `CurrencyCode`), Exceptions (`DomainException`, `InsufficientBalanceException`, `WalletNotFoundException`).
 * `Wallet.Application`: Classic CQRS use cases in `Features/{Area}/Commands|Queries/{UseCase}/`, `IWalletDbContext` in `Interfaces/`, `ValidationBehavior`, `AuditLogExtensions`, `EnumExtensions`, `StatusTextExtensions`.
 * `Wallet.Infrastructure`: `WalletDbContext`, EF Core configurations, migrations, VNPay and direct payment gateway implementations.
-* `Wallet.Api`: Thin controllers in `Controllers/Public/` and `Controllers/Internal/`, middleware, extensions, composition root (`Program.cs`).
+* `Wallet.Api`: Thin controllers in `Controllers/Public/`, middleware, extensions, composition root (`Program.cs`).
 
 ## 3. Classic CQRS Co-location (Mandatory)
 * Mỗi use case là một folder `Features/{Area}/Commands|Queries/{UseCase}/` chứa `{UseCase}Command.cs` (hoặc `Query.cs`), `{UseCase}Handler.cs`, và response record.
@@ -20,9 +20,8 @@
 * Mọi Command/Query đi qua `ValidationBehavior` (DataAnnotations); lỗi trả `VAL_INVALID_INPUT`.
 
 ## 4. Thin Controller Pairing
-* `WalletsController.cs` -> injects `ISender` (7 actions: me, topups, withdrawals, transfers, transactions, vnpay/ipn, vnpay/return).
+* `WalletsController.cs` -> injects `ISender` (8 actions: me, topups, withdrawals, transfers, transactions, vnpay/ipn, vnpay/return, checkout/direct).
 * `AdminWalletsController.cs` -> injects `ISender` (2 actions: process withdrawal, adjust balance).
-* `InternalWalletsController.cs` -> injects `ISender` (1 action: checkout/direct, internal key required).
 
 ## 5. Absolute Invariant: Non-Negative Balance
 * 🛑 **NEVER ALLOW NEGATIVE BALANCE**: Any withdrawal, transfer, or checkout deduction must verify `Balance >= Amount`. Throw `InsufficientBalanceException` if balance is insufficient.

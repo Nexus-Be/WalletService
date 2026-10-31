@@ -31,13 +31,13 @@ WalletService là **service duy nhất** dùng MediatR/CQRS. Cấu trúc này t�
 
 **Bất biến:**
 * Đúng 11 use case tại `Wallet.Application/Features/{Area}/Commands|Queries/{UseCase}/`, đúng 11 file `*Handler.cs`.
-* Đúng 3 controller: `Controllers/Public/WalletsController.cs`, `Controllers/Public/AdminWalletsController.cs`, `Controllers/Internal/InternalWalletsController.cs`. Mỗi controller chỉ inject `ISender` và `ILogger`.
+* Đúng 2 controller: `Controllers/Public/WalletsController.cs`, `Controllers/Public/AdminWalletsController.cs`. `CheckoutDirect` đã gộp vào `WalletsController`. Mỗi controller chỉ inject `ISender` và `ILogger`.
 * `MediatR 12.4.1` trong `Wallet.Application.csproj`; `AddMediatR` + `ValidationBehavior<,>` trong `DependencyInjection.cs`.
 * Handler inject trực tiếp `IWalletDbContext`.
 
 **Cấm tuyệt đối:**
 * Tạo lại `Wallet.Application/Services/{Feature}/` hoặc bất kỳ `I{Feature}Service` / `{Feature}Service` facade.
-* Tách controller theo tài nguyên (`TopupsController`, `TransfersController`, `VnPayController`, `WithdrawalsController`...). Giữ đúng 3 controller.
+* Tách controller theo tài nguyên (`TopupsController`, `TransfersController`, `VnPayController`, `WithdrawalsController`...). Giữ đúng 2 controller.
 * Xóa `Features/`, gỡ package MediatR, hoặc đổi controller sang inject service.
 * Đổi route, mã HTTP, JSON contract khi chưa được duyệt.
 
@@ -49,6 +49,12 @@ dotnet test  Wallet.sln -c Release
 ```
 
 Nếu một tool/agent đề xuất feature service, controller theo tài nguyên, hoặc bỏ MediatR: **dừng lại và hỏi Sếp**, không tự áp dụng.
+
+---
+
+## Endpoint Workflow
+
+Before adding or changing any REST endpoint, follow the local checklist at `.agents/skills/new-feature-endpoint/SKILL.md`. It covers contract, persistence, Application, Api, tests, documentation handoff, and verification. This repository is Inward-Only, so the checklist is self-contained.
 
 ---
 
@@ -109,10 +115,10 @@ Khi bắt đầu làm việc tại WalletService, AI Agent **BẮT BUỘC PHẢI
    - Toàn bộ thao tác phân trang giao dịch, biến động số dư bắt buộc thực hiện trực tiếp tại Database qua `.Skip((page - 1) * pageSize).Take(pageSize)` và `.CountAsync()`.
    - Đóng gói dữ liệu trả về theo cấu trúc phân trang chuẩn `PagedData<T>` (`items` và metadata `pagination: { pageIndex, pageSize, totalCount, totalPages, hasPreviousPage, hasNextPage }`).
    - TUYỆT ĐỐI CẤM trả về danh sách thô lớn không giới hạn để Gateway tự phân trang.
-8. **QUY CHUẨN PHÂN TÁCH PUBLIC VÀ INTERNAL REST API (INTERNAL API SEGREGATION)**:
-   - Cấu trúc thư mục Controller tại `Wallet.Api/Controllers/` bắt buộc chia thành `Controllers/Public/` (`/api/v1/wallets/*`, `/api/v1/admin/wallets/*`) và `Controllers/Internal/` (`/api/v1/internal/wallets/*`).
-   - Mọi thao tác thanh toán trực tiếp/trừ tiền đặt tại `InternalWalletsController` (`POST /api/v1/internal/wallets/checkout/direct`) bắt buộc bảo vệ qua `InternalServiceAuthMiddleware` với header `X-Internal-Service-Key`.
-   - TUYỆT ĐỐI CẤM mở endpoint trừ tiền ví trực tiếp ra ngoài API Gateway.
+8. **INTERNAL API ĐANG TẠM KHÓA (2026-10-31)**:
+   - Chỉ còn `Controllers/Public/` với `WalletsController.cs` và `AdminWalletsController.cs`.
+   - `CheckoutDirect` nằm tại `POST /api/v1/wallets/checkout/direct` trong `WalletsController`.
+   - `InternalServiceAuthMiddleware` và `InternalServiceAuthHandler` đã comment đăng ký; không yêu cầu `X-Internal-Service-Key`.
 9. **QUY CHUẨN BẢO VỆ QUYỀN SỞ HỮU TÀI NGUYÊN (RESOURCE OWNERSHIP GOVERNANCE)**:
    - Thao tác xem số dư (`/api/v1/wallets/me`), giao dịch, nạp/rút tiền bắt buộc đọc `currentUserId` từ `HttpContext.GetUserId()`. Người dùng chỉ được thao tác trên ví của chính mình.
    - Thao tác phê duyệt hoặc từ chối yêu cầu rút tiền bắt buộc kiểm tra quyền `admin` hoặc `staff`.

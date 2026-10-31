@@ -1,7 +1,7 @@
 # 03 — QUY CHUẨN GIAO TIẾP VÀ BÃI BỎ MESSAGE BROKER (WALLET SERVICE)
 
-> **Trạng thái triển khai (2026-10-31):** 🛑 ĐÃ BÃI BỎ HOÀN TOÀN RABBITMQ & MASSTRANSIT — Consumer, Publisher, Outbox/Inbox tables và Saga phân tán không còn tồn tại. Thanh toán đơn hàng chạy đồng bộ qua `POST /api/v1/internal/wallets/checkout/direct`.
-> **Nguồn sự thật:** code (`Wallet.Api/Controllers/Internal/InternalWalletsController.cs`, `Wallet.Application/Features/Checkout/Commands/CheckoutDirect/`).
+> **Trạng thái triển khai (2026-10-31):** 🛑 ĐÃ BÃI BỎ HOÀN TOÀN RABBITMQ & MASSTRANSIT — Consumer, Publisher, Outbox/Inbox tables và Saga phân tán không còn tồn tại. Thanh toán đơn hàng chạy đồng bộ qua `POST /api/v1/wallets/checkout/direct`.
+> **Nguồn sự thật:** code (`Wallet.Api/Controllers/Public/WalletsController.cs`, `Wallet.Application/Features/Checkout/Commands/CheckoutDirect/`).
 > **Cập nhật lần cuối:** 2026-10-31.
 
 ---
@@ -14,8 +14,8 @@
 
 2. **Chuyển dịch sang REST Endpoint Đồng Bộ Trực Tiếp**:
    - Thay vì lắng nghe `IStockReservedEvent`, service cung cấp API nội bộ đồng bộ:
-     `POST /api/v1/internal/wallets/checkout/direct`
-   - Client liên service (như `CommerceService`) gọi trực tiếp API này với payload `CheckoutDirectCommand` kèm header `X-Internal-Service-Key` và `x-user-id`.
+     `POST /api/v1/wallets/checkout/direct`
+   - Client liên service (như `CommerceService`) gọi trực tiếp API này với payload `CheckoutDirectCommand` kèm header `x-user-id`. Header `X-Internal-Service-Key` không còn được yêu cầu vì Internal API tạm khóa từ 2026-10-31.
    - Kết quả thành công hoặc thất bại được phản hồi ngay lập tức trong HTTP response, không phụ thuộc broker hay saga rollback.
 
 3. **Dispatcher in-process chỉ dùng cho CQRS nội bộ**:

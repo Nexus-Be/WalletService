@@ -1,12 +1,10 @@
 # 03 — SECURITY HEADERS, INTERNAL API & IDENTITY (WALLET SERVICE)
 
-## 1. Controller Segregation
-* `Wallet.Api/Controllers/Public/`: Serves public wallet actions (`WalletsController`, `AdminWalletsController`).
-* `Wallet.Api/Controllers/Internal/`: Serves inter-service balance operations (`InternalWalletsController` at `/api/v1/internal/wallets/checkout/direct`).
-
-## 2. Internal Direct Payment Protection
-* Direct balance debiting at `InternalWalletsController` is strictly protected by `InternalServiceAuthMiddleware` with header `X-Internal-Service-Key`.
-* Never expose direct debiting endpoints to API Gateway or public internet.
+## 1. Public Controllers And Temporary Internal Disable
+* All controllers live under `Wallet.Api/Controllers/Public/`. There is no `Controllers/Internal/` folder.
+* Internal API security is temporarily disabled. `InternalServiceAuthMiddleware` registration is commented; no route requires `X-Internal-Service-Key`.
+* Inter-service calls use plain REST routes: `POST /api/v1/notifications/email/otp`, `POST /api/v1/wallets/checkout/direct`, `POST /api/v1/inventories/initialize`, `POST /api/v1/logs/batch`.
+* Re-enabling the old model requires explicit approval and restoring middleware, handler, Gateway blocking, and docs together.
 
 ## 3. Trusted Identity Extraction & Ownership Guard
 * Never trust client query parameters for `userId`.

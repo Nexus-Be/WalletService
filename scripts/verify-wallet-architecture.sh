@@ -22,17 +22,16 @@ fi
 public_controllers=$(find Wallet.Api/Controllers/Public -maxdepth 1 -name '*Controller.cs' | wc -l | tr -d ' ')
 internal_controllers=$(find Wallet.Api/Controllers/Internal -maxdepth 1 -name '*Controller.cs' | wc -l | tr -d ' ')
 [ "$public_controllers" = "2" ] || fail "Expected 2 public controllers (Wallets, AdminWallets), found $public_controllers."
-[ "$internal_controllers" = "1" ] || fail "Expected 1 internal controller, found $internal_controllers."
+[ "$internal_controllers" = "0" ] || fail "Expected 0 internal controllers, found $internal_controllers."
 
 for controller in \
   Wallet.Api/Controllers/Public/WalletsController.cs \
-  Wallet.Api/Controllers/Public/AdminWalletsController.cs \
-  Wallet.Api/Controllers/Internal/InternalWalletsController.cs; do
+  Wallet.Api/Controllers/Public/AdminWalletsController.cs; do
   [ -f "$controller" ] || fail "Missing $controller."
   grep -q 'ISender' "$controller" || fail "$controller must inject ISender."
 done
 
 if [ "$failed" -eq 0 ]; then
-  echo "OK: Wallet CQRS architecture is intact (11 handlers, 3 controllers, MediatR wired)."
+  echo "OK: Wallet CQRS architecture is intact (11 handlers, 2 controllers, MediatR wired)."
 fi
 exit "$failed"

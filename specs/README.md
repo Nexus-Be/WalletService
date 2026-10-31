@@ -48,6 +48,6 @@ Tài liệu này là **Bộ Chỉ Dẫn & Đặc Tả Kỹ Thuật (Spec Kit)** 
 | Endpoint nạp tiền VNPay / IPN handler | ✅ CÓ | `WalletsController.TopupVnPay()` + `ProcessVnPayIpnCommandHandler`; `IWalletDbContext` khai `WalletTopups` và `VnpayIpnLogs` |
 | API tạo `WithdrawalRequest` (rút tiền qua ngân hàng) | ⚠️ PARTIAL | `RequestWithdrawalCommandHandler` tồn tại nhưng luôn ném `BusinessRuleValidationException`; chưa có luồng tạo bản ghi + khóa tiền |
 | Ghi `AuditLog` | ✅ CÓ | `AuditLogExtensions.AddAuditLog(...)` dùng trong topup, IPN, duyệt rút tiền, điều chỉnh số dư, tạo ví |
-| Controller REST | ✅ CÓ | `Wallet.Api/Controllers/Public/` + `Controllers/Internal/`; `Program.cs` gọi `app.MapControllers()` |
+| Controller REST | ✅ CÓ | `Wallet.Api/Controllers/Public/` (2 controller); `Program.cs` gọi `app.MapControllers()` |
 | Retry policy / DLQ cho RabbitMQ | 🚫 KHÔNG ÁP DỤNG | Broker đã bị bãi bỏ; giao tiếp liên service dùng REST đồng bộ |
 | Công cụ `dotnet-ef` được vendor trong repo | ❌ CHƯA CÓ | không có thư mục `.tools/`; dùng `dotnet ef` từ máy dev |

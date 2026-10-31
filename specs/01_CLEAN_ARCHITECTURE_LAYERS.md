@@ -1,6 +1,6 @@
 # 01 — PHÂN TẦNG CLEAN ARCHITECTURE (WALLET SERVICE)
 
-> **Trạng thái triển khai (2026-10-31):** ✅ ĐÃ CHUẨN HÓA — 4 tầng Clean Architecture, **classic CQRS qua MediatR** (`Wallet.Application/Features/{Area}/Commands|Queries/{UseCase}/`). Wallet là service duy nhất được dùng MediatR trong toàn hệ thống. Giao tiếp đồng bộ 100% RESTful qua `WalletsController`, `AdminWalletsController`, `InternalWalletsController`.
+> **Trạng thái triển khai (2026-10-31):** ✅ ĐÃ CHUẨN HÓA — 4 tầng Clean Architecture, **classic CQRS qua MediatR** (`Wallet.Application/Features/{Area}/Commands|Queries/{UseCase}/`). Wallet là service duy nhất được dùng MediatR trong toàn hệ thống. Giao tiếp đồng bộ 100% RESTful qua `WalletsController`, `AdminWalletsController`.
 > **ĐÓNG BĂNG:** chạy `./scripts/verify-wallet-architecture.sh` trước khi sửa. Cấm tạo `Services/{Feature}/`, cấm tách controller theo tài nguyên, cấm gỡ MediatR.
 > **Nguồn sự thật:** code (`Wallet.sln`, `Wallet.Api/Controllers/Public/WalletsController.cs`, `Wallet.Application/Features/Wallets/Queries/GetMyWallet/GetMyWalletQueryHandler.cs`).
 > **Cập nhật lần cuối:** 2026-10-31.
@@ -62,7 +62,7 @@
    - `Wallet.Api/Controllers/`: thin controller, nhận request, gọi `ISender.Send(...)`, trả `IActionResult`. Cấm logic nghiệp vụ và truy vấn DB trong controller.
    - `Wallet.Application/Features/`: Command/Query + Handler cho từng endpoint.
 2. **Giao tiếp liên dịch vụ**:
-   - Nhận yêu cầu thanh toán trực tiếp qua endpoint nội bộ: `POST /api/v1/internal/wallets/checkout/direct`.
+   - Nhận yêu cầu thanh toán trực tiếp qua endpoint nội bộ: `POST /api/v1/wallets/checkout/direct`.
 3. **Quản lý Dependency Injection**:
    - `Wallet.Application/DependencyInjection.cs`: `AddMediatR` + `AddOpenBehavior(ValidationBehavior<,>)`.
    - `Wallet.Infrastructure/DependencyInjection.cs`: đăng ký `WalletDbContext`, `IVnPayService`, `IDirectPaymentGateway`.
