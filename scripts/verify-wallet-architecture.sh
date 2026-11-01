@@ -20,7 +20,11 @@ if grep -rInE "interface I(Wallet|AdminWallet|Topup|Checkout|Transfer|Withdrawal
 fi
 
 public_controllers=$(find Wallet.Api/Controllers/Public -maxdepth 1 -name '*Controller.cs' | wc -l | tr -d ' ')
-internal_controllers=$(find Wallet.Api/Controllers/Internal -maxdepth 1 -name '*Controller.cs' | wc -l | tr -d ' ')
+if [ -d Wallet.Api/Controllers/Internal ]; then
+  internal_controllers=$(find Wallet.Api/Controllers/Internal -maxdepth 1 -name '*Controller.cs' | wc -l | tr -d ' ')
+else
+  internal_controllers=0
+fi
 [ "$public_controllers" = "2" ] || fail "Expected 2 public controllers (Wallets, AdminWallets), found $public_controllers."
 [ "$internal_controllers" = "0" ] || fail "Expected 0 internal controllers, found $internal_controllers."
 
