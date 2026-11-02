@@ -26,6 +26,7 @@ description: Add or modify outbound typed REST clients in WalletService (port 80
 3. **No Internal API Key:** Inter-service routes use standard public endpoints. Do not send `X-Internal-Service-Key`.
 4. **Timeout & Non-Blocking Resilience:** Outbound notifications must never block financial ledger operations. Ledger updates and DB transactions must commit; failure to send an email must be caught and logged as a warning, not rolled back.
 5. **Timeout:** Enforce `client.Timeout = TimeSpan.FromSeconds(10)`.
+6. **W3C Distributed Tracing:** Preserve the incoming `traceparent` context when sending balance alerts or transaction receipts to NotificationService, ensuring correlated traces in Tempo.
 
 ## Implementation Steps
 
