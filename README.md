@@ -1,118 +1,85 @@
-# WALLET SERVICE — ARCHITECTURE & FOLDER STRUCTURE GUIDE
+# Wallet Service
 
-> **Trạng thái triển khai (2026-10-31):** ✅ CLASSIC CQRS — 11 use case (8 Command, 3 Query) trong `Wallet.Application/Features/`, 3 thin controller inject `ISender`, 53 test pass. Không còn gRPC, MassTransit, consumer hay Outbox/Inbox.
-> **ĐÓNG BĂNG:** chạy `./scripts/verify-wallet-architecture.sh` trước khi sửa. Cấm tạo `Wallet.Application/Services/{Feature}/`, cấm tách controller theo tài nguyên, cấm gỡ MediatR.
-> **Nguồn sự thật:** code (`Wallet.sln`, `Wallet.Application/Features/`, `Wallet.Api/Controllers/`, `Wallet.Tests/`).
-> **Cập nhật lần cuối:** 2026-10-31.
+> **Trạng thái cập nhật: 2026-11-02.** Service dùng REST/JSON trên .NET 8, CQRS với MediatR, EF Core và PostgreSQL. gRPC, MassTransit, consumer và outbox không còn trong implementation hiện tại. Bộ kiểm thử hiện có 61 test; chạy lại lệnh kiểm thử bên dưới để xác nhận trạng thái của checkout bạn đang review.
 
-> **Thông tin dịch vụ**
-> - **Port**: `8008` (HTTP REST).
-> - **Database**: PostgreSQL `wallet_db`, host port `5440`.
-> - **Nhiệm vụ**: số dư ví, nạp VNPay, chuyển tiền nội bộ, thanh toán đơn trực tiếp, duyệt rút tiền, audit log.
-> - **Ngoại lệ kiến trúc**: Wallet là service duy nhất dùng MediatR/CQRS trong hệ thống Nexus.
+## Tổng quan
 
----
+Wallet Service quản lý số dư và giao dịch ví, nạp tiền qua VNPay, chuyển tiền nội bộ, khởi tạo checkout qua payment gateway và các thao tác quản trị. Gateway, Commerce và các service khác không nằm trong repository này; tài liệu về tích hợp nằm trong [`specs/06_SYNCHRONOUS_SERVICE_INTEGRATION.md`](specs/06_SYNCHRONOUS_SERVICE_INTEGRATION.md).
 
-## 1. PHÂN TẦNG VÀ CẤU TRÚC THƯ MỤC
+| Thành phần | Chi tiết |
+|---|---|
+| Runtime | .NET 8 / ASP.NET Core |
+| API | REST HTTP/JSON, mặc định `http://localhost:8008` |
+| Database | PostgreSQL, database `wallet_db`; compose local ánh xạ port `5440` |
+| Kiến trúc | Domain / Application / Infrastructure / API; 11 MediatR handlers và 2 controllers |
+| Health | `GET /health` |
+| API contract | [API đang triển khai](api/A_ACTIVE/09_WALLET_PAYMENTS_API.md) |
 
-```
-src/Services/Wallet/
-├── Wallet.Domain/                      # Entity, enum, domain exception (zero-dependency)
-│   ├── Base/                           # BaseEntity, AuditableEntity, ISoftDelete
-│   ├── Entities/                       # WalletAccount, WalletTransaction, WalletTopup,
-│   │                                   # WithdrawalRequest, BankAccount, VnpayIpnLog, AuditLog
-│   ├── Enums/                          # CurrencyCode, WalletTransactionType, TransactionStatus,
-│   │                                   # TopupStatus, WithdrawalStatus, AuditAction
-│   └── Exceptions/                     # DomainException và các exception nghiệp vụ
-│
-├── Wallet.Application/                 # CQRS use cases
-│   ├── Common/
-│   │   ├── Behaviors/                  # ValidationBehavior (DataAnnotations)
-│   │   ├── Exceptions/                 # RequestValidationException (VAL_INVALID_INPUT)
-│   │   └── Extensions/                 # AddAuditLog, EnumExtensions
-│   ├── Features/
-│   │   ├── Wallets/Queries/GetMyWallet/
-│   │   ├── Wallets/Queries/ListTransactions/
-│   │   ├── Topups/Commands/TopupVnPay/
-│   │   ├── Withdrawals/Commands/RequestWithdrawal/
-│   │   ├── Transfers/Commands/Transfer/
-│   │   ├── VnPay/Commands/ProcessVnPayIpn/
-│   │   ├── VnPay/Queries/ProcessVnPayReturn/
-│   │   ├── Checkout/Commands/CheckoutDirect/
-│   │   └── AdminWallets/Commands/{ProcessWithdrawal,AdjustWalletBalance}/
-│   ├── Interfaces/                     # IWalletDbContext, IVnPayService, IDirectPaymentGateway
-│   └── DependencyInjection.cs          # AddMediatR + AddOpenBehavior
-│
-├── Wallet.Infrastructure/              # EF Core, PostgreSQL, VNPay/DirectPayment gateways
-│   ├── Persistence/                    # WalletDbContext, Configurations, Seeds
-│   └── DependencyInjection.cs
-│
-├── Wallet.Api/                         # Host REST API
-│   ├── Controllers/Public/             # WalletsController, AdminWalletsController
-│   ├── Extensions/                     # HttpContext, Observability, ServiceDefaults
-│   ├── Filters/                        # RequireRoleAttribute
-│   ├── Middleware/                     # GlobalExceptionHandler
-│   └── Program.cs
-│
-└── scripts/verify-wallet-architecture.sh   # Chặn agent phá kiến trúc CQRS
+## Cấu trúc repository
+
+```text
+Wallet.Domain/          Entities, enums, business rules and domain exceptions
+Wallet.Application/     CQRS handlers, request validation and interfaces
+Wallet.Infrastructure/  EF Core, PostgreSQL, migrations and payment gateways
+Wallet.Api/             REST controllers, middleware and service host
+Wallet.Tests/           Unit and contract regression tests
+api/A_ACTIVE/           API contracts verified against this service
+api/B_NONE/             Ecosystem API proposals; not evidence of implementation
+specs/                  Architecture, persistence and integration guidance
+scripts/                Repository verification scripts
 ```
 
-> **Tên entity**: ví là `WalletAccount` (không có entity `Wallet`); loại giao dịch là `WalletTransactionType`.
+`WalletAccount` is the wallet entity. Each balance-changing operation must preserve non-negative available balance and persist its related transaction and audit record within the same database transaction where applicable.
 
----
+## Local setup
 
-## 2. NGUYÊN TẮC BẤT BIẾN
-
-| # | Nguyên tắc | Bằng chứng |
-|:--|:---|:---|
-| 1 | Không cho số dư âm: mọi thao tác trừ tiền kiểm tra `AvailableBalance >= Amount` | `Wallet.Domain/Entities/WalletAccount.cs` |
-| 2 | Mỗi lần đổi số dư tạo một `WalletTransaction` cùng transaction DB | `Features/Transfers/Commands/Transfer/TransferCommandHandler.cs` |
-| 3 | Mỗi endpoint là một Command/Query + Handler, không có service facade | `Wallet.Application/Features/**` |
-| 4 | Controller chỉ inject `ISender`, không query DB | `Wallet.Api/Controllers/Public/WalletsController.cs` |
-| 5 | Thao tác nhạy cảm ghi `AuditLog` qua `AddAuditLog(...)` | `Wallet.Application/Common/Extensions/AuditLogExtensions.cs` |
-| 6 | Lỗi trả `application/problem+json` với mã `SCREAMING_SNAKE_CASE` | `Wallet.Api/Middleware/GlobalExceptionHandlerMiddleware.cs` |
-
----
-
-## 3. CÁCH CHẠY VÀ KIỂM THỬ
+Requirements: .NET 8 SDK, Docker (for local PostgreSQL), and a PostgreSQL connection string. Docker Compose uses the shared external network `nexus-network`; create or connect that network before starting the database.
 
 ```bash
-cd src/Services/Wallet
+# Run from the repository root.
+docker network inspect nexus-network >/dev/null 2>&1 || docker network create nexus-network
+docker compose -f docker-compose.db.yml up -d postgres-wallet
 
-# 0. Kiểm tra kiến trúc trước khi sửa
-./scripts/verify-wallet-architecture.sh
+# Configure secrets outside source control. For example:
+dotnet user-secrets init --project Wallet.Api
+dotnet user-secrets set "ConnectionStrings:DefaultConnection" "<POSTGRES_CONNECTION_STRING>" --project Wallet.Api
+dotnet user-secrets set "VnPay:TmnCode" "<VNPAY_TMN_CODE>" --project Wallet.Api
+dotnet user-secrets set "VnPay:HashSecret" "<VNPAY_HASH_SECRET>" --project Wallet.Api
 
-# 1. Bật database (PostgreSQL, host port 5440)
-docker compose up -d wallet-db
-
-# 2. Build và test
-dotnet build Wallet.sln -c Release
-dotnet test  Wallet.sln -c Release
-
-# 3. Chạy service ở cổng 8008
 dotnet run --project Wallet.Api
-
-# 4. Kiểm tra
-curl http://localhost:8008/health
 ```
 
-`appsettings.json` và biến môi trường cung cấp `ConnectionStrings:DefaultConnection` hoặc `WALLET_CONNECTION_STRING`. Không commit secret.
+The API listens on port `8008` in the checked-in launch profile. Swagger is available at `/swagger` in Development (or when `Swagger:Enabled` is set); the health endpoint is `/health`. The application applies EF Core migrations at startup when the configured database is relational. Review the migration and back up any existing database before deploying to a shared environment.
 
----
+For the container deployment, provide `WALLET_DB_CONNECTION`, `VNPAY_TMN_CODE`, `VNPAY_HASH_SECRET` and other required settings through the deployment's secret manager, then run `docker compose up -d --build`. Do not use sample/default credentials in a shared environment or commit real credentials.
 
-## 4. TRẠNG THÁI TÍNH NĂNG
+## Verify before review
 
-| Tính năng | Trạng thái | Use case |
-|:---|:---:|:---|
-| Xem ví và số dư | ✅ | `GetMyWalletQuery` |
-| Lịch sử giao dịch có phân trang | ✅ | `ListTransactionsQuery` |
-| Nạp tiền VNPay | ✅ | `TopupVnPayCommand` |
-| IPN VNPay | ✅ | `ProcessVnPayIpnCommand` |
-| Return callback VNPay | ✅ | `ProcessVnPayReturnQuery` |
-| Chuyển tiền nội bộ | ✅ | `TransferCommand` |
-| Thanh toán đơn trực tiếp (liên service) | ✅ | `CheckoutDirectCommand` |
-| Duyệt / từ chối rút tiền | ✅ | `ProcessWithdrawalCommand` |
-| Điều chỉnh số dư thủ công | ✅ | `AdjustWalletBalanceCommand` |
-| Tạo yêu cầu rút tiền cho người dùng | ⚠️ Vô hiệu | `RequestWithdrawalCommand` luôn trả `BUSINESS_RULE_VIOLATION` |
-| Quản lý tài khoản ngân hàng | ⚠️ Chỉ có entity | chưa có API |
-| gRPC / MassTransit / Saga / Outbox | 🛑 Đã xóa | không còn trong code |
+Run from the repository root:
+
+```bash
+./scripts/verify-wallet-architecture.sh
+dotnet build Wallet.sln -c Release
+dotnet test Wallet.sln -c Release
+```
+
+The architecture script checks that MediatR remains wired, all 11 handlers remain under `Wallet.Application/Features`, and the two expected controllers remain in place.
+
+## Implemented behavior and limitations
+
+| Capability | Current behavior |
+|---|---|
+| Wallet and transaction history | Read own wallet and paginated transaction history |
+| VNPay top-up | Creates a pending top-up; balance is credited only after a valid successful IPN |
+| Internal transfer | Debits and credits the two wallets in one database transaction |
+| Direct checkout | Creates a pending external-gateway payment and returns its payment URL; it does not debit wallet balance |
+| User withdrawal | The route exists, but its handler currently rejects requests; it does not create a withdrawal request or pay out to a bank |
+| Admin withdrawal | Can approve/reject an existing pending request; this repository currently has no working user flow to create one |
+| Admin balance adjustment | Credits/debits a wallet and records an audit log |
+| Gateway integration | Gateway/Commerce are external to this repository; routing and end-to-end integration are not verified here |
+
+### Identity and deployment boundary
+
+Controllers read identity and roles from claims or forwarded `x-user-id` / `x-user-roles` headers. The current API host does not configure JWT authentication, and the internal-service authentication middleware is disabled. Treat forwarded identity headers as trusted only when they are set by a trusted gateway that authenticates the caller and overwrites client-supplied values. Do not expose the service directly to untrusted networks until the authentication boundary is verified and enforced.
+
+See [`api/A_ACTIVE/09_WALLET_PAYMENTS_API.md`](api/A_ACTIVE/09_WALLET_PAYMENTS_API.md) for request/response examples and route-specific behavior.
