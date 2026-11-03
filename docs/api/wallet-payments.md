@@ -30,7 +30,7 @@ Admin routes also require an authorized `x-user-roles` value (`admin` or `staff`
 | `POST` | `/api/v1/wallets/withdrawals` | Seller role and user identity required; shared filter also permits admin/staff | Creates a pending withdrawal request and reserves available funds (`201`) |
 | `POST` | `/api/v1/wallets/vnpay/ipn` | Anonymous callback | Processes VNPay IPN |
 | `GET` | `/api/v1/wallets/vnpay/return` | Anonymous callback | Reports VNPay browser-return result |
-| `POST` | `/api/v1/wallets/checkout/direct` | `x-user-id` required by handler | Starts external checkout; `gateway: "VNPAY"` uses VNPay (`200`) |
+| `POST` | `/api/v1/wallets/checkout/direct` | `x-user-id` required by handler | Starts direct checkout through VNPay (`200`) |
 | `PATCH` | `/api/v1/admin/wallets/withdrawals/{id}` | `admin` or `staff` | Processes an existing pending withdrawal |
 | `POST` | `/api/v1/admin/wallets/{walletId}/adjustments` | `admin` or `staff` | Adjusts wallet balance |
 | `GET` | `/health` | Anonymous | Service health response |
@@ -224,7 +224,7 @@ GET /api/v1/wallets/vnpay/return?<vnpay-query-parameters>
 
 The route uses the same configured HMAC-SHA512, hash-type, and merchant-code validation and reports the result; it does not credit the wallet. A valid callback returns fields `success`, `transactionReference`, `responseCode`, `transactionNumber`, and `message`. An invalid signature, merchant code, or signature algorithm returns `400` with `errorCode: "VAL_INVALID_SIGNATURE"`.
 
-## External-gateway checkout
+## VNPay direct checkout
 
 ```http
 POST /api/v1/wallets/checkout/direct
@@ -234,13 +234,12 @@ Content-Type: application/json
 {
   "orderId": "33333333-3333-3333-3333-333333333333",
   "amount": 100000,
-  "gateway": "VNPAY",
   "bankCode": null,
   "returnUrl": "https://shop.example/checkout/return"
 }
 ```
 
-`orderId` must be a UUID. With `gateway: "VNPAY"`, the wallet must use VND, the amount must be a positive whole-VND value, and `returnUrl` must be absolute HTTPS. The service creates a pending `DirectPaymentOrder` and `DirectGatewayPayment` transaction, then returns a signed VNPay URL:
+`orderId` must be a UUID. The wallet must use VND, the amount must be a positive whole-VND value, and `returnUrl` must be absolute HTTPS. The service creates a pending `DirectPaymentOrder` and `DirectGatewayPayment` transaction, then returns a signed VNPay URL:
 
 ```json
 {
@@ -253,7 +252,7 @@ Content-Type: application/json
 }
 ```
 
-This endpoint initiates an external payment; it does not debit the wallet balance. A matching retry while pending reuses the same VNPay reference; changed parameters, a different owner, or a terminal order returns `409 PAYMENT_ORDER_CONFLICT`. Other configured gateway codes retain the generic gateway behavior. The signed IPN route settles direct orders as well as wallet top-ups; the browser return is informational only.
+This endpoint initiates a VNPay payment; it does not debit the wallet balance. A matching retry while pending reuses the same VNPay reference; changed parameters, a different owner, or a terminal order returns `409 PAYMENT_ORDER_CONFLICT`. The signed IPN route settles direct orders as well as wallet top-ups; the browser return is informational only.
 
 ## Admin routes
 
@@ -296,4 +295,4 @@ Content-Type: application/json
 
 Validation and business-rule errors use `application/problem+json` with fields such as `status`, `errorCode`, `detail`, and `traceId`. Common status codes are `400` for invalid input or business rules, `401` when user identity is missing, `403` for missing admin/staff role, and `404` for missing wallets/resources. Exact error codes and details depend on the failing operation. VNPay IPN acknowledgements are provider response objects, not Problem Details.
 
-The service applies EF Core migrations at startup. Review database state and backups before connecting it to a shared database. VNPay and direct gateway routes require separately configured provider credentials and callback URLs. This repository does not include the API Gateway or Commerce service, so their routing, authentication boundary, and end-to-end checkout behavior remain to be verified.
+The service applies EF Core migrations at startup. Review database state and backups before connecting it to a shared database. VNPay routes require configured merchant credentials and callback URLs. This repository does not include the API Gateway or Commerce service, so their routing, authentication boundary, and end-to-end checkout behavior remain to be verified.

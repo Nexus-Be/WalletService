@@ -17,13 +17,12 @@
 
 ## 2. Request
 
-The route and JSON contract remain unchanged. The controller supplies user ID and client IP; neither is accepted from the request body.
+The route remains unchanged. This endpoint uses VNPay exclusively. The controller supplies user ID and client IP; neither is accepted from the request body.
 
 ```json
 {
   "orderId": "01000000-0000-0000-0000-000000000001",
   "amount": 850000.00,
-  "gateway": "VNPAY",
   "bankCode": "NCB",
   "returnUrl": "https://shop.example/checkout/return"
 }
@@ -33,7 +32,6 @@ The route and JSON contract remain unchanged. The controller supplies user ID an
 |---|---:|---|
 | `orderId` | Yes | Non-empty UUID |
 | `amount` | Yes | Positive VND amount, at most two decimal places |
-| `gateway` | Yes | `VNPAY` selects the VNPay integration; other configured gateway codes retain the generic gateway behavior |
 | `bankCode` | No | Optional provider bank code |
 | `returnUrl` | Yes | Absolute HTTPS URL |
 
@@ -46,7 +44,6 @@ The existing `DirectPaymentOrder` row stores the stable VNPay reference, amount,
 - A matching retry while pending returns a new signed URL for the **same provider reference**, without creating another payment intent.
 - Reuse with changed request parameters, a different wallet owner, or a terminal payment returns `409 Conflict` (`PAYMENT_ORDER_CONFLICT`).
 - The database transaction commits the pending order and transaction before the URL is returned.
-- Generic non-VNPay gateways continue to use their existing configuration and response behavior.
 
 Success response remains HTTP `200 OK` with the existing DTO:
 
@@ -82,14 +79,14 @@ The existing IPN endpoint validates signature, merchant, currency, and amount. I
 | `400` | `VAL_INVALID_RETURN_URL` | VNPay return URL must be an absolute HTTPS URL |
 | `404` | `WALLET_NOT_FOUND` | Wallet for the supplied user does not exist |
 | `409` | `PAYMENT_ORDER_CONFLICT` | Order is reused with changed parameters, another owner, or terminal state |
-| `502` | `PAYMENT_GATEWAY_UNAVAILABLE` | Required provider configuration is missing or invalid |
+| `502` | `PAYMENT_GATEWAY_UNAVAILABLE` | VNPay configuration is missing or invalid |
 
 The IPN preserves the existing HTTP `200` provider acknowledgement DTO and response-code mapping.
 
 ## 6. Pre-code implementation plan
 
 1. Reuse the existing `CheckoutDirectCommandHandler`, `ProcessVnPayIpnCommandHandler`, and `WalletsController`; do not add a handler/controller or change the CQRS count.
-2. Extend `IVnPayService`/`VnPayService` with direct-order URL generation while preserving the existing top-up URL contract.
+2. Extend `IVnPayService`/`VnPayService` with direct-order URL generation while preserving the existing top-up URL contract; use VNPay for every direct checkout.
 3. Store the order's VNPay reference and request fingerprint with the pending order/transaction in one database transaction. Add a unique `OrderId` index through an additive migration.
 4. Add a row-lock helper for direct orders. In the IPN transaction, settle direct orders exactly once and audit; preserve current top-up semantics.
 5. Test URL signing/configuration, VND amount validation, retry and mismatch behavior, direct IPN success/failure/duplicate handling, and unchanged wallet balance.

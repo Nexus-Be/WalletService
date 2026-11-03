@@ -237,7 +237,7 @@ Toàn bộ các tính năng dưới đây đã được quy hoạch kiến trúc
 | :---: | :--- | :--- | :---: | :--- | :--- |
 | **P2-01** | Mã giảm giá & Khuyến mãi | Commerce, Catalog | `F9` (`COM-05..09`) | `POST /api/v1/discounts`<br>`GET /api/v1/discounts/validate`<br>`POST /api/v1/cart/apply-coupon` | Đơn tối thiểu $\ge$ minOrderValue; 1 user chỉ dùng 1 lần; Giữ mã khi pending và nhả mã khi hủy đơn. |
 | **P2-02** | Đánh giá & Điểm Uy tín | User, Commerce | `F10` (`USER-08`, `COM-23..26`) | `POST /api/v1/orders/{id}/reviews`<br>`GET /api/v1/users/{id}/reputation` | Chỉ đánh giá khi đơn `COMPLETED`; Cấm tự đánh giá; 5 sao $+1$đ, 1 sao $-2$đ; Dưới 40đ cấm bid; Dưới 20đ khóa shop. |
-| **P2-03** | Rút tiền về Ngân hàng (đề xuất) | Wallet, User, Staff | `F8, F3` (`WAL-06..08`, `ADM-15..17`) | Wallet hiện có `POST /api/v1/wallets/withdrawals` | Route hiện tại trừ số dư ngay và ghi transaction; không tạo withdrawal request, không có available/frozen balance, staff approval hay bank payout. Cần contract/triển khai riêng trước khi mô tả flow này là thật. |
+| **P2-03** | Rút tiền về Ngân hàng (đề xuất) | Wallet, User, Staff | `F8, F3` (`WAL-06..08`, `ADM-15..17`) | Wallet có `POST /api/v1/wallets/withdrawals` và staff review | Wallet tạo yêu cầu Pending và khóa số dư khả dụng; staff có thể approve/reject. Seller verification, bank payout, retry và reconciliation chưa được triển khai; không mô tả đây là chuyển khoản ngân hàng hoàn tất. |
 | **P2-04** | Sổ cái & Đối soát bill lệch (đề xuất) | Commerce, Wallet, Admin | `F13, F16` (`COM-18..22`, `WAL-03..05`) | Các route ledger/discrepancy là đề xuất Phase 2, chưa phải API Wallet hiện có | Wallet ghi transaction, chưa có double-entry ledger hoặc đối soát bill lệch; không dùng transaction history để khẳng định sổ cái kép đã triển khai. |
 | **P2-05** | Khiếu nại & Tranh chấp (đề xuất) | User, Wallet, Commerce | `F14` (`ADM-10..14`) | Các route dispute/refund là đề xuất Phase 2; Wallet chưa có API refund hoặc escrow | Điều kiện khiếu nại là thiết kế; khóa tiền Seller, refund Buyer và phạt uy tín chưa được Wallet hỗ trợ/cần contract riêng. |
 | **P2-06** | Kiểm duyệt Sản phẩm | Catalog, User, Staff | `F15` (`CAT-18..20`, `ADM-05..09`) | `POST /api/v1/products/{id}/reports`<br>`PUT /api/v1/staff/moderation/{id}/action` | Ẩn/xóa sản phẩm vi phạm; Trừ điểm uy tín Shop; Gửi email cảnh cáo người bán. |
@@ -267,9 +267,9 @@ Toàn bộ các tính năng dưới đây đã được quy hoạch kiến trúc
      - Đánh giá 1 sao: $-2$ điểm
   4. Cơ chế phạt vi phạm: Tụt dưới 40 điểm -> Tước quyền tham gia đấu giá; tụt dưới 20 điểm -> Tạm đình chỉ gian hàng.
 
-### P2-03: ĐỀ XUẤT RÚT TIỀN VỀ NGÂN HÀNG (CHƯA ĐƯỢC WALLET HỖ TRỢ)
-- **Mục tiêu:** Thiết kế quy trình Seller payout có kiểm duyệt; đây chưa phải khả năng của Wallet hiện tại.
-- **Trạng thái và yêu cầu:** Wallet hiện có `POST /api/v1/wallets/withdrawals`, nhưng route này trừ số dư ngay và chỉ ghi một transaction. Nó không tạo yêu cầu chờ duyệt, không đóng băng tiền, không xác minh tài khoản ngân hàng và không chuyển tiền ra ngân hàng. Cần Wallet owner chốt contract payout/settlement, idempotency, lỗi và đối soát trước khi triển khai hoặc demo thao tác chuyển khoản.
+### P2-03: ĐỀ XUẤT RÚT TIỀN VỀ NGÂN HÀNG (WALLET MỚI HỖ TRỢ MỘT PHẦN)
+- **Mục tiêu:** Thiết kế quy trình Seller payout có kiểm duyệt; Wallet hiện hỗ trợ yêu cầu và quyết định staff, chưa chuyển tiền ra ngân hàng.
+- **Trạng thái và yêu cầu:** `POST /api/v1/wallets/withdrawals` tạo yêu cầu Pending và khóa số dư khả dụng; staff approve ghi nhận debit hoặc reject nhả khoản khóa. Wallet không xác minh Seller, không gọi ngân hàng, và không có trạng thái/retry/đối soát payout. Cần Wallet owner chốt contract payout/settlement, idempotency, lỗi và reconciliation trước khi triển khai hoặc demo thao tác chuyển khoản.
 
 ### P2-04: SỔ CÁI KẾ TOÁN SONG TRÙNG & ĐỐI SOÁT BILL LỆCH (F13, F16)
 - **Mục tiêu:** Minh bạch tài chính toàn sàn theo nguyên tắc Kế toán Kép (Double-entry Ledger: Nợ = Có) và xử lý ngoại lệ giao dịch sai lệch.

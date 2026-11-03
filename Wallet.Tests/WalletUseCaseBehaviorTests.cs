@@ -1,5 +1,7 @@
 namespace Wallet.Tests;
 
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using Wallet.Application.Features.AdminWallets.Commands.AdjustWalletBalance;
 using Wallet.Application.Features.AdminWallets.Commands.ProcessWithdrawal;
@@ -167,6 +169,25 @@ public class WalletUseCaseBehaviorTests
         using var context = new TestWalletDbContext(nameof(CheckoutDirect_ExistingPendingTransaction_IsIdempotent));
         var wallet = AddWallet(context, balance: 500_000m);
         var orderId = Guid.NewGuid();
+        const string returnUrl = "https://return.test";
+        const string transactionReference = "DIRECT-PENDING-1";
+        var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join(
+            "\n",
+            wallet.UserId.ToString("D"),
+            orderId.ToString("D"),
+            "100000.00",
+            "VNPAY",
+            string.Empty,
+            returnUrl))));
+        context.DirectPaymentOrders.Add(new DirectPaymentOrder
+        {
+            Id = Guid.NewGuid(),
+            OrderId = orderId,
+            VnpTxnRef = transactionReference,
+            Amount = 100_000m,
+            Status = TopupStatus.Pending,
+            RequestFingerprint = fingerprint
+        });
         var existing = new WalletTransaction
         {
             Id = Guid.NewGuid(),
@@ -179,44 +200,48 @@ public class WalletUseCaseBehaviorTests
             BalanceAfter = wallet.Balance,
             Status = TransactionStatus.Pending,
             ReferenceId = orderId,
-            Note = "Payment for order via TEST_GATEWAY"
+            Note = "Payment for order via VNPAY"
         };
         context.WalletTransactions.Add(existing);
         context.SaveChanges();
 
-        var handler = new CheckoutDirectCommandHandler(context, new FakeDirectPaymentGateway(), new FakeVnPayService());
+        var vnPay = new FakeVnPayService();
+        var handler = new CheckoutDirectCommandHandler(context, vnPay);
         var result = await handler.Handle(
-            new CheckoutDirectCommand(orderId.ToString(), 100_000m, "TEST_GATEWAY", null, "https://return.test")
+            new CheckoutDirectCommand(orderId.ToString(), 100_000m, null, returnUrl)
             {
                 UserId = wallet.UserId.ToString()
             },
             default);
 
         Assert.Equal(existing.Id.ToString(), result.TransactionId);
+        Assert.Equal(transactionReference, vnPay.LastDirectTransactionReference);
         Assert.Single(context.WalletTransactions.Where(t => t.ReferenceId == orderId));
+        Assert.Single(context.DirectPaymentOrders.Where(payment => payment.OrderId == orderId));
     }
 
     [Fact]
-    public async Task CheckoutDirect_NewOrder_CreatesPendingTransaction()
+    public async Task CheckoutDirect_NewOrder_CreatesPendingVnPayPayment()
     {
-        using var context = new TestWalletDbContext(nameof(CheckoutDirect_NewOrder_CreatesPendingTransaction));
+        using var context = new TestWalletDbContext(nameof(CheckoutDirect_NewOrder_CreatesPendingVnPayPayment));
         var wallet = AddWallet(context, balance: 500_000m);
         var orderId = Guid.NewGuid();
-        var handler = new CheckoutDirectCommandHandler(context, new FakeDirectPaymentGateway(), new FakeVnPayService());
+        var handler = new CheckoutDirectCommandHandler(context, new FakeVnPayService());
 
         var result = await handler.Handle(
-            new CheckoutDirectCommand(orderId.ToString(), 80_000m, "TEST_GATEWAY", null, "https://return.test")
+            new CheckoutDirectCommand(orderId.ToString(), 80_000m, null, "https://return.test")
             {
                 UserId = wallet.UserId.ToString()
             },
             default);
 
         Assert.Equal(80_000m, result.Amount);
-        Assert.Contains("gateway.test", result.PaymentUrl);
+        Assert.Contains("sandbox.vnpay.vn", result.PaymentUrl);
         Assert.Equal(500_000m, wallet.Balance);
 
         var transaction = Assert.Single(context.WalletTransactions.Where(t => t.ReferenceId == orderId));
         Assert.Equal(TransactionStatus.Pending, transaction.Status);
+        Assert.Single(context.DirectPaymentOrders.Where(payment => payment.OrderId == orderId));
     }
 
     [Fact]
@@ -227,11 +252,10 @@ public class WalletUseCaseBehaviorTests
         var wallet = AddWallet(context, balance: 500_000m);
         var orderId = Guid.NewGuid();
         var vnPay = new FakeVnPayService();
-        var handler = new CheckoutDirectCommandHandler(context, new FakeDirectPaymentGateway(), vnPay);
+        var handler = new CheckoutDirectCommandHandler(context, vnPay);
         var command = new CheckoutDirectCommand(
             orderId.ToString(),
             80_000m,
-            "VNPAY",
             " NCB ",
             "https://return.test")
         {
@@ -261,14 +285,10 @@ public class WalletUseCaseBehaviorTests
             nameof(CheckoutDirect_VnPayRejectsChangedParametersForExistingOrder));
         var wallet = AddWallet(context, balance: 500_000m);
         var orderId = Guid.NewGuid();
-        var handler = new CheckoutDirectCommandHandler(
-            context,
-            new FakeDirectPaymentGateway(),
-            new FakeVnPayService());
+        var handler = new CheckoutDirectCommandHandler(context, new FakeVnPayService());
         var command = new CheckoutDirectCommand(
             orderId.ToString(),
             80_000m,
-            "VNPAY",
             null,
             "https://return.test")
         {
@@ -293,15 +313,11 @@ public class WalletUseCaseBehaviorTests
         var existingPaymentOrderCount = context.DirectPaymentOrders.Count();
         wallet.Currency = CurrencyCode.Usd;
         context.SaveChanges();
-        var handler = new CheckoutDirectCommandHandler(
-            context,
-            new FakeDirectPaymentGateway(),
-            new FakeVnPayService());
+        var handler = new CheckoutDirectCommandHandler(context, new FakeVnPayService());
         var orderId = Guid.NewGuid();
         var command = new CheckoutDirectCommand(
             orderId.ToString(),
             80_000m,
-            "VNPAY",
             null,
             "https://return.test")
         {
@@ -321,14 +337,10 @@ public class WalletUseCaseBehaviorTests
         using var context = new TestWalletDbContext(nameof(CheckoutDirect_VnPayRejectsNonHttpsReturnUrl));
         var wallet = AddWallet(context, balance: 500_000m);
         var orderId = Guid.NewGuid();
-        var handler = new CheckoutDirectCommandHandler(
-            context,
-            new FakeDirectPaymentGateway(),
-            new FakeVnPayService());
+        var handler = new CheckoutDirectCommandHandler(context, new FakeVnPayService());
         var command = new CheckoutDirectCommand(
             orderId.ToString(),
             80_000m,
-            "VNPAY",
             null,
             "http://return.test")
         {

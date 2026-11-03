@@ -172,10 +172,10 @@ public class WalletContractRegressionTests
         using var context = new TestWalletDbContext(nameof(Checkout_MalformedOrderId_Returns400ValidationError));
         var wallet = AddWallet(context, balance: 500_000m);
         var transactionsBefore = context.WalletTransactions.Count();
-        var handler = new CheckoutDirectCommandHandler(context, new FakeDirectPaymentGateway(), new FakeVnPayService());
+        var handler = new CheckoutDirectCommandHandler(context, new FakeVnPayService());
 
         var exception = await Assert.ThrowsAsync<BusinessRuleValidationException>(() => handler.Handle(
-            new CheckoutDirectCommand("not-a-guid", 80_000m, "VNPAY", null, "https://return.test")
+            new CheckoutDirectCommand("not-a-guid", 80_000m, null, "https://return.test")
             {
                 UserId = wallet.UserId.ToString()
             },
@@ -191,10 +191,10 @@ public class WalletContractRegressionTests
     {
         using var context = new TestWalletDbContext(nameof(Checkout_NewOrder_ReturnsPascalCaseStatus));
         var wallet = AddWallet(context, balance: 500_000m);
-        var handler = new CheckoutDirectCommandHandler(context, new FakeDirectPaymentGateway(), new FakeVnPayService());
+        var handler = new CheckoutDirectCommandHandler(context, new FakeVnPayService());
 
         var result = await handler.Handle(
-            new CheckoutDirectCommand(Guid.NewGuid().ToString(), 80_000m, "VNPAY", null, "https://return.test")
+            new CheckoutDirectCommand(Guid.NewGuid().ToString(), 80_000m, null, "https://return.test")
             {
                 UserId = wallet.UserId.ToString()
             },

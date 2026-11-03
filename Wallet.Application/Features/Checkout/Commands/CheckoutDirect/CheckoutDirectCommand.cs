@@ -10,8 +10,6 @@ public sealed record CheckoutDirectCommand(
     string OrderId,
     [Range(0.01, double.MaxValue, ErrorMessage = "Amount must be greater than zero.")]
     decimal Amount,
-    [Required(ErrorMessage = "Gateway is required.")]
-    string Gateway,
     string? BankCode = null,
     [Required(ErrorMessage = "Return URL is required.")]
     string ReturnUrl = "") : IRequest<DirectPaymentResponse>

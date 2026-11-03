@@ -35,7 +35,6 @@ public static class DependencyInjection
 
         services.AddScoped<IWalletDbContext>(sp => sp.GetRequiredService<WalletDbContext>());
         services.AddSingleton<IVnPayService, VnPayService>();
-        services.AddSingleton<IDirectPaymentGateway, ConfiguredDirectPaymentGateway>();
 
         return services;
     }
@@ -55,13 +54,15 @@ public static class DependencyInjection
                 var pass = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : "";
                 var port = uri.Port > 0 ? uri.Port : 5432;
                 var db = uri.AbsolutePath.TrimStart('/');
-                return $"Host={uri.Host};Port={port};Database={db};Username={user};Password={pass};SSL Mode=Require;Trust Server Certificate=true";
+                return
+                    $"Host={uri.Host};Port={port};Database={db};Username={user};Password={pass};SSL Mode=Require;Trust Server Certificate=true";
             }
             catch
             {
                 return trimmed;
             }
         }
+
         return trimmed;
     }
 }

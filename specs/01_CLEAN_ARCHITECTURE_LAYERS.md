@@ -23,7 +23,7 @@
 |:---|:---|:---:|:---|
 | `Wallet.Domain` | Lớp trung tâm: entity (`WalletAccount`, `WalletTransaction`, `WalletTopup`, `WithdrawalRequest`), enum, domain exception | ✅ (zero-dependency) | Tham chiếu project: 0; package: 0 |
 | `Wallet.Application` | Phụ thuộc `Domain`; khai báo `IWalletDbContext`, Command/Query + Handler theo CQRS, `ValidationBehavior`, response records | ✅ | `Wallet.Application/Wallet.Application.csproj` (MediatR 12.4.1), `Wallet.Application/Features/` |
-| `Wallet.Infrastructure` | Phụ thuộc `Application` + `Domain`; `WalletDbContext`, configurations, VNPay/DirectPayment gateways | ✅ | `Wallet.Infrastructure/Wallet.Infrastructure.csproj`, `Wallet.Infrastructure/Persistence/WalletDbContext.cs` |
+| `Wallet.Infrastructure` | Phụ thuộc `Application` + `Domain`; `WalletDbContext`, configurations, VNPay integration | ✅ | `Wallet.Infrastructure/Wallet.Infrastructure.csproj`, `Wallet.Infrastructure/Persistence/WalletDbContext.cs` |
 | `Wallet.Api` | Host REST API; thin controllers inject `ISender`, OpenTelemetry, Swagger | ✅ | `Wallet.Api/Controllers/Public/WalletsController.cs`, `Wallet.Api/Program.cs` |
 
 ---
@@ -65,4 +65,4 @@
    - Nhận yêu cầu thanh toán trực tiếp qua endpoint nội bộ: `POST /api/v1/wallets/checkout/direct`.
 3. **Quản lý Dependency Injection**:
    - `Wallet.Application/DependencyInjection.cs`: `AddMediatR` + `AddOpenBehavior(ValidationBehavior<,>)`.
-   - `Wallet.Infrastructure/DependencyInjection.cs`: đăng ký `WalletDbContext`, `IVnPayService`, `IDirectPaymentGateway`.
+   - `Wallet.Infrastructure/DependencyInjection.cs`: đăng ký `WalletDbContext` và `IVnPayService`.
