@@ -146,4 +146,4 @@ Until that contract exists, AuctionService must not infer that a successful orde
 - WalletService listens on port `8008`; configure internal service discovery to reach it over the deployment's private network.
 - This repository does not currently define a dedicated readiness endpoint. Do not use the root `GET /` response as proof that the database or a payment dependency is ready.
 - No gRPC, message broker, fire-and-forget call, or payment event is part of the current service-to-service contract.
-- The verified WalletService API details are in [`api/A_ACTIVE/09_WALLET_PAYMENTS_API.md`](../api/A_ACTIVE/09_WALLET_PAYMENTS_API.md). The broader REST and checkout behavior is in [`specs/02_API_REST_CONTRACTS.md`](02_API_REST_CONTRACTS.md) and [`specs/03_SYNCHRONOUS_REST_COMMUNICATION.md`](03_SYNCHRONOUS_REST_COMMUNICATION.md).
+- The verified WalletService API details are in [`docs/api/wallet-payments.md`](../docs/api/wallet-payments.md). The broader REST and checkout behavior is in [`specs/02_API_REST_CONTRACTS.md`](02_API_REST_CONTRACTS.md) and [`specs/03_SYNCHRONOUS_REST_COMMUNICATION.md`](03_SYNCHRONOUS_REST_COMMUNICATION.md).

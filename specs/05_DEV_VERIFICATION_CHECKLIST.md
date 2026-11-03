@@ -1,8 +1,8 @@
 # 05 — DANH SÁCH KIỂM CHỨNG & NGHIỆM THU (WALLET SERVICE CHECKLIST)
 
-> **Trạng thái triển khai (2026-10-31):** ✅ CLASSIC CQRS — build Release 0 error, 53 test pass, 10 endpoint ánh xạ tới 11 use case (8 Command, 3 Query).
+> **Trạng thái triển khai (2026-11-03):** ✅ CLASSIC CQRS — build Release 0 error, 80 test pass, 10 endpoint ánh xạ tới 11 use case (8 Command, 3 Query).
 > **Nguồn sự thật:** code (`Wallet.sln`, `Wallet.Application/Features/`, `Wallet.Tests/`).
-> **Cập nhật lần cuối:** 2026-10-31.
+> **Cập nhật lần cuối:** 2026-11-03.
 
 ---
 
@@ -12,7 +12,7 @@
 |:---|:---|:---:|
 | Restore | `dotnet restore Wallet.sln` | ✅ |
 | Biên dịch | `dotnet build Wallet.sln -c Release` | ✅ (0 error) |
-| Kiểm thử | `dotnet test Wallet.sln -c Release` | ✅ (34/34) |
+| Kiểm thử | `dotnet test Wallet.sln -c Release` | ✅ (80/80) |
 | Bật DB | `docker compose up -d wallet-db` (PostgreSQL `5440`) | ✅ |
 | Chạy service | `dotnet run --project Wallet.Api` → `http://localhost:8008` | ✅ |
 | Health | `curl http://localhost:8008/health` | ⚠️ không kiểm tra DB |
@@ -39,7 +39,7 @@
 ## 3. KIỂM CHỨNG CQRS
 
 ```bash
-cd src/Services/Wallet
+# Run from the repository root.
 
 # 1. Không còn feature service facade
 grep -rn "interface I.*Service\b" --include="*.cs" Wallet.Application Wallet.Api   # kỳ vọng rỗng
@@ -61,6 +61,6 @@ grep -n "private readonly I" Wallet.Api/Controllers/*/*.cs
 
 ## 4. GHI CHÚ HIỆN TRẠNG
 
-* Không có thư mục `Wallet.Infrastructure/Migrations/`; schema đang được quản lý ngoài repo. Mọi thay đổi DB cần phê duyệt riêng.
-* `POST /api/v1/wallets/withdrawals` hiện luôn trả lỗi `BUSINESS_RULE_VIOLATION`; luồng tạo yêu cầu rút tiền chưa được bật.
+* EF Core migrations are stored in `Wallet.Infrastructure/Persistence/Migrations/`; review migration and rollback impact before applying schema changes to a shared database.
+* `POST /api/v1/wallets/withdrawals` tạo yêu cầu `Pending` và khóa số dư khả dụng; payout ngân hàng, xác minh Seller và đối soát chưa được triển khai.
 * `/health` trả `Healthy` vô điều kiện, không kiểm tra kết nối DB.

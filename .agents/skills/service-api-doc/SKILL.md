@@ -14,7 +14,7 @@ This skill governs the **mandatory pre-code documentation lifecycle** within Wal
 
 ## 1. Ranh giới Tài liệu WalletService
 
-* **Vị trí lưu trữ:** `docs/api/{Area}/{HTTP_METHOD}_{ENDPOINT_SLUG}.md` (ví dụ `docs/api/Wallets/POST_WALLETS_WITHDRAWALS.md`).
+* **Vị trí lưu trữ:** `docs/api/{area}/{endpoint-slug}.md` (ví dụ `docs/api/wallets/withdrawals.md`). Dùng tên thư mục và file chữ thường, kebab-case.
 * **Thời điểm lập:** **BẮT BUỘC TRƯỚC KHI VIẾT CODE (Pre-Code)**.
 * **Định dạng dữ liệu trả về:** **Pure DTO** hoặc `PagedData<T>` (tuyệt đối không bọc qua `ApiResponse<T>`).
 * **Rào chắn Inward-Only:** Chỉ trỏ tới tài nguyên nội bộ của WalletService (`Wallet.Domain`, `Wallet.Application`, `Wallet.Infrastructure`, `Wallet.Api`). Không tham chiếu tới `docs/api/` ở Root.
@@ -51,7 +51,7 @@ This skill governs the **mandatory pre-code documentation lifecycle** within Wal
 
 ## 4. Quy trình Thực hiện (Workflow)
 
-1. Sao chép `docs/api/SERVICE_API_DOC_TEMPLATE.md` vào `docs/api/{Area}/{HTTP_METHOD}_{ENDPOINT_SLUG}.md`.
+1. Sao chép `docs/api/templates/service-api-doc-template.md` vào `docs/api/{area}/{endpoint-slug}.md`.
 2. Điền đầy đủ 5 phần của template dựa trên kết quả tra cứu Source of Truth.
 3. Hoàn thiện mục 5.1 (Pre-Code Plan) mô tả luồng Command/Query Handler và Transaction DB.
 4. Triển khai code C# tuân thủ 100% hợp đồng đã đặc tả trong doc.

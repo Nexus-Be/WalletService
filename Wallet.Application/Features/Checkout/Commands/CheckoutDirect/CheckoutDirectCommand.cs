@@ -18,6 +18,9 @@ public sealed record CheckoutDirectCommand(
 {
     [JsonIgnore]
     public string UserId { get; init; } = string.Empty;
+
+    [JsonIgnore]
+    public string ClientIp { get; init; } = "127.0.0.1";
 }
 
 public sealed record DirectPaymentResponse(

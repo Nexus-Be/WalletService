@@ -20,7 +20,7 @@
 | `BankAccount` | `BankAccounts` | `BaseEntity<Guid>` | ❌ Không (chỉ seed 1 dòng) | ❌ | `Wallet.Domain/Entities/BankAccount.cs:5`; `Wallet.Infrastructure/Persistence/Seeds/WalletSeedData.cs:90` |
 | `WalletTopup` | `WalletTopups` | `BaseEntity<Guid>` | ❌ Không | ❌ | `Wallet.Domain/Entities/WalletTopup.cs:6`; `WalletDbContext.cs:16` |
 | `DirectPaymentOrder` | `DirectPaymentOrders` | `BaseEntity<Guid>` | ❌ Không | ❌ | `Wallet.Domain/Entities/DirectPaymentOrder.cs:6`; `WalletDbContext.cs:18` |
-| `WithdrawalRequest` | `WithdrawalRequests` | `BaseEntity<Guid>` | ❌ Không (chỉ là navigation của `WalletAccount`) | ❌ | `Wallet.Domain/Entities/WithdrawalRequest.cs:6`; `WalletAccount.cs:18` |
+| `WithdrawalRequest` | `WithdrawalRequests` | `BaseEntity<Guid>` | ✅ Có (yêu cầu rút tiền được tạo và số dư khả dụng được khóa) | ✅ | `Wallet.Domain/Entities/WithdrawalRequest.cs:6`; `Features/Withdrawals/Commands/RequestWithdrawal/RequestWithdrawalCommandHandler.cs` |
 | `VnpayIpnLog` | `VnpayIpnLogs` | `BaseEntity<Guid>` | ❌ Không | ❌ | `Wallet.Domain/Entities/VnpayIpnLog.cs:6`; `WalletDbContext.cs:20` |
 | `AuditLog` | `AuditLogs` | **POCO thuần** (không kế thừa `BaseEntity`) | ❌ Không | ❌ | `Wallet.Domain/Entities/AuditLog.cs:5`; `WalletDbContext.cs:21` |
 
@@ -100,7 +100,7 @@
 | `ProcessedBy` | `Guid?` — **không có trong tài liệu cũ** | ✅ | `WithdrawalRequest.cs:16` |
 | `GatewayReferenceId` | `string?`, max 100 | ✅ | `WithdrawalRequest.cs:17`; `WithdrawalRequestConfiguration.cs:19` |
 | `ProcessedAt` | `DateTimeOffset?` | ✅ | `WithdrawalRequest.cs:18` |
-| **Đường ghi** | `WithdrawCommandHandler` **không** tạo bản ghi nào | ❌ | `Wallet.Application/Features/Commands/Withdraw/WithdrawCommand.cs:33-59` |
+| **Đường ghi** | `RequestWithdrawalCommandHandler` tạo yêu cầu Pending và khóa số dư; admin approve/reject quyết định ghi sổ hoặc nhả số dư | ✅ (chưa tích hợp payout ngân hàng) | `Wallet.Application/Features/Withdrawals/Commands/RequestWithdrawal/RequestWithdrawalCommandHandler.cs`; `Features/AdminWallets/Commands/ProcessWithdrawal/ProcessWithdrawalCommandHandler.cs` |
 
 ### 1.7 `VnpayIpnLog` → bảng `VnpayIpnLogs` (log IPN của VNPay)
 

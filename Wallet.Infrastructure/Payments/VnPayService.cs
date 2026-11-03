@@ -23,6 +23,40 @@ public sealed class VnPayService : IVnPayService
         string? bankCode = null,
         string? returnUrl = null)
     {
+        return CreatePaymentUrl(
+            transactionReference,
+            amount,
+            ipAddress,
+            $"Wallet topup {transactionReference}",
+            bankCode,
+            returnUrl);
+    }
+
+    public string CreateDirectPaymentUrl(
+        string transactionReference,
+        Guid orderId,
+        decimal amount,
+        string ipAddress,
+        string? bankCode = null,
+        string? returnUrl = null)
+    {
+        return CreatePaymentUrl(
+            transactionReference,
+            amount,
+            ipAddress,
+            $"Direct order checkout {orderId:D}",
+            bankCode,
+            returnUrl);
+    }
+
+    private string CreatePaymentUrl(
+        string transactionReference,
+        decimal amount,
+        string ipAddress,
+        string orderInfo,
+        string? bankCode,
+        string? returnUrl)
+    {
         var effectiveReturnUrl = returnUrl ?? GetRequired("ReturnUrl");
         if (!Uri.TryCreate(effectiveReturnUrl, UriKind.Absolute, out var returnUri) ||
             returnUri.Scheme != Uri.UriSchemeHttps)
@@ -36,7 +70,7 @@ public sealed class VnPayService : IVnPayService
             ["vnp_Amount"] = checked(amount * 100m).ToString("0", CultureInfo.InvariantCulture),
             ["vnp_CurrCode"] = "VND",
             ["vnp_TxnRef"] = transactionReference,
-            ["vnp_OrderInfo"] = $"Wallet topup {transactionReference}",
+            ["vnp_OrderInfo"] = orderInfo,
             ["vnp_OrderType"] = "other",
             ["vnp_Locale"] = "vn",
             ["vnp_ReturnUrl"] = effectiveReturnUrl,
@@ -56,8 +90,14 @@ public sealed class VnPayService : IVnPayService
     public bool ValidateSignature(IReadOnlyDictionary<string, string> parameters)
     {
         var suppliedSignature = GetParameter(parameters, "vnp_SecureHash");
-        if (string.IsNullOrWhiteSpace(suppliedSignature))
+        var suppliedHashType = GetParameter(parameters, "vnp_SecureHashType");
+        var suppliedMerchantCode = GetParameter(parameters, "vnp_TmnCode");
+        if (string.IsNullOrWhiteSpace(suppliedSignature) ||
+            !string.Equals(suppliedHashType, "HmacSHA512", StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(suppliedMerchantCode, GetRequired("TmnCode"), StringComparison.Ordinal))
+        {
             return false;
+        }
 
         var signedParameters = new SortedDictionary<string, string>(StringComparer.Ordinal);
         foreach (var parameter in parameters)
@@ -86,15 +126,17 @@ public sealed class VnPayService : IVnPayService
     private string GetRequired(string key)
     {
         var envKeyUpper = $"VNPAY_{key.ToUpperInvariant()}";
-        var envKeySnake = $"VNPAY_{System.Text.RegularExpressions.Regex.Replace(key, "(\\B[A-Z])", "_$1").ToUpperInvariant()}";
+        var envKeySnake =
+            $"VNPAY_{System.Text.RegularExpressions.Regex.Replace(key, "(\\B[A-Z])", "_$1").ToUpperInvariant()}";
         var value = _configuration[$"VnPay:{key}"]
-            ?? _configuration[envKeyUpper]
-            ?? _configuration[envKeySnake]
-            ?? Environment.GetEnvironmentVariable(envKeyUpper)
-            ?? Environment.GetEnvironmentVariable(envKeySnake);
+                    ?? _configuration[envKeyUpper]
+                    ?? _configuration[envKeySnake]
+                    ?? Environment.GetEnvironmentVariable(envKeyUpper)
+                    ?? Environment.GetEnvironmentVariable(envKeySnake);
 
         if (string.IsNullOrWhiteSpace(value) || value.StartsWith("<", StringComparison.Ordinal))
-            throw new InvalidOperationException($"VNPay configuration value 'VnPay:{key}' or environment variable '{envKeySnake}' is missing.");
+            throw new InvalidOperationException(
+                $"VNPay configuration value 'VnPay:{key}' or environment variable '{envKeySnake}' is missing.");
 
         return value;
     }

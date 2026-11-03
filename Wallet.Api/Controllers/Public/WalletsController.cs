@@ -2,9 +2,11 @@ namespace Wallet.Api.Controllers;
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Text.Json;
 using MediatR;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -69,9 +71,9 @@ public sealed class WalletsController : ControllerBase
         return StatusCode(StatusCodes.Status201Created, result);
     }
 
-    /// <summary>Requests balance withdrawal to bank account.</summary>
+    /// <summary>Creates a pending withdrawal request and reserves available wallet funds.</summary>
     [HttpPost("withdrawals")]
-    [RequireRole]
+    [RequireRole("seller")]
     public async Task<IActionResult> Withdraw(
         [FromBody] RequestWithdrawalCommand command,
         CancellationToken cancellationToken)
@@ -81,9 +83,10 @@ public sealed class WalletsController : ControllerBase
             return authError;
         }
 
-        _logger.LogInformation("Processing withdrawal for user: '{UserId}', Amount: {Amount}", userGuid, command.Amount);
+        _logger.LogInformation("Processing withdrawal for user: '{UserId}', Amount: {Amount}", userGuid,
+            command.Amount);
         var result = await _sender.Send(command with { UserId = userGuid.ToString() }, cancellationToken);
-        return Ok(result);
+        return StatusCode(StatusCodes.Status201Created, result);
     }
 
     /// <summary>Transfers balance between wallet accounts.</summary>
@@ -143,19 +146,24 @@ public sealed class WalletsController : ControllerBase
             if (Request.HasFormContentType)
             {
                 var form = await Request.ReadFormAsync(cancellationToken);
-                parameters = form.ToDictionary(pair => pair.Key, pair => pair.Value.ToString(), StringComparer.OrdinalIgnoreCase);
+                parameters = form.ToDictionary(pair => pair.Key, pair => pair.Value.ToString(),
+                    StringComparer.OrdinalIgnoreCase);
             }
             else
             {
-                using var document = await System.Text.Json.JsonDocument.ParseAsync(Request.Body, cancellationToken: cancellationToken);
+                using var document = await JsonDocument.ParseAsync(Request.Body, cancellationToken: cancellationToken);
                 parameters = document.RootElement.EnumerateObject().ToDictionary(
                     p => p.Name,
-                    p => p.Value.ValueKind == System.Text.Json.JsonValueKind.String ? p.Value.GetString() ?? string.Empty : p.Value.ToString(),
+                    p => p.Value.ValueKind == JsonValueKind.String
+                        ? p.Value.GetString() ?? string.Empty
+                        : p.Value.ToString(),
                     StringComparer.OrdinalIgnoreCase);
             }
         }
-        catch
+        catch (Exception exception) when (
+            exception is JsonException or InvalidOperationException or ArgumentException or InvalidDataException)
         {
+            _logger.LogWarning(exception, "Invalid VNPay IPN request payload.");
             return Ok(new VnPayIpnResponse("99", "Invalid request payload"));
         }
 
@@ -168,7 +176,8 @@ public sealed class WalletsController : ControllerBase
     [HttpGet("vnpay/return")]
     public async Task<IActionResult> VnPayReturn(CancellationToken cancellationToken)
     {
-        var parameters = Request.Query.ToDictionary(pair => pair.Key, pair => pair.Value.ToString(), StringComparer.OrdinalIgnoreCase);
+        var parameters = Request.Query.ToDictionary(pair => pair.Key, pair => pair.Value.ToString(),
+            StringComparer.OrdinalIgnoreCase);
         var result = await _sender.Send(new ProcessVnPayReturnQuery(parameters), cancellationToken);
         if (!result.Success && result.ResponseCode == "97")
         {
@@ -191,7 +200,11 @@ public sealed class WalletsController : ControllerBase
             userIdHeader,
             command.OrderId);
         var result = await _sender.Send(
-            command with { UserId = userIdHeader ?? string.Empty },
+            command with
+            {
+                UserId = userIdHeader ?? string.Empty,
+                ClientIp = this.GetClientIp() ?? "127.0.0.1"
+            },
             cancellationToken);
         return Ok(result);
     }

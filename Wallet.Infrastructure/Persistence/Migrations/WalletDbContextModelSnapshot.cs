@@ -191,6 +191,10 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     b.Property<string>("RawResponse")
                         .HasColumnType("jsonb");
 
+                    b.Property<string>("RequestFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
@@ -208,7 +212,8 @@ namespace Wallet.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("OrderId");
+                    b.HasIndex("OrderId")
+                        .IsUnique();
 
                     b.HasIndex("VnpTxnRef")
                         .IsUnique();

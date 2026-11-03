@@ -7,7 +7,7 @@
 > **Tổng số API đã chuẩn hóa:** `174 endpoints`  
 > **Trạng thái tài liệu:** ✅ Nguồn sự thật đã đối soát giữa Bản đặc tả Excel, Gateway Controllers, Fixture Seeds và Backend Microservices.
 
-> **Trạng thái trong repository hiện tại:** Tài liệu API đã được phân loại theo trạng thái triển khai. Xem [A_ACTIVE](./A_ACTIVE/09_WALLET_PAYMENTS_API.md) cho API đã xác minh trong code; xem [B_NONE](./B_NONE/README.md) cho API chưa hoàn thiện hoặc chưa thể xác minh trong repository này.
+> **Trạng thái trong repository hiện tại:** Xem [WalletService routes đã xác minh](../docs/api/wallet-payments.md) cho hợp đồng triển khai trong repo; xem [B_NONE](./B_NONE/README.md) cho đề xuất ecosystem chưa thể xác minh tại đây.
 
 ---
 
@@ -254,7 +254,7 @@ Các tài liệu bên dưới được chia theo trạng thái trong repository 
 | **06** | [**06_ORDERS_CHECKOUT_API.md**](./B_NONE/06_ORDERS_CHECKOUT_API.md) | `CommerceService (8003)` | **13** | Xem trước thanh toán, Đặt hàng, Đơn con theo Shop, Tiếp nhận đơn, Đánh giá, Hoàn tiền, Webhook. |
 | **07** | [**07_AUCTIONS_API.md**](./B_NONE/07_AUCTIONS_API.md) | `AuctionService (8005)` | **17** | Danh sách đấu giá, Đặt cọc, Đặt giá đấu (Bid), Mua ngay (Buy Now), Lịch sử đấu giá, Quản lý phiên. |
 | **08** | [**08_FULFILLMENT_SHIPPING_API.md**](./B_NONE/08_FULFILLMENT_SHIPPING_API.md) | `FulfillmentService (8006)` | **9** | Tính cước vận chuyển (GHN/GHTK/ViettelPost), Tra cứu vận đơn (Tracking timeline), Tạo & hủy vận đơn. |
-| **09** | [**WalletService specification**](./B_NONE/09_WALLET_PAYMENTS_API.md) / [**Implemented WalletService routes**](./A_ACTIVE/09_WALLET_PAYMENTS_API.md) | `WalletService (8008)` | **8** | Đặc tả ecosystem và các route đã xác minh trong service; payout ngân hàng chưa hoàn chỉnh. |
+| **09** | [**WalletService specification**](./B_NONE/09_WALLET_PAYMENTS_API.md) / [**Implemented WalletService routes**](../docs/api/wallet-payments.md) | `WalletService (8008)` | **8** | Đặc tả ecosystem và các route đã xác minh trong service; payout ngân hàng chưa hoàn chỉnh. |
 | **10** | [**10_NOTIFICATIONS_API.md**](./B_NONE/10_NOTIFICATIONS_API.md) | `NotificationService (8007)` | **14** | Thông báo trong app, Đánh dấu đã đọc, Đăng ký FCM Device Token, Cấu hình kênh nhận tin. |
 | **11** | [**11_GATEWAY_CONTROL_AND_HEALTH_API.md**](./B_NONE/11_GATEWAY_CONTROL_AND_HEALTH_API.md) | `ApiGateway (8080)` | **17** | Điều khiển bật/tắt Mock Mode, Auth Bypass, Reload dữ liệu Seeds/, Health check microservices & DB. |
 | **TỔNG** | **11 File Tài Liệu** | **Toàn Bộ Hệ Thống** | **174** | **Toàn bộ bề mặt API của hệ thống Backend Nexus.** |

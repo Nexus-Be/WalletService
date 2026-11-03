@@ -12,7 +12,7 @@
 ### 1.1. Khách hàng (`WalletsController` — `/api/v1/wallets`)
 * `GET /api/v1/wallets/me` → `GetMyWalletQuery` → `GetMyWalletQueryHandler` (read-only; khi chưa có ví thì gửi `EnsureWalletCommand` → `EnsureWalletCommandHandler` tạo ví 0 đồng + `AuditLog` `WalletCreate`).
 * `POST /api/v1/wallets/topups/vnpay` → `TopupVnPayCommand` → `TopupVnPayCommandHandler` (HTTP 201).
-* `POST /api/v1/wallets/withdrawals` → `RequestWithdrawalCommand` → `RequestWithdrawalCommandHandler` (hiện luôn trả `BUSINESS_RULE_VIOLATION`).
+* `POST /api/v1/wallets/withdrawals` → `RequestWithdrawalCommand` → `RequestWithdrawalCommandHandler` (HTTP 201; tạo yêu cầu Pending và khóa số dư khả dụng; không khởi tạo chuyển khoản ngân hàng).
 * `POST /api/v1/wallets/transfers` → `TransferCommand` → `TransferCommandHandler`.
 * `GET /api/v1/wallets/transactions` → `ListTransactionsQuery` → `ListTransactionsQueryHandler`.
 * `POST /api/v1/wallets/vnpay/ipn` → `ProcessVnPayIpnCommand` → `ProcessVnPayIpnCommandHandler`.

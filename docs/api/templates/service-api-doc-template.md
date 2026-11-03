@@ -1,4 +1,4 @@
-# WALLET SERVICE - [HTTP_METHOD] [ROUTE]
+# WalletService — [HTTP_METHOD] [ROUTE]
 
 > **Feature / Use Case:** {UseCaseName}
 > **Trạng thái:** ⏳ DRAFT (Pre-Code Plan) | 🛠 IN_PROGRESS | ✅ VERIFIED

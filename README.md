@@ -1,6 +1,6 @@
 # Wallet Service
 
-> **Trạng thái cập nhật: 2026-11-02.** Service dùng REST/JSON trên .NET 8, CQRS với MediatR, EF Core và PostgreSQL. gRPC, MassTransit, consumer và outbox không còn trong implementation hiện tại. Bộ kiểm thử hiện có 61 test; chạy lại lệnh kiểm thử bên dưới để xác nhận trạng thái của checkout bạn đang review.
+> **Trạng thái cập nhật: 2026-11-03.** Service dùng REST/JSON trên .NET 8, CQRS với MediatR, EF Core và PostgreSQL. gRPC, MassTransit, consumer và outbox không còn trong implementation hiện tại. Bộ kiểm thử hiện có 80 test; chạy lại lệnh kiểm thử bên dưới để xác nhận trạng thái của checkout bạn đang review.
 
 ## Tổng quan
 
@@ -13,7 +13,7 @@ Wallet Service quản lý số dư và giao dịch ví, nạp tiền qua VNPay, 
 | Database | PostgreSQL, database `wallet_db`; compose local ánh xạ port `5440` |
 | Kiến trúc | Domain / Application / Infrastructure / API; 11 MediatR handlers và 2 controllers |
 | Health | `GET /health` |
-| API contract | [API đang triển khai](api/A_ACTIVE/09_WALLET_PAYMENTS_API.md) |
+| API contract | [API đang triển khai](docs/api/wallet-payments.md) |
 
 ## Cấu trúc repository
 
@@ -23,7 +23,8 @@ Wallet.Application/     CQRS handlers, request validation and interfaces
 Wallet.Infrastructure/  EF Core, PostgreSQL, migrations and payment gateways
 Wallet.Api/             REST controllers, middleware and service host
 Wallet.Tests/           Unit and contract regression tests
-api/A_ACTIVE/           API contracts verified against this service
+docs/api/               WalletService API contracts and endpoint details
+docs/operations/        Deployment and production-readiness guidance
 api/B_NONE/             Ecosystem API proposals; not evidence of implementation
 specs/                  Architecture, persistence and integration guidance
 scripts/                Repository verification scripts
@@ -72,9 +73,9 @@ The architecture script checks that MediatR remains wired, all 11 handlers remai
 | Wallet and transaction history | Read own wallet and paginated transaction history |
 | VNPay top-up | Creates a pending top-up; balance is credited only after a valid successful IPN |
 | Internal transfer | Debits and credits the two wallets in one database transaction |
-| Direct checkout | Creates a pending external-gateway payment and returns its payment URL; it does not debit wallet balance |
-| User withdrawal | The route exists, but its handler currently rejects requests; it does not create a withdrawal request or pay out to a bank |
-| Admin withdrawal | Can approve/reject an existing pending request; this repository currently has no working user flow to create one |
+| Direct checkout | Starts external gateway or VNPay payment; signed IPN settles the order without changing wallet balance |
+| User withdrawal | Creates a pending request and reserves available funds; no bank payout is initiated |
+| Admin withdrawal | Approves a pending request by consuming reserved funds or rejects it by releasing the reservation; neither action initiates a bank transfer |
 | Admin balance adjustment | Credits/debits a wallet and records an audit log |
 | Gateway integration | Gateway/Commerce are external to this repository; routing and end-to-end integration are not verified here |
 
@@ -82,4 +83,4 @@ The architecture script checks that MediatR remains wired, all 11 handlers remai
 
 Controllers read identity and roles from claims or forwarded `x-user-id` / `x-user-roles` headers. The current API host does not configure JWT authentication, and the internal-service authentication middleware is disabled. Treat forwarded identity headers as trusted only when they are set by a trusted gateway that authenticates the caller and overwrites client-supplied values. Do not expose the service directly to untrusted networks until the authentication boundary is verified and enforced.
 
-See [`api/A_ACTIVE/09_WALLET_PAYMENTS_API.md`](api/A_ACTIVE/09_WALLET_PAYMENTS_API.md) for request/response examples and route-specific behavior.
+See [`docs/api/README.md`](docs/api/README.md) for API references and endpoint contracts.
