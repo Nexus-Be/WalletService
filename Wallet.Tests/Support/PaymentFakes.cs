@@ -31,24 +31,3 @@ public sealed class FakeVnPayService : IVnPayService
 
     public bool ValidateSignature(IReadOnlyDictionary<string, string> parameters) => SignatureIsValid;
 }
-
-public sealed class FakeDirectPaymentGateway : IDirectPaymentGateway
-{
-    public bool IsUnavailable { get; set; }
-
-    public string CreatePaymentUrl(
-        string gatewayCode,
-        Guid orderId,
-        decimal amount,
-        string currency,
-        string? bankCode = null,
-        string? returnUrl = null)
-    {
-        if (IsUnavailable)
-        {
-            throw new InvalidOperationException("Gateway is unavailable.");
-        }
-
-        return $"https://gateway.test/{gatewayCode}/{orderId}?amount={amount}&currency={currency}";
-    }
-}

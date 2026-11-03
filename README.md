@@ -4,7 +4,7 @@
 
 ## Tổng quan
 
-Wallet Service quản lý số dư và giao dịch ví, nạp tiền qua VNPay, chuyển tiền nội bộ, khởi tạo checkout qua payment gateway và các thao tác quản trị. Gateway, Commerce và các service khác không nằm trong repository này; tài liệu về tích hợp nằm trong [`specs/06_SYNCHRONOUS_SERVICE_INTEGRATION.md`](specs/06_SYNCHRONOUS_SERVICE_INTEGRATION.md).
+Wallet Service quản lý số dư và giao dịch ví, nạp tiền qua VNPay, chuyển tiền nội bộ, khởi tạo checkout trực tiếp qua VNPay và các thao tác quản trị. Gateway, Commerce và các service khác không nằm trong repository này; tài liệu về tích hợp nằm trong [`specs/06_SYNCHRONOUS_SERVICE_INTEGRATION.md`](specs/06_SYNCHRONOUS_SERVICE_INTEGRATION.md).
 
 | Thành phần | Chi tiết |
 |---|---|
@@ -20,7 +20,7 @@ Wallet Service quản lý số dư và giao dịch ví, nạp tiền qua VNPay, 
 ```text
 Wallet.Domain/          Entities, enums, business rules and domain exceptions
 Wallet.Application/     CQRS handlers, request validation and interfaces
-Wallet.Infrastructure/  EF Core, PostgreSQL, migrations and payment gateways
+Wallet.Infrastructure/  EF Core, PostgreSQL, migrations and VNPay integration
 Wallet.Api/             REST controllers, middleware and service host
 Wallet.Tests/           Unit and contract regression tests
 docs/api/               WalletService API contracts and endpoint details
@@ -73,7 +73,7 @@ The architecture script checks that MediatR remains wired, all 11 handlers remai
 | Wallet and transaction history | Read own wallet and paginated transaction history |
 | VNPay top-up | Creates a pending top-up; balance is credited only after a valid successful IPN |
 | Internal transfer | Debits and credits the two wallets in one database transaction |
-| Direct checkout | Starts external gateway or VNPay payment; signed IPN settles the order without changing wallet balance |
+| Direct checkout | Starts VNPay payment; signed IPN settles the order without changing wallet balance |
 | User withdrawal | Creates a pending request and reserves available funds; no bank payout is initiated |
 | Admin withdrawal | Approves a pending request by consuming reserved funds or rejects it by releasing the reservation; neither action initiates a bank transfer |
 | Admin balance adjustment | Credits/debits a wallet and records an audit log |

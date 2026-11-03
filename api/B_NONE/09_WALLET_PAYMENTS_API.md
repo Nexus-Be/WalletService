@@ -212,7 +212,6 @@ Tài liệu chuẩn hóa toàn bộ các API quản lý tài chính cá nhân: T
   {
     "orderId": "uuid",
     "amount": 480000,
-    "gateway": "VNPAY",
     "bankCode": "NCB",
     "returnUrl": "https://shop.example.com/checkout/callback"
   }

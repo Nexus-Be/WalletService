@@ -47,7 +47,7 @@ ValidationBehavior<TRequest,TResponse>
    ↓
 IRequestHandler<TCommand|TQuery, TResponse>
    ↓
-IWalletDbContext / IVnPayService / IDirectPaymentGateway
+IWalletDbContext / IVnPayService
 ```
 
 * Query tuyệt đối read-only (`AsNoTracking`). Mọi thay đổi trạng thái đi qua Command handler; `GetMyWalletQueryHandler` chỉ điều phối `EnsureWalletCommand` khi ví chưa tồn tại.

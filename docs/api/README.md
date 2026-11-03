@@ -3,7 +3,7 @@
 ## Implemented API
 
 - [Wallet and payments API](wallet-payments.md) — route catalog and request/response behavior verified against this repository.
-- [Direct checkout](checkout/direct.md) — VNPay and generic-gateway initiation, retry behavior, and payment state.
+- [Direct checkout](checkout/direct.md) — VNPay checkout initiation, retry behavior, and payment state.
 - [VNPay IPN](vnpay/ipn.md) — signature validation, top-up credit, direct-order settlement, and duplicate callbacks.
 
 ## Supporting documents
