@@ -10,6 +10,7 @@ public class DirectPaymentOrder : BaseEntity<Guid>
     public string? VnpTransactionNo { get; set; }
     public required decimal Amount { get; set; }
     public required TopupStatus Status { get; set; } = TopupStatus.Pending;
+    public string? RequestFingerprint { get; set; }
     public string? RawResponse { get; set; }
 
     // Navigation

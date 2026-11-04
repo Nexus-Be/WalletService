@@ -6,8 +6,8 @@ This directory contains API specifications that are not implemented here, or can
 
 | API / capability | Current state | Remaining work |
 |---|---|---|
-| `POST /api/v1/wallets/withdrawals` — bank withdrawal | **Incomplete** | The route currently debits the wallet and records a transaction. It does not create/manage a withdrawal request or initiate/confirm an external bank payout. |
-| [Wallet and payments ecosystem specification](./09_WALLET_PAYMENTS_API.md) | **Not implemented/verified in this repository** | Only the implemented routes listed in [A_ACTIVE](../A_ACTIVE/09_WALLET_PAYMENTS_API.md) have been verified against WalletService source. |
+| `POST /api/v1/wallets/withdrawals` — bank withdrawal | **Partial** | WalletService creates a pending request and reserves available funds; staff can approve/reject it. No bank payout, seller-verification check, payout retry, or reconciliation is implemented. |
+| [Wallet and payments ecosystem specification](./09_WALLET_PAYMENTS_API.md) | **Not implemented/verified in this repository** | Only the [implemented WalletService routes](../../docs/api/wallet-payments.md) have been verified against source in this repository. |
 
 The route currently accepts:
 
@@ -19,11 +19,13 @@ Content-Type: application/json
 {
   "amount": 50000,
   "currency": "VND",
-  "bankAccount": "..."
+  "bankCode": "BANK",
+  "accountNumber": "123456789",
+  "accountHolderName": "NGUYEN VAN A"
 }
 ```
 
-Do not treat its `201 Created` response as evidence that funds were paid to a bank account.
+Do not treat its `201 Created` response or a staff approval as evidence that funds were paid to a bank account.
 
 ## APIs owned by services outside this repository
 

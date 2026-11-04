@@ -1,11 +1,11 @@
-# 09 — Wallet Payments API (implemented)
+# WalletService Payments API (implemented)
 
 > **Service:** `WalletService`  
 > **Base URL:** `http://localhost:8008`
 > **Protocol:** REST over HTTP/JSON
 > **Status:** Routes below are implemented by this repository. Gateway routing and end-to-end service integration are not verified here.
 
-This contract reflects `Wallet.Api/Controllers/Public/WalletsController.cs` and `AdminWalletsController.cs`. Broader ecosystem proposals are kept separately in [`../B_NONE/09_WALLET_PAYMENTS_API.md`](../B_NONE/09_WALLET_PAYMENTS_API.md).
+This contract reflects `Wallet.Api/Controllers/Public/WalletsController.cs` and `AdminWalletsController.cs`. Broader ecosystem proposals are kept separately in [`../../api/B_NONE/09_WALLET_PAYMENTS_API.md`](../../api/B_NONE/09_WALLET_PAYMENTS_API.md).
 
 ## Important deployment note
 
@@ -27,10 +27,10 @@ Admin routes also require an authorized `x-user-roles` value (`admin` or `staff`
 | `POST` | `/api/v1/wallets/topups/vnpay` | User identity required | Creates pending VNPay top-up (`201`) |
 | `POST` | `/api/v1/wallets/transfers` | User identity required | Transfers between wallets (`200`) |
 | `GET` | `/api/v1/wallets/transactions` | User identity required | Paginated transaction history (`200`) |
-| `POST` | `/api/v1/wallets/withdrawals` | User identity required | Currently disabled; returns a business-rule error |
+| `POST` | `/api/v1/wallets/withdrawals` | Seller role and user identity required; shared filter also permits admin/staff | Creates a pending withdrawal request and reserves available funds (`201`) |
 | `POST` | `/api/v1/wallets/vnpay/ipn` | Anonymous callback | Processes VNPay IPN |
 | `GET` | `/api/v1/wallets/vnpay/return` | Anonymous callback | Reports VNPay browser-return result |
-| `POST` | `/api/v1/wallets/checkout/direct` | `x-user-id` required by handler | Starts external payment-gateway checkout (`200`) |
+| `POST` | `/api/v1/wallets/checkout/direct` | `x-user-id` required by handler | Starts direct checkout through VNPay (`200`) |
 | `PATCH` | `/api/v1/admin/wallets/withdrawals/{id}` | `admin` or `staff` | Processes an existing pending withdrawal |
 | `POST` | `/api/v1/admin/wallets/{walletId}/adjustments` | `admin` or `staff` | Adjusts wallet balance |
 | `GET` | `/health` | Anonymous | Service health response |
@@ -169,11 +169,30 @@ Content-Type: application/json
   "amount": 100000,
   "currency": "VND",
   "bankCode": "BANK",
-  "accountNumber": "123456789"
+  "accountNumber": "123456789",
+  "accountHolderName": "NGUYEN VAN A"
 }
 ```
 
-Although the route and request contract exist, its handler currently rejects every request with `400 BUSINESS_RULE_VIOLATION`. It does not create a withdrawal request or initiate a bank payout. Do not treat this route as an available withdrawal flow.
+`amount` must be between VND 50,000 and VND 500,000,000. `currency` defaults to `VND` and no other currency is accepted. `bankCode`, `accountNumber`, and `accountHolderName` are required. The request reserves the amount from the wallet's available balance; it does not debit the wallet balance or initiate a bank payout. The current fee is `0`.
+
+**`201 Created`**
+
+```json
+{
+  "withdrawalId": "withdrawal-id",
+  "amount": 100000,
+  "fee": 0,
+  "status": "Pending",
+  "requestedAt": "2026-11-03T08:00:00+00:00"
+}
+```
+
+The route requires the `seller` role; the shared role filter also permits `admin` and `staff`. This service does not independently verify seller verification status. A bank payout, payout failure/retry handling, and reconciliation are not implemented.
+
+The route returns `400 INSUFFICIENT_BALANCE` when available funds are insufficient, `400 VAL_INVALID_INPUT` for invalid request fields, `401 UNAUTHORIZED` when user identity is missing, `403 FORBIDDEN` when the caller lacks an allowed role, and `404 WALLET_NOT_FOUND` when the user has no wallet.
+
+The route has no idempotency key. A repeated request can create another pending withdrawal and reserve additional funds; clients should not blindly retry when the result is unknown.
 
 ## VNPay callbacks
 
@@ -183,10 +202,12 @@ Although the route and request contract exist, its handler currently rejects eve
 POST /api/v1/wallets/vnpay/ipn
 Content-Type: application/x-www-form-urlencoded
 
-vnp_TxnRef=TOPUP-reference&vnp_Amount=10000000&vnp_ResponseCode=00&vnp_SecureHash=<signature>
+vnp_TmnCode=<configured-merchant>&vnp_TxnRef=TOPUP-reference&vnp_Amount=10000000&vnp_CurrCode=VND&vnp_ResponseCode=00&vnp_SecureHashType=HmacSHA512&vnp_SecureHash=<signature>
 ```
 
-The endpoint also accepts a JSON object with the same VNPay parameter names. `vnp_Amount` is expressed in VND minor units (the top-up amount multiplied by 100). A valid signature and matching pending top-up are required before the wallet is credited. Duplicate or invalid callbacks return VNPay response codes in the response body:
+The endpoint also accepts a JSON object with the same VNPay parameter names. `vnp_Amount` must be an unsigned integer in VND minor units (the pending top-up or direct-order amount multiplied by 100), and `vnp_CurrCode` must be `VND`. The signature must be a valid HMAC-SHA512 using the configured hash secret; `vnp_SecureHashType` must be `HmacSHA512`, and `vnp_TmnCode` must match the configured merchant code. A matching pending top-up is required before the wallet is credited; a matching pending direct order transitions its payment state without changing the wallet balance.
+
+The payment row is locked while its state and associated effects are committed atomically. A duplicate notification returns response code `02` without another credit or settlement; an invalid signature/merchant/algorithm returns `97`, a missing order returns `01`, an invalid amount/currency returns `04`, and malformed or incomplete input returns `99`. The endpoint acknowledges with HTTP `200` and a VNPay response object:
 
 ```json
 {
@@ -201,9 +222,9 @@ The endpoint also accepts a JSON object with the same VNPay parameter names. `vn
 GET /api/v1/wallets/vnpay/return?<vnpay-query-parameters>
 ```
 
-The route validates the signature and reports the result; it does not credit the wallet. A valid callback returns fields `success`, `transactionReference`, `responseCode`, `transactionNumber`, and `message`. An invalid signature returns `400` with `errorCode: "VAL_INVALID_SIGNATURE"`.
+The route uses the same configured HMAC-SHA512, hash-type, and merchant-code validation and reports the result; it does not credit the wallet. A valid callback returns fields `success`, `transactionReference`, `responseCode`, `transactionNumber`, and `message`. An invalid signature, merchant code, or signature algorithm returns `400` with `errorCode: "VAL_INVALID_SIGNATURE"`.
 
-## External-gateway checkout
+## VNPay direct checkout
 
 ```http
 POST /api/v1/wallets/checkout/direct
@@ -213,26 +234,25 @@ Content-Type: application/json
 {
   "orderId": "33333333-3333-3333-3333-333333333333",
   "amount": 100000,
-  "gateway": "example",
   "bankCode": null,
   "returnUrl": "https://shop.example/checkout/return"
 }
 ```
 
-`orderId` must be a UUID. The service creates a pending `DirectGatewayPayment` transaction and returns a gateway URL:
+`orderId` must be a UUID. The wallet must use VND, the amount must be a positive whole-VND value, and `returnUrl` must be absolute HTTPS. The service creates a pending `DirectPaymentOrder` and `DirectGatewayPayment` transaction, then returns a signed VNPay URL:
 
 ```json
 {
   "transactionId": "transaction-id",
   "orderId": "33333333-3333-3333-3333-333333333333",
   "amount": 100000,
-  "paymentUrl": "https://payments.example.com/checkout?...",
+  "paymentUrl": "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?...",
   "status": "Pending",
   "createdAt": "2026-11-02T10:00:00+00:00"
 }
 ```
 
-This endpoint initiates an external payment; it does not debit the wallet balance. A repeated matching pending request reuses the payment transaction. The database migration defines `WalletTransaction.ReferenceId` and its type index for the order reference.
+This endpoint initiates a VNPay payment; it does not debit the wallet balance. A matching retry while pending reuses the same VNPay reference; changed parameters, a different owner, or a terminal order returns `409 PAYMENT_ORDER_CONFLICT`. The signed IPN route settles direct orders as well as wallet top-ups; the browser return is informational only.
 
 ## Admin routes
 
@@ -252,7 +272,7 @@ Content-Type: application/json
 }
 ```
 
-`action` must be `Approve` or `Reject`. The operation requires an existing pending withdrawal request; approval debits the previously locked funds and rejection releases them. The current user-facing withdrawal route cannot create such a request.
+`action` must be `Approve` or `Reject`. The operation requires an existing pending withdrawal request; approval debits the previously locked funds and rejection releases them. This records the staff decision but does not initiate or confirm an external bank transfer.
 
 ### Adjust a wallet balance
 
@@ -275,4 +295,4 @@ Content-Type: application/json
 
 Validation and business-rule errors use `application/problem+json` with fields such as `status`, `errorCode`, `detail`, and `traceId`. Common status codes are `400` for invalid input or business rules, `401` when user identity is missing, `403` for missing admin/staff role, and `404` for missing wallets/resources. Exact error codes and details depend on the failing operation. VNPay IPN acknowledgements are provider response objects, not Problem Details.
 
-The service applies EF Core migrations at startup. Review database state and backups before connecting it to a shared database. VNPay and direct gateway routes require separately configured provider credentials and callback URLs. This repository does not include the API Gateway or Commerce service, so their routing, authentication boundary, and end-to-end checkout behavior remain to be verified.
+The service applies EF Core migrations at startup. Review database state and backups before connecting it to a shared database. VNPay routes require configured merchant credentials and callback URLs. This repository does not include the API Gateway or Commerce service, so their routing, authentication boundary, and end-to-end checkout behavior remain to be verified.

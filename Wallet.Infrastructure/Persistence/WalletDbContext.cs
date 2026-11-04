@@ -44,6 +44,17 @@ public class WalletDbContext : DbContext, IWalletDbContext
             .SingleOrDefaultAsync(cancellationToken);
     }
 
+    public Task<DirectPaymentOrder?> LockDirectPaymentOrderByReferenceAsync(
+        string transactionReference,
+        CancellationToken cancellationToken)
+    {
+        return DirectPaymentOrders
+            .FromSqlRaw(
+                BuildLockQuery<DirectPaymentOrder>(nameof(DirectPaymentOrder.VnpTxnRef)),
+                transactionReference)
+            .SingleOrDefaultAsync(cancellationToken);
+    }
+
     public Task<WithdrawalRequest?> LockWithdrawalRequestAsync(Guid withdrawalId, CancellationToken cancellationToken)
     {
         return WithdrawalRequests

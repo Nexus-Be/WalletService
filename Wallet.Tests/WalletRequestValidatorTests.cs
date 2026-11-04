@@ -44,17 +44,46 @@ public class WalletRequestValidatorTests
     [Fact]
     public void RequestWithdrawalCommand_AcceptsValidData()
     {
-        var request = new RequestWithdrawalCommand(Amount: 100_000m, BankCode: "VCB", AccountNumber: "1234567890");
+        var request = new RequestWithdrawalCommand(
+            Amount: 100_000m,
+            BankCode: "VCB",
+            AccountNumber: "1234567890",
+            AccountHolderName: "Test User");
         var results = ValidateModel(request);
         Assert.Empty(results);
     }
 
     [Fact]
+    public void RequestWithdrawalCommand_RequiresAccountHolderName()
+    {
+        var request = new RequestWithdrawalCommand(Amount: 100_000m, BankCode: "VCB", AccountNumber: "1234567890");
+        var results = ValidateModel(request);
+        Assert.Contains(results, result => result.MemberNames.Contains(nameof(request.AccountHolderName)));
+    }
+
+    [Fact]
     public void RequestWithdrawalCommand_RejectsAmountBelowMinimum()
     {
-        var request = new RequestWithdrawalCommand(Amount: 49_999m, BankCode: "VCB", AccountNumber: "1234567890");
+        var request = new RequestWithdrawalCommand(
+            Amount: 49_999m,
+            BankCode: "VCB",
+            AccountNumber: "1234567890",
+            AccountHolderName: "Test User");
         var results = ValidateModel(request);
         Assert.NotEmpty(results);
+    }
+
+    [Fact]
+    public void RequestWithdrawalCommand_RejectsUnsupportedCurrency()
+    {
+        var request = new RequestWithdrawalCommand(
+            Amount: 100_000m,
+            Currency: "USD",
+            BankCode: "VCB",
+            AccountNumber: "1234567890",
+            AccountHolderName: "Test User");
+        var results = ValidateModel(request);
+        Assert.Contains(results, result => result.MemberNames.Contains(nameof(request.Currency)));
     }
 
     [Fact]

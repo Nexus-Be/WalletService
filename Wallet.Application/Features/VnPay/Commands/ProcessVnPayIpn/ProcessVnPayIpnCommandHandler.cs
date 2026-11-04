@@ -1,9 +1,11 @@
 namespace Wallet.Application.Features.VnPay.Commands.ProcessVnPayIpn;
 
 using System.Globalization;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using global::Wallet.Application.Common.Extensions;
 using global::Wallet.Application.Interfaces;
@@ -34,18 +36,20 @@ internal sealed class ProcessVnPayIpnCommandHandler : IRequestHandler<ProcessVnP
             return new VnPayIpnResponse("97", "Invalid signature");
         }
 
-        request.Parameters.TryGetValue("vnp_TxnRef", out var txnRef);
-        request.Parameters.TryGetValue("vnp_ResponseCode", out var responseCode);
-        request.Parameters.TryGetValue("vnp_Amount", out var rawAmount);
+        var txnRef = GetParameter(request.Parameters, "vnp_TxnRef");
+        var responseCode = GetParameter(request.Parameters, "vnp_ResponseCode");
+        var rawAmount = GetParameter(request.Parameters, "vnp_Amount");
 
         if (string.IsNullOrWhiteSpace(txnRef) || string.IsNullOrWhiteSpace(responseCode))
         {
             return new VnPayIpnResponse("99", "Missing parameters");
         }
 
-        if (!decimal.TryParse(rawAmount, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsedAmount))
+        var currency = GetParameter(request.Parameters, "vnp_CurrCode");
+        if (!string.Equals(currency, "VND", StringComparison.OrdinalIgnoreCase) ||
+            !long.TryParse(rawAmount, NumberStyles.None, CultureInfo.InvariantCulture, out var parsedAmount))
         {
-            return new VnPayIpnResponse("04", "Invalid amount");
+            return new VnPayIpnResponse("04", "Invalid amount or currency");
         }
 
         await using var dbTransaction = await _context.Database.BeginTransactionAsync(cancellationToken);
@@ -53,7 +57,13 @@ internal sealed class ProcessVnPayIpnCommandHandler : IRequestHandler<ProcessVnP
         var topup = await _context.LockTopupByReferenceAsync(txnRef, cancellationToken);
         if (topup is null)
         {
-            return new VnPayIpnResponse("01", "Order not found");
+            return await ProcessDirectPaymentIpnAsync(
+                txnRef,
+                responseCode,
+                parsedAmount,
+                request,
+                dbTransaction,
+                cancellationToken);
         }
 
         if (topup.Status != TopupStatus.Pending)
@@ -61,9 +71,9 @@ internal sealed class ProcessVnPayIpnCommandHandler : IRequestHandler<ProcessVnP
             return new VnPayIpnResponse("02", "Order already processed");
         }
 
-        if (topup.Amount * 100 != parsedAmount)
+        if (topup.Amount * 100m != parsedAmount)
         {
-            return new VnPayIpnResponse("04", "Invalid amount");
+            return new VnPayIpnResponse("04", "Invalid amount or currency");
         }
 
         if (responseCode == "00")
@@ -114,5 +124,68 @@ internal sealed class ProcessVnPayIpnCommandHandler : IRequestHandler<ProcessVnP
         await dbTransaction.CommitAsync(cancellationToken);
 
         return new VnPayIpnResponse("00", "Success");
+    }
+
+    private async Task<VnPayIpnResponse> ProcessDirectPaymentIpnAsync(
+        string transactionReference,
+        string responseCode,
+        long parsedAmount,
+        ProcessVnPayIpnCommand request,
+        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction dbTransaction,
+        CancellationToken cancellationToken)
+    {
+        var directPayment = await _context.LockDirectPaymentOrderByReferenceAsync(
+            transactionReference,
+            cancellationToken);
+        if (directPayment is null)
+            return new VnPayIpnResponse("01", "Order not found");
+
+        if (directPayment.Status != TopupStatus.Pending)
+            return new VnPayIpnResponse("02", "Order already processed");
+
+        if (directPayment.Amount * 100m != parsedAmount)
+            return new VnPayIpnResponse("04", "Invalid amount or currency");
+
+        var transaction = await _context.WalletTransactions.SingleOrDefaultAsync(
+            item => item.ReferenceId == directPayment.OrderId &&
+                    item.Type == WalletTransactionType.DirectGatewayPayment,
+            cancellationToken);
+        if (transaction is null || transaction.Status != TransactionStatus.Pending)
+            return new VnPayIpnResponse("01", "Order not found");
+
+        var providerTransactionNo = GetParameter(request.Parameters, "vnp_TransactionNo");
+        var oldStatus = directPayment.Status;
+        directPayment.Status = responseCode == "00" ? TopupStatus.Success : TopupStatus.Failed;
+        directPayment.VnpTransactionNo = providerTransactionNo;
+        directPayment.RawResponse = JsonSerializer.Serialize(request.Parameters);
+        transaction.Status = responseCode == "00" ? TransactionStatus.Success : TransactionStatus.Failed;
+        transaction.UpdatedAt = DateTimeOffset.UtcNow;
+
+        _context.AddAuditLog(
+            action: responseCode == "00" ? AuditAction.DirectPaymentSuccess : AuditAction.DirectPaymentFail,
+            entityName: nameof(DirectPaymentOrder),
+            entityId: directPayment.Id.ToString(),
+            oldValues: new { Status = oldStatus },
+            newValues: new
+            {
+                directPayment.OrderId,
+                directPayment.VnpTxnRef,
+                directPayment.VnpTransactionNo,
+                DirectPaymentStatus = directPayment.Status,
+                TransactionStatus = transaction.Status
+            },
+            userId: transaction.UserId);
+
+        await _context.SaveChangesAsync(cancellationToken);
+        await dbTransaction.CommitAsync(cancellationToken);
+        return new VnPayIpnResponse("00", "Success");
+    }
+
+    private static string? GetParameter(IReadOnlyDictionary<string, string> parameters, string key)
+    {
+        return parameters.TryGetValue(key, out var value)
+            ? value
+            : parameters.FirstOrDefault(parameter =>
+                parameter.Key.Equals(key, System.StringComparison.OrdinalIgnoreCase)).Value;
     }
 }

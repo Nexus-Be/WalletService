@@ -25,6 +25,7 @@ public sealed class TestWalletDbContext : IWalletDbContext, IDisposable
     public DbSet<WalletTransaction> WalletTransactions => _inner.WalletTransactions;
     public DbSet<BankAccount> BankAccounts => _inner.BankAccounts;
     public DbSet<WalletTopup> WalletTopups => _inner.WalletTopups;
+    public DbSet<DirectPaymentOrder> DirectPaymentOrders => _inner.DirectPaymentOrders;
     public DbSet<VnpayIpnLog> VnpayIpnLogs => _inner.VnpayIpnLogs;
     public DbSet<WithdrawalRequest> WithdrawalRequests => _inner.WithdrawalRequests;
     public DbSet<AuditLog> AuditLogs => _inner.AuditLogs;
@@ -38,6 +39,13 @@ public sealed class TestWalletDbContext : IWalletDbContext, IDisposable
 
     public Task<WalletTopup?> LockTopupByReferenceAsync(string transactionReference, CancellationToken cancellationToken)
         => _inner.WalletTopups.SingleOrDefaultAsync(t => t.VnpTxnRef == transactionReference, cancellationToken);
+
+    public Task<DirectPaymentOrder?> LockDirectPaymentOrderByReferenceAsync(
+        string transactionReference,
+        CancellationToken cancellationToken)
+        => _inner.DirectPaymentOrders.SingleOrDefaultAsync(
+            order => order.VnpTxnRef == transactionReference,
+            cancellationToken);
 
     public Task<WithdrawalRequest?> LockWithdrawalRequestAsync(Guid withdrawalId, CancellationToken cancellationToken)
         => _inner.WithdrawalRequests.SingleOrDefaultAsync(r => r.Id == withdrawalId, cancellationToken);

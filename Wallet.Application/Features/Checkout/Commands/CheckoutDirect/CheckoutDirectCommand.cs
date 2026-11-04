@@ -10,14 +10,15 @@ public sealed record CheckoutDirectCommand(
     string OrderId,
     [Range(0.01, double.MaxValue, ErrorMessage = "Amount must be greater than zero.")]
     decimal Amount,
-    [Required(ErrorMessage = "Gateway is required.")]
-    string Gateway,
     string? BankCode = null,
     [Required(ErrorMessage = "Return URL is required.")]
     string ReturnUrl = "") : IRequest<DirectPaymentResponse>
 {
     [JsonIgnore]
     public string UserId { get; init; } = string.Empty;
+
+    [JsonIgnore]
+    public string ClientIp { get; init; } = "127.0.0.1";
 }
 
 public sealed record DirectPaymentResponse(

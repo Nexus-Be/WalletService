@@ -68,7 +68,8 @@ public class WalletContractRegressionTests
     [Fact]
     public async Task GetWallet_Missing_CreatesWalletWithPascalCaseStatusAndAudit()
     {
-        using var context = new TestWalletDbContext(nameof(GetWallet_Missing_CreatesWalletWithPascalCaseStatusAndAudit));
+        using var context =
+            new TestWalletDbContext(nameof(GetWallet_Missing_CreatesWalletWithPascalCaseStatusAndAudit));
         var userId = Guid.NewGuid();
         var handler = new GetMyWalletQueryHandler(context, new TestSender(context));
 
@@ -102,7 +103,8 @@ public class WalletContractRegressionTests
     [Fact]
     public async Task ProcessWithdrawal_UnknownAction_IsRejectedWithoutSideEffects()
     {
-        using var context = new TestWalletDbContext(nameof(ProcessWithdrawal_UnknownAction_IsRejectedWithoutSideEffects));
+        using var context =
+            new TestWalletDbContext(nameof(ProcessWithdrawal_UnknownAction_IsRejectedWithoutSideEffects));
         var wallet = AddWallet(context, balance: 500_000m, lockedBalance: 100_000m);
         var withdrawal = AddWithdrawal(context, wallet, 100_000m);
 
@@ -170,10 +172,10 @@ public class WalletContractRegressionTests
         using var context = new TestWalletDbContext(nameof(Checkout_MalformedOrderId_Returns400ValidationError));
         var wallet = AddWallet(context, balance: 500_000m);
         var transactionsBefore = context.WalletTransactions.Count();
-        var handler = new CheckoutDirectCommandHandler(context, new FakeDirectPaymentGateway());
+        var handler = new CheckoutDirectCommandHandler(context, new FakeVnPayService());
 
         var exception = await Assert.ThrowsAsync<BusinessRuleValidationException>(() => handler.Handle(
-            new CheckoutDirectCommand("not-a-guid", 80_000m, "VNPAY", null, "https://return.test")
+            new CheckoutDirectCommand("not-a-guid", 80_000m, null, "https://return.test")
             {
                 UserId = wallet.UserId.ToString()
             },
@@ -189,10 +191,10 @@ public class WalletContractRegressionTests
     {
         using var context = new TestWalletDbContext(nameof(Checkout_NewOrder_ReturnsPascalCaseStatus));
         var wallet = AddWallet(context, balance: 500_000m);
-        var handler = new CheckoutDirectCommandHandler(context, new FakeDirectPaymentGateway());
+        var handler = new CheckoutDirectCommandHandler(context, new FakeVnPayService());
 
         var result = await handler.Handle(
-            new CheckoutDirectCommand(Guid.NewGuid().ToString(), 80_000m, "VNPAY", null, "https://return.test")
+            new CheckoutDirectCommand(Guid.NewGuid().ToString(), 80_000m, null, "https://return.test")
             {
                 UserId = wallet.UserId.ToString()
             },
@@ -215,7 +217,8 @@ public class WalletContractRegressionTests
             {
                 ["vnp_TxnRef"] = "TOPUP-UNKNOWN",
                 ["vnp_ResponseCode"] = "00",
-                ["vnp_Amount"] = "1000000"
+                ["vnp_Amount"] = "1000000",
+                ["vnp_CurrCode"] = "VND"
             }),
             default);
 
@@ -247,19 +250,22 @@ public class WalletContractRegressionTests
             {
                 ["vnp_TxnRef"] = "TOPUP-MISSING-WALLET",
                 ["vnp_ResponseCode"] = "00",
-                ["vnp_Amount"] = "5000000"
+                ["vnp_Amount"] = "5000000",
+                ["vnp_CurrCode"] = "VND"
             }),
             default);
 
         Assert.Equal("01", result.ResponseCode);
-        Assert.Equal(TopupStatus.Pending, context.WalletTopups.Single(t => t.VnpTxnRef == "TOPUP-MISSING-WALLET").Status);
+        Assert.Equal(TopupStatus.Pending,
+            context.WalletTopups.Single(t => t.VnpTxnRef == "TOPUP-MISSING-WALLET").Status);
         Assert.DoesNotContain(context.WalletTransactions, t => t.ReferenceId == topup.Id);
     }
 
     [Fact]
     public async Task ProcessVnPayIpn_AmountMismatch_Returns04AndKeepsTopupPending()
     {
-        using var context = new TestWalletDbContext(nameof(ProcessVnPayIpn_AmountMismatch_Returns04AndKeepsTopupPending));
+        using var context =
+            new TestWalletDbContext(nameof(ProcessVnPayIpn_AmountMismatch_Returns04AndKeepsTopupPending));
         var wallet = AddWallet(context, balance: 0m);
         var topup = new WalletTopup
         {
@@ -282,7 +288,8 @@ public class WalletContractRegressionTests
             {
                 ["vnp_TxnRef"] = "TOPUP-MISMATCH",
                 ["vnp_ResponseCode"] = "00",
-                ["vnp_Amount"] = "1"
+                ["vnp_Amount"] = "1",
+                ["vnp_CurrCode"] = "VND"
             }),
             default);
 
@@ -317,7 +324,8 @@ public class WalletContractRegressionTests
             {
                 ["vnp_TxnRef"] = "TOPUP-FAILED",
                 ["vnp_ResponseCode"] = "24",
-                ["vnp_Amount"] = "5000000"
+                ["vnp_Amount"] = "5000000",
+                ["vnp_CurrCode"] = "VND"
             }),
             default);
 

@@ -1,8 +1,8 @@
 # 00 — NHIỆM VỤ CỐT LÕI & RÀO CHẮN CHỐNG ẢO GIÁC (WALLET SERVICE)
 
-> **Trạng thái triển khai (2026-10-31):** ✅ CLASSIC CQRS — 11 use case (8 Command, 3 Query) trong `Wallet.Application/Features/`, 3 thin controller inject `ISender`, 53 test pass. Không còn gRPC, MassTransit, consumer, Outbox/Inbox.
+> **Trạng thái triển khai (2026-11-03):** ✅ CLASSIC CQRS — 11 use case (8 Command, 3 Query) trong `Wallet.Application/Features/`, 2 thin controller inject `ISender`, 80 tests pass. Không còn gRPC, MassTransit, consumer, Outbox/Inbox.
 > **Nguồn sự thật:** code (`Wallet.Api/Controllers/Public/WalletsController.cs`, `Wallet.Application/Features/`, `Wallet.Infrastructure/Persistence/WalletDbContext.cs`).
-> **Cập nhật lần cuối:** 2026-10-31.
+> **Cập nhật lần cuối:** 2026-11-03.
 > **ĐÓNG BĂNG:** chạy `./scripts/verify-wallet-architecture.sh` trước khi sửa.
 
 ---
@@ -20,7 +20,7 @@
 | 5 | Chuyển tiền nội bộ giữa hai ví | ✅ | `Features/Transfers/Commands/Transfer/TransferCommandHandler.cs` |
 | 6 | Thanh toán trực tiếp cho đơn hàng (idempotent theo `OrderId`) | ✅ | `Features/Checkout/Commands/CheckoutDirect/CheckoutDirectCommandHandler.cs` |
 | 7 | Duyệt / từ chối yêu cầu rút tiền, điều chỉnh số dư thủ công | ✅ | `Features/AdminWallets/Commands/` |
-| 8 | Endpoint tạo yêu cầu rút tiền cho người dùng | ⚠️ BỊ VÔ HIỆU | `Features/Withdrawals/Commands/RequestWithdrawal/RequestWithdrawalCommandHandler.cs` luôn ném `BUSINESS_RULE_VIOLATION` |
+| 8 | Tạo yêu cầu rút tiền và khóa số dư khả dụng | ⚠️ MỘT PHẦN | `Features/Withdrawals/Commands/RequestWithdrawal/RequestWithdrawalCommandHandler.cs`; chưa tích hợp xác minh Seller hoặc chuyển tiền ra ngân hàng |
 | 9 | Quản lý tài khoản ngân hàng liên kết (`BankAccount`) | ⚠️ CHỈ CÓ ENTITY | `Wallet.Domain/Entities/BankAccount.cs`; chưa có API đọc/ghi |
 | 10 | Ghi vết kiểm toán (`AuditLog`) qua `AddAuditLog(...)` | ✅ | `Wallet.Application/Common/Extensions/AuditLogExtensions.cs` |
 | 11 | gRPC server, MassTransit consumer, Saga, Outbox/Inbox | 🛑 ĐÃ XÓA | không còn file/thư mục tương ứng |
@@ -48,7 +48,7 @@
 |:--|:---|:---:|:---|
 | 1 | Kiến trúc CQRS nguyên vẹn | ✅ | `./scripts/verify-wallet-architecture.sh` |
 | 2 | Build Release 0 error | ✅ | `dotnet build Wallet.sln -c Release` |
-| 3 | Test pass 100% | ✅ | `Wallet.Tests` (53 tests) |
+| 3 | Test pass 100% | ✅ | `Wallet.Tests` (80 tests) |
 | 4 | Không có liên kết trỏ ra ngoài repo | ✅ | toàn bộ `*.md` dùng đường dẫn nội bộ |
 | 5 | Không commit secret hay file rác | ✅ | `.gitignore`, không có `bin/`, `obj/` trong git |
 

@@ -10,5 +10,8 @@ public enum AuditAction
     WithdrawalApprove = 5,
     WithdrawalReject = 6,
     WithdrawalComplete = 7,
-    BalanceAdjustment = 8
+    BalanceAdjustment = 8,
+    DirectPaymentRequest = 9,
+    DirectPaymentSuccess = 10,
+    DirectPaymentFail = 11
 }
