@@ -37,6 +37,9 @@ public static class DependencyInjection
         services.AddSingleton<IVnPayService, VnPayService>();
         services.AddSingleton<IDirectPaymentGateway, ConfiguredDirectPaymentGateway>();
 
+        // Identity propagation delegating handler for outgoing inter-service HTTP requests
+        services.AddTransient<Services.Common.IdentityPropagationHandler>();
+
         return services;
     }
 
