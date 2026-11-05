@@ -10,7 +10,7 @@
 ## 1. DANH MỤC ENDPOINTS RESTFUL CHÍNH THỨC
 
 ### 1.1. Khách hàng (`WalletsController` — `/api/v1/wallets`)
-* `GET /api/v1/wallets/me` → `GetMyWalletQuery` → `GetMyWalletQueryHandler` (read-only; khi chưa có ví thì gửi `EnsureWalletCommand` → `EnsureWalletCommandHandler` tạo ví 0 đồng + `AuditLog` `WalletCreate`).
+* `GET /api/v1/wallets/me` → `GetMyWalletQuery` → `GetMyWalletQueryHandler` (read-only; khi chưa có ví thì gửi `EnsureWalletCommand` → `EnsureWalletCommandHandler` tạo ví 0 đồng + `AuditLog` `WalletCreate`; Swagger hiển thị `x-user-id` header parameter).
 * `POST /api/v1/wallets/topups/vnpay` → `TopupVnPayCommand` → `TopupVnPayCommandHandler` (HTTP 201).
 * `POST /api/v1/wallets/withdrawals` → `RequestWithdrawalCommand` → `RequestWithdrawalCommandHandler` (HTTP 201; tạo yêu cầu Pending và khóa số dư khả dụng; không khởi tạo chuyển khoản ngân hàng).
 * `POST /api/v1/wallets/transfers` → `TransferCommand` → `TransferCommandHandler`.

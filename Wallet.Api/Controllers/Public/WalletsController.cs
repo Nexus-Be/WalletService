@@ -35,10 +35,14 @@ public sealed class WalletsController : ControllerBase
         _logger = logger;
     }
 
-    /// <summary>Gets own wallet account and balance.</summary>
+    /// <summary>Gets the authenticated user's wallet account and balance.</summary>
+    /// <param name="userIdHeader">User ID forwarded in the x-user-id header.</param>
+    /// <param name="cancellationToken">Token used to cancel the request.</param>
     [HttpGet("me")]
     [RequireRole]
-    public async Task<IActionResult> GetMyWallet(CancellationToken cancellationToken)
+    public async Task<IActionResult> GetMyWallet(
+        [FromHeader(Name = "x-user-id")] string? userIdHeader,
+        CancellationToken cancellationToken)
     {
         if (!this.TryGetUserId(out var userGuid, out var authError))
         {

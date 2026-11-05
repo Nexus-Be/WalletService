@@ -39,6 +39,11 @@ Admin routes also require an authorized `x-user-roles` value (`admin` or `staff`
 
 ### Get the current user's wallet
 
+In Swagger, use the `x-user-id` header parameter to test the forwarded user
+identity. The API still resolves the authenticated identity from claims or the
+trusted gateway header; the header is not a way to select another user's
+wallet.
+
 ```http
 GET /api/v1/wallets/me
 x-user-id: 11111111-1111-1111-1111-111111111111
