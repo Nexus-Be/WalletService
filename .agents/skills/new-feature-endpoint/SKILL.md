@@ -84,7 +84,9 @@ description: Add or change a REST endpoint in WalletService (port 8008). Use whe
 - [ ] Action builds the command or query and calls `_sender.Send(...)`.
 - [ ] Server-filled fields (`UserId`, `AdminUserId`, `ClientIp`) are `[JsonIgnore]` and injected with `command with { ... }`.
 - [ ] One route attribute per action and one-line XML `<summary>`.
-- [ ] Identity comes from `this.TryGetUserId(...)`; admin actions use the role filter.
+- [ ] Caller identity and roles: `UserContextMiddleware` automatically decodes gateway headers into `HttpContext.User`.
+  - Identity comes from `this.TryGetUserId(out var userId, out var authError)` (returns HTTP 401 ProblemDetails if unauthenticated).
+  - Admin actions use `[RequireRole("admin", "staff")]` or `this.HasRole(...)`.
 - [ ] DTOs are returned directly; delete returns `NoContent()`.
 - [ ] No `ResultFilter`, no manual envelope, no business branching in the controller.
 

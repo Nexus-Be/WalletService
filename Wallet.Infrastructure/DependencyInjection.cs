@@ -36,6 +36,9 @@ public static class DependencyInjection
         services.AddScoped<IWalletDbContext>(sp => sp.GetRequiredService<WalletDbContext>());
         services.AddSingleton<IVnPayService, VnPayService>();
 
+        // Identity propagation delegating handler for outgoing inter-service HTTP requests
+        services.AddTransient<Services.Common.IdentityPropagationHandler>();
+
         return services;
     }
 
