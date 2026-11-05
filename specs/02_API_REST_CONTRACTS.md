@@ -30,10 +30,11 @@
 ## 2. PHONG BÌ DỮ LIỆU VÀ MÃ LỖI CHUẨN
 
 * Service trả payload DTO trực tiếp; API Gateway bọc thành `ApiResponse<T>` hoặc `ApiResponse<PagedData<T>>`.
-* Mã lỗi chuẩn `SCREAMING_SNAKE_CASE`: `WALLET_NOT_FOUND`, `INSUFFICIENT_BALANCE`, `BUSINESS_RULE_VIOLATION`, `VAL_INVALID_INPUT`, `VAL_INVALID_ARGUMENT`, `VAL_INVALID_USER_ID`, `VAL_INVALID_ORDER_ID`, `VAL_INVALID_ACTION`, `VAL_INVALID_ADJUSTMENT_TYPE`, `UNAUTHORIZED`, `FORBIDDEN`.
+* Mã lỗi chuẩn `SCREAMING_SNAKE_CASE`: `WALLET_NOT_FOUND`, `INSUFFICIENT_BALANCE`, `BUSINESS_RULE_VIOLATION`, `VAL_INVALID_INPUT`, `VAL_INVALID_SIGNATURE`, `UNAUTHORIZED`, `FORBIDDEN`.
 * Enum/status trả ra API luôn PascalCase: `TransactionStatus.ToString()`, `WithdrawalStatus.ToString()`, `TopupStatus.ToString()`, và `WalletAccount.Status` được chuẩn hóa qua `StatusTextExtensions.ToApiStatus()` (`"ACTIVE"` → `"Active"`). Cấm `ToUpperInvariant()` trong response.
 * Input enum (`action`, `adjustmentType`) parse qua `EnumExtensions.TryToEnum<T>()`, từ chối số nguyên thô và giá trị không định nghĩa.
 * Thông báo lỗi 100% tiếng Anh, sentence case.
+* Lỗi model-binding và MediatR validation dùng chung `application/problem+json` với `type`, `title`, `status`, `errorCode`, `detail`, `errors`, `traceId`, `timestamp`; `errors` nhóm thông báo tiếng Anh theo tên trường.
 * Trường do server điền (`userId`, `adminUserId`, `clientIp`) không nhận từ JSON body; controller tự bơm từ header `x-user-id` hoặc connection.
 
 ---

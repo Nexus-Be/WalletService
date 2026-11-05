@@ -66,6 +66,24 @@ dotnet test Wallet.sln -c Release
 
 The architecture script checks that MediatR remains wired, all 11 handlers remain under `Wallet.Application/Features`, and the two expected controllers remain in place.
 
+## Spec-driven feature workflow
+
+Spec Kit is pinned to v1.2.6 and initialized with the GitHub Copilot skills.
+Install the CLI on a development machine with `uv` and Python 3.11 or newer:
+
+```bash
+uv tool install specify-cli --from git+https://github.com/github/spec-kit.git@v1.2.6
+```
+
+In the Copilot chat, use `/speckit-specify`, `/speckit-clarify` when needed,
+`/speckit-plan`, `/speckit-tasks`, `/speckit-analyze`,
+`/speckit-implement`, and `/speckit-converge`. Review and approve the plan
+before implementation. Keep the required session plan under `.agents/plan/`
+and link it to the feature artifacts under `specs/[###-feature-name]/`.
+Endpoint changes must still follow
+`.agents/skills/new-feature-endpoint/SKILL.md`; project-specific principles
+and template overrides are in `.specify/`.
+
 ## Implemented behavior and limitations
 
 | Capability | Current behavior |

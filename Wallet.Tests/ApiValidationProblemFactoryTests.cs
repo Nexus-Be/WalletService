@@ -1,12 +1,19 @@
 namespace Wallet.Tests;
 
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Text.Json;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Logging.Abstractions;
 using Wallet.Api.Common;
+using Wallet.Api.Middleware;
+using Wallet.Application.Common.Exceptions;
 using Xunit;
 
 public sealed class ApiValidationProblemFactoryTests
@@ -50,6 +57,59 @@ public sealed class ApiValidationProblemFactoryTests
         Assert.Equal(ApiValidationProblemFactory.UnreadableBodyDetail, detail);
         Assert.DoesNotContain("Wallet.Tests", detail);
         Assert.DoesNotContain("LineNumber", detail);
+    }
+
+    [Fact]
+    public async Task ModelBindingAndPipelineValidation_UseTheSameProblemDetailsShape()
+    {
+        var modelState = CreateActionContext();
+        modelState.ModelState.AddModelError("Amount", "Amount must be greater than zero.");
+        var mvcResult = Assert.IsType<ObjectResult>(ApiValidationProblemFactory.Create(modelState));
+        var mvcJson = JsonSerializer.Serialize(mvcResult.Value);
+
+        var errors = new Dictionary<string, string[]>
+        {
+            ["Amount"] = ["Amount must be greater than zero."]
+        };
+        var validationException = new RequestValidationException(
+            "Amount must be greater than zero.",
+            errors);
+        var context = new DefaultHttpContext();
+        context.TraceIdentifier = "validation-test-trace";
+        context.Response.Body = new MemoryStream();
+        var middleware = new GlobalExceptionHandlerMiddleware(
+            _ => Task.FromException(validationException),
+            NullLogger<GlobalExceptionHandlerMiddleware>.Instance);
+
+        await middleware.InvokeAsync(context);
+        context.Response.Body.Position = 0;
+        var middlewareJson = await new StreamReader(context.Response.Body).ReadToEndAsync();
+
+        using var mvcDocument = JsonDocument.Parse(mvcJson);
+        using var middlewareDocument = JsonDocument.Parse(middlewareJson);
+        var mvcRoot = mvcDocument.RootElement;
+        var middlewareRoot = middlewareDocument.RootElement;
+        var expectedFields = new[]
+        {
+            "type", "title", "status", "errorCode", "detail", "errors", "traceId", "timestamp"
+        };
+
+        Assert.Contains("application/problem+json", mvcResult.ContentTypes);
+        Assert.Equal("application/problem+json", context.Response.ContentType);
+        Assert.Equal(
+            expectedFields.OrderBy(field => field),
+            mvcRoot.EnumerateObject().Select(property => property.Name).OrderBy(field => field));
+        Assert.Equal(
+            expectedFields.OrderBy(field => field),
+            middlewareRoot.EnumerateObject().Select(property => property.Name).OrderBy(field => field));
+        Assert.Equal(mvcRoot.GetProperty("type").GetString(), middlewareRoot.GetProperty("type").GetString());
+        Assert.Equal(mvcRoot.GetProperty("title").GetString(), middlewareRoot.GetProperty("title").GetString());
+        Assert.Equal(mvcRoot.GetProperty("status").GetInt32(), middlewareRoot.GetProperty("status").GetInt32());
+        Assert.Equal(mvcRoot.GetProperty("errorCode").GetString(), middlewareRoot.GetProperty("errorCode").GetString());
+        Assert.Equal(mvcRoot.GetProperty("detail").GetString(), middlewareRoot.GetProperty("detail").GetString());
+        Assert.Equal(
+            mvcRoot.GetProperty("errors").GetProperty("Amount")[0].GetString(),
+            middlewareRoot.GetProperty("errors").GetProperty("Amount")[0].GetString());
     }
 
     private static ActionContext CreateActionContext() =>

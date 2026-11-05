@@ -84,6 +84,18 @@ Nếu một tool/agent đề xuất feature service, controller theo tài nguyê
 
 Before adding or changing any REST endpoint, follow the local checklist at `.agents/skills/new-feature-endpoint/SKILL.md`. It covers contract, persistence, Application, Api, tests, documentation handoff, and verification. This repository is Inward-Only, so the checklist is self-contained.
 
+## Spec Kit Workflow
+
+Spec Kit is initialized for GitHub Copilot in `.github/skills/`. For a feature
+or multi-file change, follow `.agents/AGENTS.md` and
+`.specify/memory/constitution.md`: specify the bounded change, clarify
+ambiguities, create and present the plan for approval, generate tasks, analyze
+the artifacts, implement only after approval, then converge until no gaps
+remain. Keep the mandatory session plan in `.agents/plan/` and link it to the
+feature plan under `specs/[###-feature-name]/`. Spec Kit supplements, but never
+replaces, the endpoint checklist, GitNexus impact requirement, frozen
+architecture, or repository verification gates.
+
 ---
 
 ## 🛑 NGUYÊN TẮC 1: BẮT BUỘC LẬP KẾ HOẠCH TRƯỚC KHI HÀNH ĐỘNG (PLAN-FIRST RULE)

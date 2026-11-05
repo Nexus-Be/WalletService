@@ -5,7 +5,7 @@
 > **Protocol:** REST over HTTP/JSON
 > **Status:** Routes below are implemented by this repository. Gateway routing and end-to-end service integration are not verified here.
 
-This contract reflects `Wallet.Api/Controllers/Public/WalletsController.cs` and `AdminWalletsController.cs`. Broader ecosystem proposals are kept separately in [`../../api/B_NONE/09_WALLET_PAYMENTS_API.md`](../../api/B_NONE/09_WALLET_PAYMENTS_API.md).
+This contract reflects `Wallet.Api/Controllers/Public/WalletsController.cs` and `AdminWalletsController.cs`. It documents only behavior implemented in this repository.
 
 ## Important deployment note
 
@@ -75,7 +75,7 @@ Content-Type: application/json
 }
 ```
 
-`amount` must be between VND 10,000 and VND 100,000,000. Currency and payment method default to `VND` and `VNPAY`; the bank code and return URL are optional.
+`amount` must be between VND 10,000 and VND 100,000,000 and fit the persisted `decimal(18,2)` precision. Currency and payment method default to `VND` and `VNPAY`; when provided, only `VND` and `VNPAY` are accepted. The bank code and return URL are optional.
 
 **`201 Created`**
 
@@ -127,7 +127,7 @@ GET /api/v1/wallets/transactions?page=1&pageSize=10&type=DEPOSIT&fromDate=2026-1
 x-user-id: 11111111-1111-1111-1111-111111111111
 ```
 
-All query parameters are optional. `page` defaults to `1`; `pageSize` defaults to `10`, and values outside `1..100` are reset to `20`. `fromDate` and `toDate` are optional ISO-8601 timestamps. `type` accepts `ALL`, `DEPOSIT`, `WITHDRAWAL`, `PAYMENT`, `REFUND`, or a `WalletTransactionType` enum name. An invalid type returns a validation error.
+All query parameters are optional. `page` defaults to `1`; `pageSize` defaults to `10`. `page` must be at least `1`, and `pageSize` must be between `1` and `100`; out-of-range values return `400 VAL_INVALID_INPUT`. `fromDate` and `toDate` are optional ISO-8601 timestamps, and `fromDate` must not be later than `toDate`. `type` accepts `ALL`, `DEPOSIT`, `WITHDRAWAL`, `PAYMENT`, `REFUND`, or a defined `WalletTransactionType` name. An invalid type returns a validation error.
 
 **`200 OK`**
 
@@ -174,7 +174,7 @@ Content-Type: application/json
 }
 ```
 
-`amount` must be between VND 50,000 and VND 500,000,000. `currency` defaults to `VND` and no other currency is accepted. `bankCode`, `accountNumber`, and `accountHolderName` are required. The request reserves the amount from the wallet's available balance; it does not debit the wallet balance or initiate a bank payout. The current fee is `0`.
+`amount` must be between VND 50,000 and VND 500,000,000 and fit the persisted `decimal(18,2)` precision. `currency` defaults to `VND` and no other currency is accepted. `bankCode`, `accountNumber`, and `accountHolderName` are required, with maximum lengths of 150, 100, and 255 characters respectively. The request reserves the amount from the wallet's available balance; it does not debit the wallet balance or initiate a bank payout. The current fee is `0`.
 
 **`201 Created`**
 
@@ -239,7 +239,7 @@ Content-Type: application/json
 }
 ```
 
-`orderId` must be a UUID. The wallet must use VND, the amount must be a positive whole-VND value, and `returnUrl` must be absolute HTTPS. The service creates a pending `DirectPaymentOrder` and `DirectGatewayPayment` transaction, then returns a signed VNPay URL:
+`orderId` must be a non-empty UUID. The wallet must use VND, the amount must be a positive whole-VND value within the persisted `decimal(18,2)` precision, and `returnUrl` must be absolute HTTPS. The service creates a pending `DirectPaymentOrder` and `DirectGatewayPayment` transaction, then returns a signed VNPay URL:
 
 ```json
 {
@@ -293,6 +293,23 @@ Content-Type: application/json
 
 ## Errors and operational notes
 
-Validation and business-rule errors use `application/problem+json` with fields such as `status`, `errorCode`, `detail`, and `traceId`. Common status codes are `400` for invalid input or business rules, `401` when user identity is missing, `403` for missing admin/staff role, and `404` for missing wallets/resources. Exact error codes and details depend on the failing operation. VNPay IPN acknowledgements are provider response objects, not Problem Details.
+Validation and business-rule errors use `application/problem+json`. Invalid request and model-binding responses contain `type`, `title`, `status`, `errorCode`, `detail`, `errors`, `traceId`, and `timestamp`; `errorCode` is `VAL_INVALID_INPUT`, and `errors` maps field names to arrays of messages.
+
+```json
+{
+  "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+  "title": "One or more validation errors occurred.",
+  "status": 400,
+  "errorCode": "VAL_INVALID_INPUT",
+  "detail": "Amount must be greater than zero.",
+  "errors": {
+    "Amount": ["Amount must be greater than zero."]
+  },
+  "traceId": "request-trace-id",
+  "timestamp": "2026-11-03T08:00:00Z"
+}
+```
+
+Common status codes are `400` for invalid input or business rules, `401` when user identity is missing, `403` for missing admin/staff role, and `404` for missing wallets/resources. Exact business error codes and details depend on the failing operation. VNPay IPN acknowledgements are provider response objects, not Problem Details.
 
 The service applies EF Core migrations at startup. Review database state and backups before connecting it to a shared database. VNPay routes require configured merchant credentials and callback URLs. This repository does not include the API Gateway or Commerce service, so their routing, authentication boundary, and end-to-end checkout behavior remain to be verified.

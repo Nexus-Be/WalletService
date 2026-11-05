@@ -15,6 +15,28 @@ Every AI Coding Agent working inside WalletService must strictly comply with the
 ## Endpoint Workflow
 Before adding or changing an endpoint, follow `.agents/skills/new-feature-endpoint/SKILL.md`.
 
+## Spec Kit Workflow
+Spec Kit is installed with the GitHub Copilot integration. For a new feature or
+multi-file change, use the `/speckit-*` skills and the project constitution at
+`.specify/memory/constitution.md`:
+
+1. `/speckit-specify` the bounded change; resolve ambiguity with
+   `/speckit-clarify` when needed.
+2. `/speckit-plan` and record the mandatory user-visible plan under
+   `.agents/plan/PLAN-YYYYMMDD-HHMM-<NAME>.md`, linking to the Spec Kit plan in
+   `specs/[###-feature-name]/plan.md`.
+3. Present the plan for approval before code edits. Include file context,
+   GitNexus upstream impact/risk, implementation steps, and verification.
+4. Generate tasks with `/speckit-tasks`; run `/speckit-analyze` before
+   `/speckit-implement`; finish with `/speckit-converge` and address remaining
+   tasks.
+
+Spec Kit does not replace the endpoint checklist, frozen architecture, or
+verification gates below. Use the existing two controllers and CQRS handlers;
+do not accept generated service/repository abstractions or optional tests.
+Keep feature artifacts in `specs/[###-feature-name]/`, separate from the
+numbered service-level documents.
+
 ## Verification Checklist
 - `./scripts/verify-wallet-architecture.sh` must print `OK: Wallet CQRS architecture is intact`.
 - `dotnet build Wallet.sln -c Release` must succeed with 0 errors.

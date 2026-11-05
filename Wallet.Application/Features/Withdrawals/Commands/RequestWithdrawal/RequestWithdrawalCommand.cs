@@ -1,12 +1,15 @@
 namespace Wallet.Application.Features.Withdrawals.Commands.RequestWithdrawal;
 
 using System;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
 using MediatR;
+using Wallet.Application.Common.Validation;
 
 public sealed record RequestWithdrawalCommand(
     [Range(50000, 500000000, ErrorMessage = "Withdrawal amount must be between 50,000 and 500,000,000 VND.")]
+    [MoneyPrecision]
     decimal Amount,
     [Required(ErrorMessage = "Currency is required.")]
     [RegularExpression("^(?i:VND)$", ErrorMessage = "Currency must be VND.")]
@@ -19,10 +22,18 @@ public sealed record RequestWithdrawalCommand(
     string AccountNumber = "",
     [Required(ErrorMessage = "Account holder name is required.")]
     [StringLength(255, ErrorMessage = "Account holder name cannot exceed 255 characters.")]
-    string AccountHolderName = "") : IRequest<WithdrawalResponse>
+    string AccountHolderName = "") : IRequest<WithdrawalResponse>, IRequestValidation
 {
-    [JsonIgnore]
-    public string UserId { get; init; } = string.Empty;
+    [JsonIgnore] public string UserId { get; init; } = string.Empty;
+
+    public IEnumerable<ValidationResult> ValidateRequest()
+    {
+        var userIdError = RequestValidation.ValidateGuid(UserId, nameof(UserId), "User ID");
+        if (userIdError is not null)
+        {
+            yield return userIdError;
+        }
+    }
 }
 
 public sealed record WithdrawalResponse(

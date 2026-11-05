@@ -126,9 +126,6 @@ public sealed class WalletsController : ControllerBase
             return authError;
         }
 
-        if (page < 1) page = 1;
-        if (pageSize < 1 || pageSize > 100) pageSize = 20;
-
         _logger.LogInformation("Querying transactions for user: '{UserId}', page: {Page}", userGuid, page);
         var result = await _sender.Send(
             new ListTransactionsQuery(page, pageSize, type, fromDate, toDate) { UserId = userGuid.ToString() },

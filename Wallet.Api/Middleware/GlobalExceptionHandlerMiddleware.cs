@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using Wallet.Api.Common;
 using Wallet.Application.Common.Exceptions;
 using Wallet.Domain.Exceptions;
 
@@ -39,7 +40,7 @@ public sealed class GlobalExceptionHandlerMiddleware
             RequestValidationException rve => (
                 rve.StatusCode,
                 rve.ErrorCode,
-                GetStatusTitle(rve.StatusCode, "Validation failed"),
+                GetStatusTitle(rve.StatusCode, ApiValidationProblemFactory.GenericDetail),
                 rve.Message),
             WalletNotFoundException wnfe => (
                 wnfe.StatusCode,
@@ -80,41 +81,31 @@ public sealed class GlobalExceptionHandlerMiddleware
 
         if (statusCode >= 500)
         {
-            _logger.LogError(exception, "[ERROR {ErrorCode}] {Title}: {Detail}. Trace: {TraceId}", errorCode, title, detail, traceId);
+            _logger.LogError(exception, "[ERROR {ErrorCode}] {Title}: {Detail}. Trace: {TraceId}", errorCode, title,
+                detail, traceId);
         }
         else
         {
-            _logger.LogWarning("[WARN {ErrorCode}] {Title}: {Detail}. Trace: {TraceId}", errorCode, title, detail, traceId);
+            _logger.LogWarning("[WARN {ErrorCode}] {Title}: {Detail}. Trace: {TraceId}", errorCode, title, detail,
+                traceId);
         }
 
         context.Response.ContentType = "application/problem+json";
         context.Response.StatusCode = statusCode;
 
-        var problemDetails = new
-        {
-            type = GetRfcType(statusCode),
-            title,
-            status = statusCode,
+        var errors = exception is RequestValidationException requestValidationException
+            ? requestValidationException.Errors
+            : null;
+        var problemDetails = ApiValidationProblemFactory.CreateProblemDetails(
+            statusCode,
             errorCode,
+            title,
             detail,
             traceId,
-            timestamp = DateTimeOffset.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
-        };
+            errors);
 
         await context.Response.WriteAsync(JsonSerializer.Serialize(problemDetails));
     }
-
-    private static string GetRfcType(int statusCode) => statusCode switch
-    {
-        StatusCodes.Status400BadRequest => "https://tools.ietf.org/html/rfc9110#section-15.5.1",
-        StatusCodes.Status401Unauthorized => "https://tools.ietf.org/html/rfc9110#section-15.5.3",
-        StatusCodes.Status403Forbidden => "https://tools.ietf.org/html/rfc9110#section-15.5.4",
-        StatusCodes.Status404NotFound => "https://tools.ietf.org/html/rfc9110#section-15.5.5",
-        StatusCodes.Status409Conflict => "https://tools.ietf.org/html/rfc9110#section-15.5.10",
-        StatusCodes.Status423Locked => "https://tools.ietf.org/html/rfc9110#section-15.5.1",
-        StatusCodes.Status429TooManyRequests => "https://tools.ietf.org/html/rfc9110#section-15.5.21",
-        _ => "https://tools.ietf.org/html/rfc9110#section-15.6.1"
-    };
 
     private static string GetStatusTitle(int statusCode, string fallback) => statusCode switch
     {

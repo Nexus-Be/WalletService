@@ -21,9 +21,23 @@ public sealed class ValidationBehavior<TRequest, TResponse> : IPipelineBehavior<
 
         if (!RequestValidation.TryValidate(request, results))
         {
-            var message = results.FirstOrDefault()?.ErrorMessage
-                          ?? "One or more validation errors occurred.";
-            throw new RequestValidationException(message);
+            var errors = results
+                .SelectMany(result =>
+                {
+                    var members = result.MemberNames.DefaultIfEmpty("request");
+                    return members.Select(member => new
+                    {
+                        Member = member,
+                        Message = result.ErrorMessage ?? "The request is invalid."
+                    });
+                })
+                .GroupBy(error => error.Member, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.Select(error => error.Message).Distinct().ToArray(),
+                    StringComparer.OrdinalIgnoreCase);
+            var message = string.Join(" ", errors.Values.SelectMany(messages => messages).Distinct());
+            throw new RequestValidationException(message, errors);
         }
 
         return await next();
