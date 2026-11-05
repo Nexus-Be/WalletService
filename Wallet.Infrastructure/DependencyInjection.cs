@@ -3,6 +3,7 @@ namespace Wallet.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 using Wallet.Application.Interfaces;
 using Wallet.Infrastructure.Payments;
 using Wallet.Infrastructure.Persistence;
@@ -57,8 +58,23 @@ public static class DependencyInjection
                 var pass = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : "";
                 var port = uri.Port > 0 ? uri.Port : 5432;
                 var db = uri.AbsolutePath.TrimStart('/');
-                return
-                    $"Host={uri.Host};Port={port};Database={db};Username={user};Password={pass};SSL Mode=Require;Trust Server Certificate=true";
+                var connectionBuilder = new NpgsqlConnectionStringBuilder
+                {
+                    Host = uri.Host,
+                    Port = port,
+                    Database = db,
+                    Username = user,
+                    Password = pass,
+                    SslMode = SslMode.Require
+                };
+                var queryParameters = System.Web.HttpUtility.ParseQueryString(uri.Query);
+                var channelBinding = queryParameters["channel_binding"];
+                if (!string.IsNullOrWhiteSpace(channelBinding))
+                {
+                    connectionBuilder["Channel Binding"] = channelBinding;
+                }
+
+                return connectionBuilder.ConnectionString;
             }
             catch
             {

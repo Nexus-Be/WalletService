@@ -2,10 +2,10 @@
 
 > **Trạng thái triển khai (2026-10-30):** ✅ ĐÃ CHUẨN HÓA VÀ LÀM SẠCH SCHEMA — Migration `InitialCreate` mới đã dọn sạch 100% các bảng MassTransit (`InboxState`, `OutboxState`, `OutboxMessage`), chỉ giữ lại 8 bảng nghiệp vụ cốt lõi: `Wallets`, `WalletTransactions`, `WalletTopups`, `WithdrawalRequests`, `VnpayIpnLogs`, `AuditLogs`, `BankAccounts`, `DirectPaymentOrders`. Toàn bộ các bảng nghiệp vụ chính đều đã có đường ghi qua `WalletService` và `AdminWalletService`.
 > **Nguồn sự thật:** code (`Wallet.Infrastructure/Persistence/WalletDbContext.cs:14-21`, `Wallet.Infrastructure/Persistence/Migrations/*_InitialCreate.cs`, `Wallet.Domain/Entities/*`).
-> **Cập nhật lần cuối:** 2026-10-30.
+> **Cập nhật lần cuối:** 2026-11-05.
 
 > **Hiện trạng:** chỉ Wallet **track `appsettings.json` thật** trong 9 repo (9 repo còn lại chỉ track `*.example.json`) — file này chứa connection string có mật khẩu (`Wallet.Api/appsettings.json:10`) và mật khẩu RabbitMQ (`:16`). Tài liệu này **không in lại** các giá trị đó.
-> Tên bảng là **PascalCase** trong PostgreSQL (EF Core giữ nguyên tên `DbSet`), **không phải snake_case** như tài liệu cũ ngụ ý.
+> Tên bảng trong EF Core model và migrations hiện tại là **PascalCase** (ví dụ `"Wallets"`), không phải snake_case. PostgreSQL xem tên PascalCase có dấu ngoặc kép và tên snake_case không dấu ngoặc kép (ví dụ `wallets`) là hai bảng khác nhau; vì vậy schema cũ có thể giữ lại cả hai biến thể sau khi service chạy migrations. WalletService hiện đọc/ghi các bảng PascalCase. Không tự động đổi tên hoặc xóa bảng snake_case; hãy so sánh dữ liệu và sao lưu trước khi dọn dẹp.
 
 ---
 

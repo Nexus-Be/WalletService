@@ -1,7 +1,8 @@
 # =============================================================================
 # NEXUS WALLET SERVICE - DOCKER COMPOSE
 # =============================================================================
-# Chạy độc lập service này. Database dùng Neon Cloud, hạ tầng dùng chung nexus-network.
+# Start the local database first with docker-compose.db.yml.
+# WALLET_CONNECTION_STRING may override the local database connection when needed.
 # Lệnh: docker compose up -d --build
 # =============================================================================
 
@@ -19,7 +20,7 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       ASPNETCORE_ENVIRONMENT: "${ASPNETCORE_ENVIRONMENT:-Development}"
-      ConnectionStrings__DefaultConnection: "${WALLET_DB_CONNECTION:?WALLET_DB_CONNECTION is required}"
+      ConnectionStrings__DefaultConnection: "${WALLET_CONNECTION_STRING:-Host=postgres-wallet;Port=5432;Database=wallet_db;Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:-postgres};SSL Mode=Disable}"
       VnPay__TmnCode: "${VNPAY_TMN_CODE:-}"
       VnPay__HashSecret: "${VNPAY_HASH_SECRET:-}"
       VnPay__PaymentUrl: "${VNPAY_PAYMENT_URL:-https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}"

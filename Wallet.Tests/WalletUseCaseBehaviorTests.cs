@@ -68,6 +68,9 @@ public class WalletUseCaseBehaviorTests
         Assert.Equal(userId.ToString(), result.UserId);
         Assert.Equal(0m, result.Balance);
         Assert.Single(context.Wallets.Where(w => w.UserId == userId));
+        Assert.Equal(
+            AuditAction.WalletCreate,
+            Assert.Single(context.AuditLogs.Where(log => log.UserId == userId.ToString())).Action);
     }
 
     [Fact]

@@ -52,7 +52,9 @@ dotnet run --project Wallet.Api
 
 The API listens on port `8008` in the checked-in launch profile. Swagger is available at `/swagger` in Development (or when `Swagger:Enabled` is set); the health endpoint is `/health`. The application applies EF Core migrations at startup when the configured database is relational. Review the migration and back up any existing database before deploying to a shared environment.
 
-For the container deployment, provide `WALLET_DB_CONNECTION`, `VNPAY_TMN_CODE`, `VNPAY_HASH_SECRET` and other required settings through the deployment's secret manager, then run `docker compose up -d --build`. Do not use sample/default credentials in a shared environment or commit real credentials.
+The current EF Core model and migrations use quoted PascalCase table names (for example, `"Wallets"`). PostgreSQL treats these as distinct from unquoted snake_case names such as `wallets`, so an existing database can contain both. The service uses the PascalCase tables; compare and back up any legacy tables before manually renaming or removing them.
+
+For local containers, start PostgreSQL with `docker compose -f docker-compose.db.yml up -d postgres-wallet`, then run `docker compose up -d --build`. The API connects to the `postgres-wallet` service on `nexus-network` by default. To use a remote database instead, provide `WALLET_CONNECTION_STRING` through the deployment's secret manager. Set VNPay and other required settings the same way. Do not use sample/default credentials in a shared environment or commit real credentials.
 
 ## Verify before review
 
