@@ -9,9 +9,9 @@ using Wallet.Application.Common.Validation;
 using Wallet.Application.Features.Checkout.Commands.PayOrderWithWallet;
 
 public sealed record SettleSellerOrderCommand(
-    [Required(ErrorMessage = "Seller user ID is required.")]
-    [NonEmptyGuid(ErrorMessage = "Seller user ID must be a valid UUID.")]
-    string SellerUserId,
+    [Required(ErrorMessage = "Seller ID is required.")]
+    [NonEmptyGuid(ErrorMessage = "Seller ID must be a valid UUID.")]
+    string SellerId,
     [Range(0.01, double.MaxValue, ErrorMessage = "Amount must be greater than zero.")]
     [MoneyPrecision]
     decimal Amount) : IRequest<WalletOrderTransactionResponse>, IRequestValidation

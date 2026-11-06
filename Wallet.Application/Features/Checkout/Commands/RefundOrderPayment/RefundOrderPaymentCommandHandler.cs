@@ -25,23 +25,35 @@ internal sealed class RefundOrderPaymentCommandHandler
         RefundOrderPaymentCommand request,
         CancellationToken cancellationToken)
     {
-        var payment = await _context.WalletTransactions
-            .AsNoTracking()
-            .FirstOrDefaultAsync(
-                t => t.ReferenceId == request.OrderId &&
-                     t.Type == WalletTransactionType.PurchaseDebit &&
-                     t.Status == TransactionStatus.Success,
-                cancellationToken)
-            ?? throw new BusinessRuleValidationException(
-                "PAYMENT_NOT_FOUND",
-                "No completed wallet payment was found for the order.",
-                404);
+        var buyerId = Guid.Parse(request.UserId);
 
-        var buyerId = Guid.Parse(payment.UserId!);
+        WalletTransaction? payment = null;
+        if (!request.IsSubOrder)
+        {
+            payment = await _context.WalletTransactions
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    t => t.ReferenceId == request.OrderId &&
+                         t.Type == WalletTransactionType.PurchaseDebit &&
+                         t.Status == TransactionStatus.Success,
+                    cancellationToken)
+                ?? throw new BusinessRuleValidationException(
+                    "PAYMENT_NOT_FOUND",
+                    "No completed wallet payment was found for the order.",
+                    404);
+
+            if (payment.UserId != request.UserId)
+            {
+                throw new BusinessRuleValidationException(
+                    "REFUND_CONFLICT",
+                    "The refund user does not match the order payer.",
+                    409);
+            }
+        }
 
         await using var dbTransaction = await _context.Database.BeginTransactionAsync(cancellationToken);
         var wallet = await _context.LockWalletByUserIdAsync(buyerId, cancellationToken)
-                     ?? throw new WalletNotFoundException(payment.UserId!);
+                     ?? throw new WalletNotFoundException(request.UserId);
 
         var existing = await _context.WalletTransactions
             .FirstOrDefaultAsync(
@@ -61,7 +73,7 @@ internal sealed class RefundOrderPaymentCommandHandler
             return Map(existing);
         }
 
-        if (request.Amount > payment.Amount)
+        if (payment is not null && request.Amount > payment.Amount)
         {
             throw new BusinessRuleValidationException(
                 "REFUND_EXCEEDS_PAYMENT",

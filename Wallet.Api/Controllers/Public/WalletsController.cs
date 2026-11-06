@@ -214,7 +214,7 @@ public sealed class WalletsController : ControllerBase
     }
 
     /// <summary>Debits the authenticated buyer's wallet for an order (called by Commerce).</summary>
-    [HttpPost("~/api/v1/internal/wallet/orders/{orderId:guid}/payment")]
+    [HttpPost("orders/{orderId:guid}/payment")]
     [ApiExplorerSettings(IgnoreApi = true)]
     [ProducesResponseType(typeof(WalletOrderTransactionResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> PayOrder(
@@ -234,7 +234,7 @@ public sealed class WalletsController : ControllerBase
     }
 
     /// <summary>Credits the seller's wallet when a sub-order payout is released (called by Commerce).</summary>
-    [HttpPost("~/api/v1/internal/wallet/sub-orders/{subOrderId:guid}/settlement")]
+    [HttpPost("sub-orders/{subOrderId:guid}/settle")]
     [ApiExplorerSettings(IgnoreApi = true)]
     [ProducesResponseType(typeof(WalletOrderTransactionResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> SettleSellerOrder(
@@ -247,7 +247,7 @@ public sealed class WalletsController : ControllerBase
     }
 
     /// <summary>Refunds an order's wallet payment back to the buyer (called by Commerce).</summary>
-    [HttpPost("~/api/v1/internal/wallet/orders/{orderId:guid}/refund")]
+    [HttpPost("orders/{orderId:guid}/refund")]
     [ApiExplorerSettings(IgnoreApi = true)]
     [ProducesResponseType(typeof(WalletOrderTransactionResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> RefundOrder(
@@ -256,6 +256,21 @@ public sealed class WalletsController : ControllerBase
         CancellationToken cancellationToken)
     {
         var result = await _sender.Send(command with { OrderId = orderId }, cancellationToken);
+        return Ok(result);
+    }
+
+    /// <summary>Refunds a sub-order's wallet payment back to the buyer (called by Commerce).</summary>
+    [HttpPost("sub-orders/{subOrderId:guid}/refund")]
+    [ApiExplorerSettings(IgnoreApi = true)]
+    [ProducesResponseType(typeof(WalletOrderTransactionResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> RefundSubOrder(
+        Guid subOrderId,
+        [FromBody] RefundOrderPaymentCommand command,
+        CancellationToken cancellationToken)
+    {
+        var result = await _sender.Send(
+            command with { OrderId = subOrderId, IsSubOrder = true },
+            cancellationToken);
         return Ok(result);
     }
 }

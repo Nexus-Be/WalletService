@@ -25,11 +25,11 @@ internal sealed class SettleSellerOrderCommandHandler
         SettleSellerOrderCommand request,
         CancellationToken cancellationToken)
     {
-        var sellerId = Guid.Parse(request.SellerUserId);
+        var sellerId = Guid.Parse(request.SellerId);
 
         await using var dbTransaction = await _context.Database.BeginTransactionAsync(cancellationToken);
         var wallet = await _context.LockWalletByUserIdAsync(sellerId, cancellationToken)
-                     ?? throw new WalletNotFoundException(request.SellerUserId);
+                     ?? throw new WalletNotFoundException(request.SellerId);
 
         var existing = await _context.WalletTransactions
             .FirstOrDefaultAsync(

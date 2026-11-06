@@ -5,7 +5,7 @@ All inter-service business communication uses synchronous REST over HTTP/JSON. A
 ## Checkout payment flow
 
 1. Commerce reserves inventory through a synchronous Catalog REST request.
-2. Commerce calls `POST /api/v1/internal/wallet/orders/{orderId}/payment` with the buyer's bearer token and order amount.
+2. Commerce calls `POST /api/v1/wallets/orders/{orderId}/payment` with the buyer's bearer token and order amount.
 3. Wallet atomically debits the wallet and writes a `PurchaseDebit` transaction, then returns the transaction response.
 4. Commerce marks the order paid only after a successful Wallet response.
 5. On a Wallet business failure, Commerce releases the inventory reservation through a synchronous Catalog REST request and returns the failure to its caller.

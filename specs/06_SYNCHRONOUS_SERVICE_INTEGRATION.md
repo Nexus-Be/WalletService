@@ -29,7 +29,7 @@ The Gateway is the frontend entry point and should proxy the supported public ro
 
 For authenticated requests, forward the original `Authorization: Bearer <user-access-token>` header. WalletService validates the token itself and derives the wallet owner from its authenticated claims; do not replace the identity with a user ID supplied by the frontend or trust identity headers as a substitute for the token.
 
-Do not publish `POST /api/v1/internal/wallet/orders/{orderId}/payment` as a user-facing Gateway route. Commerce calls it directly over the private service network. The route is excluded from WalletService's public Swagger description; that exclusion alone is not network access control.
+Do not publish `POST /api/v1/wallets/orders/{orderId}/payment` as a user-facing Gateway route. Commerce calls it directly over the private service network. The route is excluded from WalletService's public Swagger description; that exclusion alone is not network access control.
 
 Pass through WalletService response status codes and bodies, including Problem Details errors. Do not convert a timeout into a success or a payment failure: the operation may have committed even if the Gateway did not receive its response.
 
@@ -52,7 +52,7 @@ The Gateway and Commerce must forward the user's bearer token when performing op
 Call after inventory has been reserved:
 
 ```http
-POST /api/v1/internal/wallet/orders/{orderId}/payment
+POST /api/v1/wallets/orders/{orderId}/payment
 Authorization: Bearer <buyer's access token>
 Content-Type: application/json
 
