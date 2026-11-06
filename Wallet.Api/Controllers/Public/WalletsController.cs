@@ -14,6 +14,9 @@ using Microsoft.Extensions.Logging;
 using Wallet.Api.Extensions;
 using Wallet.Api.Filters;
 using Wallet.Application.Features.Checkout.Commands.CheckoutDirect;
+using Wallet.Application.Features.Checkout.Commands.PayOrderWithWallet;
+using Wallet.Application.Features.Checkout.Commands.RefundOrderPayment;
+using Wallet.Application.Features.Checkout.Commands.SettleSellerOrder;
 using Wallet.Application.Features.Topups.Commands.TopupVnPay;
 using Wallet.Application.Features.Transfers.Commands.Transfer;
 using Wallet.Application.Features.VnPay.Commands.ProcessVnPayIpn;
@@ -207,6 +210,52 @@ public sealed class WalletsController : ControllerBase
                 ClientIp = this.GetClientIp() ?? "127.0.0.1"
             },
             cancellationToken);
+        return Ok(result);
+    }
+
+    /// <summary>Debits the authenticated buyer's wallet for an order (called by Commerce).</summary>
+    [HttpPost("~/api/v1/internal/wallet/orders/{orderId:guid}/payment")]
+    [ApiExplorerSettings(IgnoreApi = true)]
+    [ProducesResponseType(typeof(WalletOrderTransactionResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> PayOrder(
+        Guid orderId,
+        [FromBody] PayOrderWithWalletCommand command,
+        CancellationToken cancellationToken)
+    {
+        if (!this.TryGetUserId(out var userId, out var error))
+        {
+            return error;
+        }
+
+        var result = await _sender.Send(
+            command with { OrderId = orderId, UserId = userId.ToString() },
+            cancellationToken);
+        return Ok(result);
+    }
+
+    /// <summary>Credits the seller's wallet when a sub-order payout is released (called by Commerce).</summary>
+    [HttpPost("~/api/v1/internal/wallet/sub-orders/{subOrderId:guid}/settlement")]
+    [ApiExplorerSettings(IgnoreApi = true)]
+    [ProducesResponseType(typeof(WalletOrderTransactionResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> SettleSellerOrder(
+        Guid subOrderId,
+        [FromBody] SettleSellerOrderCommand command,
+        CancellationToken cancellationToken)
+    {
+        var result = await _sender.Send(command with { SubOrderId = subOrderId }, cancellationToken);
+        return Ok(result);
+    }
+
+    /// <summary>Refunds an order's wallet payment back to the buyer (called by Commerce).</summary>
+    [HttpPost("~/api/v1/internal/wallet/orders/{orderId:guid}/refund")]
+    [ApiExplorerSettings(IgnoreApi = true)]
+    [ProducesResponseType(typeof(WalletOrderTransactionResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> RefundOrder(
+        Guid orderId,
+        [FromBody] RefundOrderPaymentCommand command,
+        CancellationToken cancellationToken)
+    {
+        var result = await _sender.Send(command with { OrderId = orderId }, cancellationToken);
         return Ok(result);
     }
 }
