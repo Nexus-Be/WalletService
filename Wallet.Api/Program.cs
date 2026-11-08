@@ -4,6 +4,7 @@ using Wallet.Api.Extensions;
 using Wallet.Application;
 using Wallet.Infrastructure;
 using Wallet.Infrastructure.Persistence;
+using Wallet.Infrastructure.Persistence.Seeds;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -36,10 +37,15 @@ using (var scope = app.Services.CreateScope())
         {
             db.Database.Migrate();
         }
+
+        if (app.Environment.IsDevelopment())
+        {
+            WalletSeedData.Seed(db);
+        }
     }
     catch (Exception ex)
     {
-        app.Logger.LogWarning("Database migration deferred on startup: {Message}", ex.Message);
+        app.Logger.LogWarning("Database migration or development seeding deferred on startup: {Message}", ex.Message);
     }
 }
 

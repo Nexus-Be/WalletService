@@ -37,7 +37,7 @@ description: Add or change a REST endpoint in WalletService (port 8008). Use whe
 - [ ] Run `./scripts/verify-wallet-architecture.sh` and confirm the baseline is intact.
 - [ ] Run GitNexus impact for every symbol to change and record the risk.
 - [ ] Confirm the contract: method, route, RBAC, ownership, amount rules, idempotency, database change.
-- [ ] Confirm whether the change adds a use case. Adding one changes the frozen count of 11, so get explicit approval first.
+- [ ] Confirm whether the change adds a use case. Adding one changes the frozen count of 15, so get explicit approval first.
 - [ ] Create `.agents/plan/PLAN-YYYYMMDD-HHMM-<NAME>.md`.
 - [ ] Stop and ask if the contract is ambiguous.
 
@@ -116,7 +116,7 @@ description: Add or change a REST endpoint in WalletService (port 8008). Use whe
 
 ## Variant
 
-Wallet is the only CQRS service in Nexus. MediatR and the use-case layout are frozen. If the task requires a new use case, the count moves from 11 to 12; get explicit approval, update `AGENTS.md`, and update `scripts/verify-wallet-architecture.sh` in the same change. Never reintroduce feature services, never split controllers, and never remove MediatR.
+Wallet is the only CQRS service in Nexus. MediatR and the use-case layout are frozen. If the task requires a new use case, the count moves from 15 to 16; get explicit approval, update `AGENTS.md`, and update `scripts/verify-wallet-architecture.sh` in the same change. Never reintroduce feature services, never split controllers, and never remove MediatR.
 
 ## Commands
 

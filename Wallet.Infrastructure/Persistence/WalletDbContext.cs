@@ -85,6 +85,5 @@ public class WalletDbContext : DbContext, IWalletDbContext
         base.OnModelCreating(modelBuilder);
 
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(WalletDbContext).Assembly);
-        Seeds.WalletSeedData.SeedAll(modelBuilder);
     }
 }

@@ -17,6 +17,7 @@ using Wallet.Application.Features.Checkout.Commands.CheckoutDirect;
 using Wallet.Application.Features.Checkout.Commands.PayOrderWithWallet;
 using Wallet.Application.Features.Checkout.Commands.RefundOrderPayment;
 using Wallet.Application.Features.Checkout.Commands.SettleSellerOrder;
+using Wallet.Application.Features.Checkout.Queries.GetDirectPaymentStatus;
 using Wallet.Application.Features.Topups.Commands.TopupVnPay;
 using Wallet.Application.Features.Transfers.Commands.Transfer;
 using Wallet.Application.Features.VnPay.Commands.ProcessVnPayIpn;
@@ -208,6 +209,29 @@ public sealed class WalletsController : ControllerBase
             {
                 UserId = userIdHeader ?? string.Empty,
                 ClientIp = this.GetClientIp() ?? "127.0.0.1"
+            },
+            cancellationToken);
+        return Ok(result);
+    }
+
+    /// <summary>Gets the status of a direct order payment so the caller can poll for the gateway result.</summary>
+    [HttpGet("checkout/direct/{orderId}")]
+    [RequireRole]
+    [ProducesResponseType(typeof(DirectPaymentStatusResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetDirectPaymentStatus(
+        string orderId,
+        CancellationToken cancellationToken)
+    {
+        if (!this.TryGetUserId(out var userGuid, out var authError))
+        {
+            return authError;
+        }
+
+        var result = await _sender.Send(
+            new GetDirectPaymentStatusQuery(orderId)
+            {
+                UserId = userGuid.ToString(),
+                AllowAnyUser = HttpContext.IsAdmin() || HttpContext.HasRole("staff")
             },
             cancellationToken);
         return Ok(result);

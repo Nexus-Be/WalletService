@@ -26,7 +26,7 @@ services:
       VnPay__PaymentUrl: "${VNPAY_PAYMENT_URL:-https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}"
       VnPay__ReturnUrl: "${VNPAY_RETURN_URL:-https://localhost:8080/api/v1/wallets/vnpay/return}"
       VnPay__Version: "${VNPAY_VERSION:-2.1.0}"
-      InternalSecurity__ServiceKey: "${INTERNAL_SERVICE_SECRET:-eaT0Ombups70WJzd85CBBpp8rAno55SxKn1qvYBGH9e}"
+      InternalSecurity__ServiceKey: "${INTERNAL_SERVICE_SECRET:?INTERNAL_SERVICE_SECRET must be set}"
       OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-http://tempo:4317}"
     restart: unless-stopped
 

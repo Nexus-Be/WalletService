@@ -1,6 +1,6 @@
 # 00 — NHIỆM VỤ CỐT LÕI & RÀO CHẮN CHỐNG ẢO GIÁC (WALLET SERVICE)
 
-> **Trạng thái triển khai (2026-10-31):** ✅ CLASSIC CQRS — 11 use case (8 Command, 3 Query) trong `Wallet.Application/Features/`, 3 thin controller inject `ISender`, 53 test pass. Không còn gRPC, MassTransit, consumer, Outbox/Inbox.
+> **Trạng thái triển khai (2026-10-31):** ✅ CLASSIC CQRS — 15 use case (11 Command, 4 Query) trong `Wallet.Application/Features/`, 2 thin controller inject `ISender`, 146 test pass. Không còn gRPC, MassTransit, consumer, Outbox/Inbox.
 > **Nguồn sự thật:** code (`Wallet.Api/Controllers/Public/WalletsController.cs`, `Wallet.Application/Features/`, `Wallet.Infrastructure/Persistence/WalletDbContext.cs`).
 > **Cập nhật lần cuối:** 2026-10-31.
 > **ĐÓNG BĂNG:** chạy `./scripts/verify-wallet-architecture.sh` trước khi sửa.
