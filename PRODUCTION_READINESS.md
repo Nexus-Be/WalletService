@@ -50,14 +50,16 @@ Legend: `[ ]` open · `[~]` in progress · `[x]` done · `[-]` won't do (accepte
 
 ## P1 — Before go-live
 
-### [ ] 5. VNPay IPN contract
-- Response serializes as `responseCode`; VNPay expects `{"RspCode":"00","Message":"Confirm Success"}`.
-- VNPay IPN is normally a GET with query parameters; the endpoint accepts POST only. (Verify against VNPay docs.)
-- `VnpayIpnLogs` is never written.
-- To do:
-  - [ ] Fix response shape and HTTP method; add a test with a signed sample payload.
-  - [ ] Persist every raw IPN (audit/replay).
-  - [ ] Optionally IP-allowlist VNPay.
+### [x] 5. VNPay IPN contract — DONE (2026-11-09)
+- Verified against VNPay's official docs (sandbox.vnpayment.vn → "Cài đặt Code IPN URL"): the IPN is a **GET** with query parameters, needs SSL, and the merchant must answer JSON `{"RspCode","Message"}`; `00`/`02` end the flow, `01`/`04`/`97`/`99` (or timeout) make VNPay retry up to 10× at 5-minute intervals.
+- Done:
+  - [x] `GET /api/v1/wallets/vnpay/ipn` added (POST form/JSON still accepted); repeated parameter names (also case variants) rejected with `99`.
+  - [x] Response serializes as `{"RspCode":"00","Message":"Confirm Success"}`; duplicate is `{"RspCode":"02","Message":"Order already confirmed"}` (C# DTO unchanged, wire names via `JsonPropertyName`).
+  - [x] A payment is successful only if `vnp_ResponseCode == 00` and, when present, `vnp_TransactionStatus == 00` (VNPay's own sample rule), for top-ups and direct payments.
+  - [x] Every callback that reaches the handler is persisted in `VnpayIpnLogs` (jsonb payload, bounded size, processing status), written outside the settlement transaction so rejected callbacks are kept.
+  - [x] 21 new tests (`VnPayIpnContractTests`), including a really HMAC-signed GET through the controller and MediatR pipeline; verified on real Postgres (raw body, GET/POST, replay, tampering, jsonb log rows).
+- Operations: register the IPN URL with VNPay as the public **HTTPS** `GET` URL (`https://<host>/api/v1/wallets/vnpay/ipn`); a local `https://localhost` URL cannot receive it.
+- Not done: IP allowlist of VNPay (no stable published list; signature + merchant code are the authenticity controls), rate limiting of the anonymous endpoint (item 8; unlogged-before-handler rejections cannot fill the log table, but handler-reaching junk can), concurrent-replay test on PostgreSQL.
 
 ### [ ] 6. Database safety
 - [ ] Remove hardcoded `Trust Server Certificate=true` (`Wallet.Infrastructure/DependencyInjection.cs`); make it configurable.

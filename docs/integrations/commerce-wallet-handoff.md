@@ -8,7 +8,7 @@
 - User routes resolve identity from claims or forwarded `x-user-id`; admin routes also use forwarded roles. The API host does not currently configure JWT authentication, and internal-service authentication middleware is disabled. Only trust forwarded identity from an authenticated gateway that overwrites client-supplied headers and protects the service network.
 - `POST /api/v1/wallets/checkout/direct` creates an external payment intent. It does not debit or credit the buyer wallet.
 - For VNPay, a matching retry while the order is pending reuses the provider reference. The order, owner, amount, gateway, bank code, and return URL must match; changed parameters or a terminal payment conflict. This is not a general `Idempotency-Key` contract and has no documented TTL.
-- The signed `POST /api/v1/wallets/vnpay/ipn` callback settles a matching pending direct order without changing wallet balance. Browser return is informational, not authoritative.
+- The signed VNPay IPN callback (`GET /api/v1/wallets/vnpay/ipn`) settles a matching pending direct order without changing wallet balance. Browser return is informational, not authoritative.
 - WalletService does not currently expose refund, escrow, seller-payout, or bank-transfer execution endpoints. The withdrawal workflow reserves wallet funds and records staff approval/rejection; it does not initiate a bank payout.
 
 ## Integration checks outside this repository

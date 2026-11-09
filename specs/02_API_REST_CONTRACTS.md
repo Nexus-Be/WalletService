@@ -15,7 +15,7 @@
 * `POST /api/v1/wallets/withdrawals` → `RequestWithdrawalCommand` → `RequestWithdrawalCommandHandler` (HTTP 201; tạo yêu cầu Pending và khóa số dư khả dụng; không khởi tạo chuyển khoản ngân hàng).
 * `POST /api/v1/wallets/transfers` → `TransferCommand` → `TransferCommandHandler`.
 * `GET /api/v1/wallets/transactions` → `ListTransactionsQuery` → `ListTransactionsQueryHandler`.
-* `POST /api/v1/wallets/vnpay/ipn` → `ProcessVnPayIpnCommand` → `ProcessVnPayIpnCommandHandler`.
+* `GET /api/v1/wallets/vnpay/ipn` (VNPay's method; `POST` form/JSON also accepted) → `ProcessVnPayIpnCommand` → `ProcessVnPayIpnCommandHandler`. Trả JSON `{"RspCode","Message"}` theo chuẩn VNPay (`00` `Confirm Success`, `02` `Order already confirmed`, `97` `Invalid signature`…); mỗi callback được ghi vào `VnpayIpnLogs`. Chi tiết: `docs/api/vnpay/ipn.md`.
 * `GET /api/v1/wallets/vnpay/return` → `ProcessVnPayReturnQuery` → `ProcessVnPayReturnQueryHandler`.
 
 ### 1.2. Quản trị (`AdminWalletsController` — `/api/v1/admin/wallets`)

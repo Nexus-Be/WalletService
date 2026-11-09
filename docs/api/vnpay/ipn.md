@@ -1,4 +1,4 @@
-# WALLET SERVICE - POST /api/v1/wallets/vnpay/ipn
+# WALLET SERVICE - GET /api/v1/wallets/vnpay/ipn
 
 > **Feature / Use Case:** ProcessVnPayIpn
 > **Status:** ✅ IMPLEMENTED
@@ -9,8 +9,9 @@
 
 ## 1. Routing and authorization
 
-- **HTTP method:** `POST`
+- **HTTP method:** `GET` (what VNPay uses, with the parameters in the query string). `POST` with `application/x-www-form-urlencoded` or a JSON object is also accepted.
 - **Route:** `/api/v1/wallets/vnpay/ipn`
+- **Register with VNPay:** the merchant IPN URL must be the public **HTTPS** URL of this route (VNPay requires SSL), e.g. `https://<public-host>/api/v1/wallets/vnpay/ipn`. Through the gateway this is the `GET` route listed in `specs/06_SYNCHRONOUS_SERVICE_INTEGRATION.md`.
 - **Authorization:** Anonymous provider callback; authenticity is established by VNPay HMAC validation, not forwarded user identity.
 - **Controller:** `Wallet.Api/Controllers/Public/WalletsController.cs`
 - **CQRS handler:** `Wallet.Application/Features/VnPay/Commands/ProcessVnPayIpn/ProcessVnPayIpnCommandHandler.cs`
@@ -18,7 +19,7 @@
 
 ## 2. Input and validation
 
-The endpoint accepts `application/x-www-form-urlencoded` and JSON object payloads. Parameter names and values are case-sensitive for signature construction. Duplicate parameter names are rejected during request parsing or fail signature validation.
+The endpoint accepts the query string of a `GET` (VNPay), `application/x-www-form-urlencoded`, or a JSON object. Parameter names and values are case-sensitive for signature construction. A repeated parameter name (including names that differ only by case) is rejected with `99` instead of being merged.
 
 | VNPay parameter | Required | Validation |
 |---|---:|---|
@@ -26,7 +27,8 @@ The endpoint accepts `application/x-www-form-urlencoded` and JSON object payload
 | `vnp_SecureHashType` | Yes | Must be `HmacSHA512` (case-insensitive) |
 | `vnp_TmnCode` | Yes | Must exactly match configured `VnPay:TmnCode` |
 | `vnp_TxnRef` | Yes | Must identify an existing pending Wallet top-up or direct checkout order |
-| `vnp_ResponseCode` | Yes | `00` means successful payment; another provider code marks the pending payment failed |
+| `vnp_ResponseCode` | Yes | Together with `vnp_TransactionStatus` decides the outcome (see below) |
+| `vnp_TransactionStatus` | No | When present it must also be `00` for a successful payment (VNPay's own sample requires both) |
 | `vnp_Amount` | Yes | Unsigned integer VND minor units; must equal the pending top-up or direct order amount multiplied by 100 |
 | `vnp_CurrCode` | Yes | Must be `VND` |
 | `vnp_TransactionNo` | No | Provider transaction identifier; never treated as proof without a valid signature |
@@ -34,27 +36,33 @@ The endpoint accepts `application/x-www-form-urlencoded` and JSON object payload
 
 Signature input is the ordinally sorted parameter set excluding `vnp_SecureHash` and `vnp_SecureHashType`, URL-encoded and signed with the configured `VnPay:HashSecret`. Required configuration is supplied through WalletService configuration or environment variables; no secret is part of the API contract.
 
+A payment is **successful** only when `vnp_ResponseCode` is `00` and, if `vnp_TransactionStatus` is present, it is also `00`. Any other combination marks the pending payment failed (and the callback is still acknowledged with `00`, because the merchant did update the payment).
+
 ## 3. Response contract
 
-The endpoint preserves the provider acknowledgement DTO and returns HTTP `200 OK`.
+The endpoint returns HTTP `200 OK` with the JSON object that VNPay requires (`RspCode` and `Message`, PascalCase):
 
 ```json
 {
-  "responseCode": "00",
-  "message": "Success"
+  "RspCode": "00",
+  "Message": "Confirm Success"
 }
 ```
 
-| Response code | Meaning |
-|---|---|
-| `00` | Notification accepted and processed |
-| `01` | Top-up, direct order, or associated wallet not found |
-| `02` | Payment was already processed; no balance mutation occurs |
-| `04` | Amount or currency is invalid |
-| `97` | Signature, merchant code, or signature algorithm is invalid |
-| `99` | Required parameters are missing or payload cannot be parsed |
+| `RspCode` | `Message` | Meaning | VNPay retries? |
+|---|---|---|---|
+| `00` | `Confirm Success` | Notification accepted and processed (including a declined payment recorded as failed) | No |
+| `01` | `Order not found` / … | Top-up, direct order, or associated wallet not found | Yes |
+| `02` | `Order already confirmed` | Payment was already processed; no balance mutation occurs | No |
+| `04` | `Invalid amount or currency` | Amount or currency is invalid | Yes |
+| `97` | `Invalid signature` | Signature, merchant code, or signature algorithm is invalid | Yes |
+| `99` | `Missing parameters` / `Invalid request payload` | Required parameters are missing, duplicated, or the payload cannot be parsed | Yes |
 
-No HTTP or JSON contract change is intended. Exact provider acknowledgement messages remain implementation details.
+Per VNPay, `00` and `02` end the notification flow; any other code (or a timeout) makes VNPay retry up to 10 times, 5 minutes apart.
+
+## 3a. Callback log
+
+Every callback that reaches the handler is stored in `VnpayIpnLogs` (reference, response code, transaction number, caller address, raw payload as `jsonb`, and a processing status: `Processed`, `Duplicate`, `InvalidSignature`, `OrderNotFound`, `InvalidAmount`, `SystemError`). It is written in a separate step after the settlement transaction, so rejected callbacks (forged signature, unknown order) are kept too. Size is bounded: at most 50 parameters, values truncated to 500 characters, reference to 100. A failure to write the log never changes the acknowledgement. Requests rejected before the handler (duplicate parameter names, unparseable body) are not logged.
 
 ## 4. State and replay safety
 

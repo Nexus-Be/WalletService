@@ -16,7 +16,7 @@
 
 ## 2. Purpose
 
-[`POST /checkout/direct`](direct.md) returns a VNPay URL and a `Pending` payment. VNPay settles it through the IPN (`POST /vnpay/ipn`). This endpoint lets the caller (frontend or Commerce Service) poll the settled result. The browser return alone is informational; this status is the source of truth.
+[`POST /checkout/direct`](direct.md) returns a VNPay URL and a `Pending` payment. VNPay settles it through the IPN (`GET /vnpay/ipn`). This endpoint lets the caller (frontend or Commerce Service) poll the settled result. The browser return alone is informational; this status is the source of truth.
 
 ## 3. Response
 
