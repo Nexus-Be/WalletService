@@ -11,12 +11,14 @@ using MediatR;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Primitives;
 using Wallet.Api.Extensions;
 using Wallet.Api.Filters;
 using Wallet.Application.Features.Checkout.Commands.CheckoutDirect;
 using Wallet.Application.Features.Checkout.Commands.PayOrderWithWallet;
 using Wallet.Application.Features.Checkout.Commands.RefundOrderPayment;
 using Wallet.Application.Features.Checkout.Commands.SettleSellerOrder;
+using Wallet.Application.Features.Checkout.Queries.GetDirectPaymentStatus;
 using Wallet.Application.Features.Topups.Commands.TopupVnPay;
 using Wallet.Application.Features.Transfers.Commands.Transfer;
 using Wallet.Application.Features.VnPay.Commands.ProcessVnPayIpn;
@@ -140,18 +142,25 @@ public sealed class WalletsController : ControllerBase
         return Ok(result);
     }
 
-    /// <summary>Processes payment webhook callback from VNPay.</summary>
+    /// <summary>
+    /// Processes the VNPay IPN (server-to-server callback). VNPay calls this with GET and a query string;
+    /// POST (form or JSON) is also accepted. The reply is the RspCode/Message JSON that VNPay requires.
+    /// </summary>
+    [HttpGet("vnpay/ipn")]
     [HttpPost("vnpay/ipn")]
     public async Task<IActionResult> VnPayIpn(CancellationToken cancellationToken)
     {
         Dictionary<string, string> parameters;
         try
         {
-            if (Request.HasFormContentType)
+            if (HttpMethods.IsGet(Request.Method))
+            {
+                parameters = ToParameters(Request.Query);
+            }
+            else if (Request.HasFormContentType)
             {
                 var form = await Request.ReadFormAsync(cancellationToken);
-                parameters = form.ToDictionary(pair => pair.Key, pair => pair.Value.ToString(),
-                    StringComparer.OrdinalIgnoreCase);
+                parameters = ToParameters(form);
             }
             else
             {
@@ -208,6 +217,29 @@ public sealed class WalletsController : ControllerBase
             {
                 UserId = userIdHeader ?? string.Empty,
                 ClientIp = this.GetClientIp() ?? "127.0.0.1"
+            },
+            cancellationToken);
+        return Ok(result);
+    }
+
+    /// <summary>Gets the status of a direct order payment so the caller can poll for the gateway result.</summary>
+    [HttpGet("checkout/direct/{orderId}")]
+    [RequireRole]
+    [ProducesResponseType(typeof(DirectPaymentStatusResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetDirectPaymentStatus(
+        string orderId,
+        CancellationToken cancellationToken)
+    {
+        if (!this.TryGetUserId(out var userGuid, out var authError))
+        {
+            return authError;
+        }
+
+        var result = await _sender.Send(
+            new GetDirectPaymentStatusQuery(orderId)
+            {
+                UserId = userGuid.ToString(),
+                AllowAnyUser = HttpContext.IsAdmin() || HttpContext.HasRole("staff")
             },
             cancellationToken);
         return Ok(result);
@@ -272,5 +304,20 @@ public sealed class WalletsController : ControllerBase
             command with { OrderId = subOrderId, IsSubOrder = true },
             cancellationToken);
         return Ok(result);
+    }
+
+    // A repeated parameter name would be ambiguous for signature validation, so it is rejected rather than merged.
+    private static Dictionary<string, string> ToParameters(IEnumerable<KeyValuePair<string, StringValues>> source)
+    {
+        var parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, values) in source)
+        {
+            if (values.Count > 1 || !parameters.TryAdd(key, values.ToString()))
+            {
+                throw new InvalidDataException($"Duplicate IPN parameter '{key}'.");
+            }
+        }
+
+        return parameters;
     }
 }

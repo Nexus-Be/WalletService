@@ -87,26 +87,6 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("AuditLogs");
-
-                    b.HasData(
-                        new
-                        {
-                            Id = new Guid("99999999-1111-1111-1111-111111111130"),
-                            Action = 7,
-                            ChangedColumns = "[\"Status\",\"ProcessedBy\",\"ProcessedAt\"]",
-                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 4, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            EntityId = "99999999-3333-3333-3333-333333333310",
-                            EntityName = "WithdrawalRequest",
-                            IpAddress = "127.0.0.1",
-                            IsSynced = true,
-                            NewValues = "{\"Status\":\"Completed\",\"ProcessedBy\":\"aaaaaaaa-1111-1111-1111-111111111111\"}",
-                            OldValues = "{\"Status\":\"Processing\"}",
-                            ServiceName = "Wallet",
-                            TraceId = "trace-wallet-withdrawal-001",
-                            UserAgent = "NexusAdminPortal/1.0",
-                            UserId = "aaaaaaaa-1111-1111-1111-111111111111",
-                            UserName = "admin@nexus.com"
-                        });
                 });
 
             modelBuilder.Entity("Wallet.Domain.Entities.BankAccount", b =>
@@ -153,20 +133,6 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("BankAccounts");
-
-                    b.HasData(
-                        new
-                        {
-                            Id = new Guid("88888888-3333-3333-3333-333333333333"),
-                            AccountHolderName = "NEXUS OFFICIAL STORE",
-                            AccountNumber = "9988776655",
-                            BankName = "Vietcombank",
-                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            IsDefault = true,
-                            IsDeleted = false,
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            UserId = "cccccccc-3333-3333-3333-333333333333"
-                        });
                 });
 
             modelBuilder.Entity("Wallet.Domain.Entities.DirectPaymentOrder", b =>
@@ -222,21 +188,6 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("DirectPaymentOrders");
-
-                    b.HasData(
-                        new
-                        {
-                            Id = new Guid("99999999-4444-4444-4444-444444444420"),
-                            Amount = 850000m,
-                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            IsDeleted = false,
-                            OrderId = new Guid("01000000-0000-0000-0000-000000000001"),
-                            RawResponse = "{\"vnp_ResponseCode\":\"00\",\"vnp_TransactionStatus\":\"00\"}",
-                            Status = 1,
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            VnpTransactionNo = "14285702",
-                            VnpTxnRef = "VNP-PAY-20260101-0001"
-                        });
                 });
 
             modelBuilder.Entity("Wallet.Domain.Entities.VnpayIpnLog", b =>
@@ -285,21 +236,6 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     b.HasIndex("VnpTxnRef");
 
                     b.ToTable("VnpayIpnLogs");
-
-                    b.HasData(
-                        new
-                        {
-                            Id = new Guid("99999999-4444-4444-4444-444444444430"),
-                            ClientIp = "113.160.22.88",
-                            CreatedAt = new DateTimeOffset(new DateTime(2025, 12, 31, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            IsDeleted = false,
-                            ProcessingStatus = 0,
-                            RawPayload = "{\"vnp_Amount\":1000000000,\"vnp_BankCode\":\"NCB\",\"vnp_ResponseCode\":\"00\"}",
-                            UpdatedAt = new DateTimeOffset(new DateTime(2025, 12, 31, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            VnpResponseCode = "00",
-                            VnpTransactionNo = "14285701",
-                            VnpTxnRef = "VNP-TOPUP-20260101-0001"
-                        });
                 });
 
             modelBuilder.Entity("Wallet.Domain.Entities.WalletAccount", b =>
@@ -351,78 +287,6 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("Wallets");
-
-                    b.HasData(
-                        new
-                        {
-                            Id = new Guid("99999999-9999-9999-9999-999999999999"),
-                            Balance = 1000000000m,
-                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            CreatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
-                            Currency = 0,
-                            IsDeleted = false,
-                            LockedBalance = 0m,
-                            Status = "ACTIVE",
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
-                            UserId = new Guid("00000000-0000-0000-0000-000000000001")
-                        },
-                        new
-                        {
-                            Id = new Guid("99999999-1111-1111-1111-111111111111"),
-                            Balance = 10000000m,
-                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            CreatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
-                            Currency = 0,
-                            IsDeleted = false,
-                            LockedBalance = 0m,
-                            Status = "ACTIVE",
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
-                            UserId = new Guid("aaaaaaaa-1111-1111-1111-111111111111")
-                        },
-                        new
-                        {
-                            Id = new Guid("99999999-2222-2222-2222-222222222222"),
-                            Balance = 5000000m,
-                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            CreatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
-                            Currency = 0,
-                            IsDeleted = false,
-                            LockedBalance = 0m,
-                            Status = "ACTIVE",
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
-                            UserId = new Guid("bbbbbbbb-2222-2222-2222-222222222222")
-                        },
-                        new
-                        {
-                            Id = new Guid("99999999-3333-3333-3333-333333333333"),
-                            Balance = 50000000m,
-                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            CreatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
-                            Currency = 0,
-                            IsDeleted = false,
-                            LockedBalance = 0m,
-                            Status = "ACTIVE",
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
-                            UserId = new Guid("cccccccc-3333-3333-3333-333333333333")
-                        },
-                        new
-                        {
-                            Id = new Guid("99999999-4444-4444-4444-444444444444"),
-                            Balance = 20000000m,
-                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            CreatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
-                            Currency = 0,
-                            IsDeleted = false,
-                            LockedBalance = 0m,
-                            Status = "ACTIVE",
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000"),
-                            UserId = new Guid("dddddddd-4444-4444-4444-444444444444")
-                        });
                 });
 
             modelBuilder.Entity("Wallet.Domain.Entities.WalletTopup", b =>
@@ -477,22 +341,6 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     b.HasIndex("WalletId");
 
                     b.ToTable("WalletTopups");
-
-                    b.HasData(
-                        new
-                        {
-                            Id = new Guid("99999999-4444-4444-4444-444444444410"),
-                            Amount = 10000000m,
-                            CreatedAt = new DateTimeOffset(new DateTime(2025, 12, 31, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            IsDeleted = false,
-                            RawResponse = "{\"vnp_ResponseCode\":\"00\",\"vnp_TransactionStatus\":\"00\"}",
-                            Status = 1,
-                            UpdatedAt = new DateTimeOffset(new DateTime(2025, 12, 31, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            VnpBankCode = "NCB",
-                            VnpTransactionNo = "14285701",
-                            VnpTxnRef = "VNP-TOPUP-20260101-0001",
-                            WalletId = new Guid("99999999-4444-4444-4444-444444444444")
-                        });
                 });
 
             modelBuilder.Entity("Wallet.Domain.Entities.WalletTransaction", b =>
@@ -555,25 +403,6 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     b.HasIndex("UserId", "CreatedAt");
 
                     b.ToTable("WalletTransactions");
-
-                    b.HasData(
-                        new
-                        {
-                            Id = new Guid("99999999-4444-4444-4444-444444444401"),
-                            Amount = 850000m,
-                            BalanceAfter = 20000000m,
-                            BalanceBefore = 20850000m,
-                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            Currency = "VND",
-                            IsDeleted = false,
-                            Note = "Thanh toán đơn hàng SUB-20260101-0001",
-                            ReferenceId = new Guid("02000000-0000-0000-0000-000000000001"),
-                            Status = 1,
-                            Type = 1,
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            UserId = "dddddddd-4444-4444-4444-444444444444",
-                            WalletId = new Guid("99999999-4444-4444-4444-444444444444")
-                        });
                 });
 
             modelBuilder.Entity("Wallet.Domain.Entities.WithdrawalRequest", b =>
@@ -642,26 +471,6 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     b.HasIndex("WalletId");
 
                     b.ToTable("WithdrawalRequests");
-
-                    b.HasData(
-                        new
-                        {
-                            Id = new Guid("99999999-3333-3333-3333-333333333310"),
-                            Amount = 5000000m,
-                            BankAccountHolder = "NEXUS OFFICIAL STORE",
-                            BankAccountNumber = "9988776655",
-                            BankName = "Vietcombank",
-                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 1, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            Fee = 0m,
-                            GatewayReferenceId = "VCB-OUT-20260101-001",
-                            IsDeleted = false,
-                            NetAmount = 5000000m,
-                            ProcessedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 4, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            ProcessedBy = new Guid("aaaaaaaa-1111-1111-1111-111111111111"),
-                            Status = 3,
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 4, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            WalletId = new Guid("99999999-3333-3333-3333-333333333333")
-                        });
                 });
 
             modelBuilder.Entity("Wallet.Domain.Entities.WalletTopup", b =>

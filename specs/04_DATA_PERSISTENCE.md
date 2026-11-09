@@ -178,6 +178,8 @@ Chỉ có **một** migration được track: `Wallet.Infrastructure/Migrations/
 
 ## 5. DỮ LIỆU HẠT GIỐNG (SEED) — `Wallet.Infrastructure/Persistence/Seeds/WalletSeedData.cs`
 
+> **Cập nhật 2026-11-09:** seed KHÔNG còn nằm trong model/migration (`InitialCreate` và `AddDirectPaymentOrderIdempotency` không còn `InsertData`/`UpdateData` cho dữ liệu seed; ID migration giữ nguyên). `WalletSeedData.Seed(db)` chỉ chạy lúc khởi động khi `ASPNETCORE_ENVIRONMENT=Development`, idempotent (bỏ qua dòng đã có theo `Id`). Database mới ở môi trường khác Development không có ví hay số dư nào. Database đã tạo trước đây giữ nguyên dữ liệu seed cũ (không có migration xóa).
+
 ```sql
 CREATE UNIQUE INDEX ix_wallets_user_id ON wallets (user_id);
 CREATE INDEX ix_wallet_transactions_user_id ON wallet_transactions (user_id);

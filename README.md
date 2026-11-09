@@ -11,7 +11,7 @@ Wallet Service quản lý số dư và giao dịch ví, nạp tiền qua VNPay, 
 | Runtime | .NET 8 / ASP.NET Core |
 | API | REST HTTP/JSON, mặc định `http://localhost:8008` |
 | Database | PostgreSQL, database `wallet_db`; compose local ánh xạ port `5440` |
-| Kiến trúc | Domain / Application / Infrastructure / API; 11 MediatR handlers và 2 controllers |
+| Kiến trúc | Domain / Application / Infrastructure / API; 15 MediatR handlers và 2 controllers |
 | Health | `GET /health` |
 | API contract | [API đang triển khai](docs/api/wallet-payments.md) |
 
@@ -66,7 +66,7 @@ dotnet build Wallet.sln -c Release
 dotnet test Wallet.sln -c Release
 ```
 
-The architecture script checks that MediatR remains wired, all 11 handlers remain under `Wallet.Application/Features`, and the two expected controllers remain in place.
+The architecture script checks that MediatR remains wired, all 15 handlers remain under `Wallet.Application/Features`, and the two expected controllers remain in place.
 
 ## Spec-driven feature workflow
 

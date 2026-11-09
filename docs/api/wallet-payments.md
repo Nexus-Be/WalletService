@@ -28,7 +28,7 @@ Admin routes also require an authorized `x-user-roles` value (`admin` or `staff`
 | `POST` | `/api/v1/wallets/transfers` | User identity required | Transfers between wallets (`200`) |
 | `GET` | `/api/v1/wallets/transactions` | User identity required | Paginated transaction history (`200`) |
 | `POST` | `/api/v1/wallets/withdrawals` | Seller role and user identity required; shared filter also permits admin/staff | Creates a pending withdrawal request and reserves available funds (`201`) |
-| `POST` | `/api/v1/wallets/vnpay/ipn` | Anonymous callback | Processes VNPay IPN |
+| `GET` / `POST` | `/api/v1/wallets/vnpay/ipn` | Anonymous callback | Processes VNPay IPN (VNPay calls `GET`) |
 | `GET` | `/api/v1/wallets/vnpay/return` | Anonymous callback | Reports VNPay browser-return result |
 | `POST` | `/api/v1/wallets/checkout/direct` | `x-user-id` required by handler | Starts direct checkout through VNPay (`200`) |
 | `PATCH` | `/api/v1/admin/wallets/withdrawals/{id}` | `admin` or `staff` | Processes an existing pending withdrawal |
@@ -204,20 +204,17 @@ The route has no idempotency key. A repeated request can create another pending 
 ### IPN
 
 ```http
-POST /api/v1/wallets/vnpay/ipn
-Content-Type: application/x-www-form-urlencoded
-
-vnp_TmnCode=<configured-merchant>&vnp_TxnRef=TOPUP-reference&vnp_Amount=10000000&vnp_CurrCode=VND&vnp_ResponseCode=00&vnp_SecureHashType=HmacSHA512&vnp_SecureHash=<signature>
+GET /api/v1/wallets/vnpay/ipn?vnp_TmnCode=<configured-merchant>&vnp_TxnRef=TOPUP-reference&vnp_Amount=10000000&vnp_CurrCode=VND&vnp_ResponseCode=00&vnp_TransactionStatus=00&vnp_SecureHashType=HmacSHA512&vnp_SecureHash=<signature>
 ```
 
-The endpoint also accepts a JSON object with the same VNPay parameter names. `vnp_Amount` must be an unsigned integer in VND minor units (the pending top-up or direct-order amount multiplied by 100), and `vnp_CurrCode` must be `VND`. The signature must be a valid HMAC-SHA512 using the configured hash secret; `vnp_SecureHashType` must be `HmacSHA512`, and `vnp_TmnCode` must match the configured merchant code. A matching pending top-up is required before the wallet is credited; a matching pending direct order transitions its payment state without changing the wallet balance.
+VNPay calls the IPN with `GET` and a query string. The endpoint also accepts `POST` with `application/x-www-form-urlencoded` or a JSON object using the same VNPay parameter names. A repeated parameter name is rejected with `99`. `vnp_Amount` must be an unsigned integer in VND minor units (the pending top-up or direct-order amount multiplied by 100), and `vnp_CurrCode` must be `VND`. The signature must be a valid HMAC-SHA512 using the configured hash secret; `vnp_SecureHashType` must be `HmacSHA512`, and `vnp_TmnCode` must match the configured merchant code. A payment counts as successful only when `vnp_ResponseCode` is `00` and, if sent, `vnp_TransactionStatus` is also `00`. A matching pending top-up is required before the wallet is credited; a matching pending direct order transitions its payment state without changing the wallet balance.
 
-The payment row is locked while its state and associated effects are committed atomically. A duplicate notification returns response code `02` without another credit or settlement; an invalid signature/merchant/algorithm returns `97`, a missing order returns `01`, an invalid amount/currency returns `04`, and malformed or incomplete input returns `99`. The endpoint acknowledges with HTTP `200` and a VNPay response object:
+The payment row is locked while its state and associated effects are committed atomically. A duplicate notification returns response code `02` without another credit or settlement; an invalid signature/merchant/algorithm returns `97`, a missing order returns `01`, an invalid amount/currency returns `04`, and malformed or incomplete input returns `99`. The endpoint acknowledges with HTTP `200` and the JSON object VNPay requires (`RspCode`/`Message`); see [`vnpay/ipn.md`](vnpay/ipn.md) for the full table and retry semantics:
 
 ```json
 {
-  "responseCode": "00",
-  "message": "Success"
+  "RspCode": "00",
+  "Message": "Confirm Success"
 }
 ```
 

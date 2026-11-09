@@ -4,9 +4,13 @@ using Microsoft.EntityFrameworkCore;
 using Wallet.Domain.Entities;
 using Wallet.Domain.Enums;
 
+/// <summary>
+/// Demo data for local development. Applied at startup only in Development; never part of migrations.
+/// Idempotent: rows that already exist (matched by Id) are left untouched.
+/// </summary>
 public static class WalletSeedData
 {
-    public static void SeedAll(ModelBuilder modelBuilder)
+    public static void Seed(WalletDbContext db)
     {
         var seedDate = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
@@ -23,7 +27,7 @@ public static class WalletSeedData
         var buyerWalletId = Guid.Parse("99999999-4444-4444-4444-444444444444");
 
         // 1. Wallets for System and 4 Users
-        modelBuilder.Entity<WalletAccount>().HasData(
+        AddMissing(db,
             new WalletAccount
             {
                 Id = systemWalletId,
@@ -87,7 +91,7 @@ public static class WalletSeedData
         );
 
         // 2. Bank Account for Seller
-        modelBuilder.Entity<BankAccount>().HasData(
+        AddMissing(db,
             new BankAccount
             {
                 Id = Guid.Parse("88888888-3333-3333-3333-333333333333"),
@@ -103,7 +107,7 @@ public static class WalletSeedData
         );
 
         // 3. Initial Transaction (Buyer payment for SubOrder)
-        modelBuilder.Entity<WalletTransaction>().HasData(
+        AddMissing(db,
             new WalletTransaction
             {
                 Id = Guid.Parse("99999999-4444-4444-4444-444444444401"),
@@ -125,7 +129,7 @@ public static class WalletSeedData
 
         // 4. Wallet Topup
         var topupTxnRef = "VNP-TOPUP-20260101-0001";
-        modelBuilder.Entity<WalletTopup>().HasData(
+        AddMissing(db,
             new WalletTopup
             {
                 Id = Guid.Parse("99999999-4444-4444-4444-444444444410"),
@@ -143,7 +147,7 @@ public static class WalletSeedData
         );
 
         // 5. Direct Payment Order
-        modelBuilder.Entity<DirectPaymentOrder>().HasData(
+        AddMissing(db,
             new DirectPaymentOrder
             {
                 Id = Guid.Parse("99999999-4444-4444-4444-444444444420"),
@@ -161,7 +165,7 @@ public static class WalletSeedData
 
         // 6. Withdrawal Request
         var withdrawalId = Guid.Parse("99999999-3333-3333-3333-333333333310");
-        modelBuilder.Entity<WithdrawalRequest>().HasData(
+        AddMissing(db,
             new WithdrawalRequest
             {
                 Id = withdrawalId,
@@ -183,7 +187,7 @@ public static class WalletSeedData
         );
 
         // 7. VNPay IPN Log
-        modelBuilder.Entity<VnpayIpnLog>().HasData(
+        AddMissing(db,
             new VnpayIpnLog
             {
                 Id = Guid.Parse("99999999-4444-4444-4444-444444444430"),
@@ -200,7 +204,7 @@ public static class WalletSeedData
         );
 
         // 8. Audit Log
-        modelBuilder.Entity<AuditLog>().HasData(
+        AddMissing(db,
             new AuditLog
             {
                 Id = Guid.Parse("99999999-1111-1111-1111-111111111130"),
@@ -220,5 +224,21 @@ public static class WalletSeedData
                 IsSynced = true
             }
         );
+
+        db.SaveChanges();
+    }
+
+    private static void AddMissing<TEntity>(WalletDbContext db, params TEntity[] items)
+        where TEntity : class
+    {
+        var ids = items.Select(item => (Guid)db.Entry(item).Property("Id").CurrentValue!).ToList();
+        var existing = db.Set<TEntity>()
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Select(entity => EF.Property<Guid>(entity, "Id"))
+            .Where(id => ids.Contains(id))
+            .ToHashSet();
+
+        db.Set<TEntity>().AddRange(items.Where((_, index) => !existing.Contains(ids[index])));
     }
 }

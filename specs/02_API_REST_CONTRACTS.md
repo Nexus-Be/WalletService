@@ -1,6 +1,6 @@
 # 02 — HỢP ĐỒNG GIAO TIẾP RESTFUL (WALLET SERVICE REST CONTRACTS)
 
-> **Trạng thái triển khai (2026-10-31):** ✅ 100% RESTFUL + CLASSIC CQRS — 10 endpoint, 11 use case (8 Command, 3 Query; `EnsureWalletCommand` do `GetMyWalletQueryHandler` gọi nội bộ). Controller chỉ inject `ISender`. Bãi bỏ hoàn toàn gRPC, Protobuf, RabbitMQ và MassTransit.
+> **Trạng thái triển khai (2026-10-31):** ✅ 100% RESTFUL + CLASSIC CQRS — 15 use case (11 Command, 4 Query; `EnsureWalletCommand` do `GetMyWalletQueryHandler` gọi nội bộ). Controller chỉ inject `ISender`. Bãi bỏ hoàn toàn gRPC, Protobuf, RabbitMQ và MassTransit.
 > **ĐÓNG BĂNG:** chạy `./scripts/verify-wallet-architecture.sh` trước khi sửa.
 > **Nguồn sự thật:** code (`Wallet.Api/Controllers/Public/`, `Wallet.Application/Features/`).
 > **Cập nhật lần cuối:** 2026-10-31.
@@ -15,7 +15,7 @@
 * `POST /api/v1/wallets/withdrawals` → `RequestWithdrawalCommand` → `RequestWithdrawalCommandHandler` (HTTP 201; tạo yêu cầu Pending và khóa số dư khả dụng; không khởi tạo chuyển khoản ngân hàng).
 * `POST /api/v1/wallets/transfers` → `TransferCommand` → `TransferCommandHandler`.
 * `GET /api/v1/wallets/transactions` → `ListTransactionsQuery` → `ListTransactionsQueryHandler`.
-* `POST /api/v1/wallets/vnpay/ipn` → `ProcessVnPayIpnCommand` → `ProcessVnPayIpnCommandHandler`.
+* `GET /api/v1/wallets/vnpay/ipn` (VNPay's method; `POST` form/JSON also accepted) → `ProcessVnPayIpnCommand` → `ProcessVnPayIpnCommandHandler`. Trả JSON `{"RspCode","Message"}` theo chuẩn VNPay (`00` `Confirm Success`, `02` `Order already confirmed`, `97` `Invalid signature`…); mỗi callback được ghi vào `VnpayIpnLogs`. Chi tiết: `docs/api/vnpay/ipn.md`.
 * `GET /api/v1/wallets/vnpay/return` → `ProcessVnPayReturnQuery` → `ProcessVnPayReturnQueryHandler`.
 
 ### 1.2. Quản trị (`AdminWalletsController` — `/api/v1/admin/wallets`)
@@ -24,6 +24,7 @@
 
 ### 1.3. Thanh toán trực tiếp (`WalletsController` — `/api/v1/wallets/checkout/direct`)
 * `POST /api/v1/wallets/checkout/direct` → `CheckoutDirectCommand` → `CheckoutDirectCommandHandler` (idempotent theo `OrderId`). Internal API tạm khóa nên route dùng tiền tố công khai.
+* `GET /api/v1/wallets/checkout/direct/{orderId}` → `GetDirectPaymentStatusQuery` → `GetDirectPaymentStatusQueryHandler` (`[RequireRole]`; chỉ chủ đơn, admin/staff đọc được mọi đơn; 404 `PAYMENT_NOT_FOUND`). Trả `status` (`Pending`/`Success`/`Failed`) và `gatewayTransactionNo`. Chi tiết: `docs/api/checkout/direct-status.md`.
 
 ---
 

@@ -1,5 +1,4 @@
-﻿using System;
-using Microsoft.EntityFrameworkCore.Migrations;
+﻿using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
@@ -21,13 +20,6 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                 type: "character varying(64)",
                 maxLength: 64,
                 nullable: true);
-
-            migrationBuilder.UpdateData(
-                table: "DirectPaymentOrders",
-                keyColumn: "Id",
-                keyValue: new Guid("99999999-4444-4444-4444-444444444420"),
-                column: "RequestFingerprint",
-                value: null);
 
             migrationBuilder.CreateIndex(
                 name: "IX_DirectPaymentOrders_OrderId",

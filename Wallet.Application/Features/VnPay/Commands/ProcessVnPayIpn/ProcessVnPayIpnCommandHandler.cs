@@ -14,6 +14,9 @@ using global::Wallet.Domain.Enums;
 
 internal sealed class ProcessVnPayIpnCommandHandler : IRequestHandler<ProcessVnPayIpnCommand, VnPayIpnResponse>
 {
+    private const int MaxReferenceLength = 100;
+    private const int MaxPayloadParameters = 50;
+    private const int MaxPayloadValueLength = 500;
     private readonly IWalletDbContext _context;
     private readonly IVnPayService _vnPay;
     private readonly ILogger<ProcessVnPayIpnCommandHandler> _logger;
@@ -30,6 +33,13 @@ internal sealed class ProcessVnPayIpnCommandHandler : IRequestHandler<ProcessVnP
 
     public async Task<VnPayIpnResponse> Handle(ProcessVnPayIpnCommand request, CancellationToken cancellationToken)
     {
+        var response = await ProcessAsync(request, cancellationToken);
+        await TryRecordCallbackAsync(request, response, cancellationToken);
+        return response;
+    }
+
+    private async Task<VnPayIpnResponse> ProcessAsync(ProcessVnPayIpnCommand request, CancellationToken cancellationToken)
+    {
         if (!_vnPay.ValidateSignature(request.Parameters))
         {
             _logger.LogWarning("Invalid VNPay signature on IPN payload.");
@@ -45,6 +55,11 @@ internal sealed class ProcessVnPayIpnCommandHandler : IRequestHandler<ProcessVnP
             return new VnPayIpnResponse("99", "Missing parameters");
         }
 
+        // VNPay marks a payment as paid only when both the response code and the transaction status are "00".
+        var transactionStatus = GetParameter(request.Parameters, "vnp_TransactionStatus");
+        var paymentSucceeded = responseCode == "00" &&
+                               (string.IsNullOrWhiteSpace(transactionStatus) || transactionStatus == "00");
+
         var currency = GetParameter(request.Parameters, "vnp_CurrCode");
         if (!string.Equals(currency, "VND", StringComparison.OrdinalIgnoreCase) ||
             !long.TryParse(rawAmount, NumberStyles.None, CultureInfo.InvariantCulture, out var parsedAmount))
@@ -59,7 +74,7 @@ internal sealed class ProcessVnPayIpnCommandHandler : IRequestHandler<ProcessVnP
         {
             return await ProcessDirectPaymentIpnAsync(
                 txnRef,
-                responseCode,
+                paymentSucceeded,
                 parsedAmount,
                 request,
                 dbTransaction,
@@ -68,7 +83,7 @@ internal sealed class ProcessVnPayIpnCommandHandler : IRequestHandler<ProcessVnP
 
         if (topup.Status != TopupStatus.Pending)
         {
-            return new VnPayIpnResponse("02", "Order already processed");
+            return new VnPayIpnResponse("02", "Order already confirmed");
         }
 
         if (topup.Amount * 100m != parsedAmount)
@@ -76,7 +91,7 @@ internal sealed class ProcessVnPayIpnCommandHandler : IRequestHandler<ProcessVnP
             return new VnPayIpnResponse("04", "Invalid amount or currency");
         }
 
-        if (responseCode == "00")
+        if (paymentSucceeded)
         {
             var wallet = await _context.LockWalletByIdAsync(topup.WalletId, cancellationToken);
             if (wallet is null)
@@ -123,12 +138,12 @@ internal sealed class ProcessVnPayIpnCommandHandler : IRequestHandler<ProcessVnP
         await _context.SaveChangesAsync(cancellationToken);
         await dbTransaction.CommitAsync(cancellationToken);
 
-        return new VnPayIpnResponse("00", "Success");
+        return new VnPayIpnResponse("00", "Confirm Success");
     }
 
     private async Task<VnPayIpnResponse> ProcessDirectPaymentIpnAsync(
         string transactionReference,
-        string responseCode,
+        bool paymentSucceeded,
         long parsedAmount,
         ProcessVnPayIpnCommand request,
         Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction dbTransaction,
@@ -141,7 +156,7 @@ internal sealed class ProcessVnPayIpnCommandHandler : IRequestHandler<ProcessVnP
             return new VnPayIpnResponse("01", "Order not found");
 
         if (directPayment.Status != TopupStatus.Pending)
-            return new VnPayIpnResponse("02", "Order already processed");
+            return new VnPayIpnResponse("02", "Order already confirmed");
 
         if (directPayment.Amount * 100m != parsedAmount)
             return new VnPayIpnResponse("04", "Invalid amount or currency");
@@ -155,14 +170,14 @@ internal sealed class ProcessVnPayIpnCommandHandler : IRequestHandler<ProcessVnP
 
         var providerTransactionNo = GetParameter(request.Parameters, "vnp_TransactionNo");
         var oldStatus = directPayment.Status;
-        directPayment.Status = responseCode == "00" ? TopupStatus.Success : TopupStatus.Failed;
+        directPayment.Status = paymentSucceeded ? TopupStatus.Success : TopupStatus.Failed;
         directPayment.VnpTransactionNo = providerTransactionNo;
         directPayment.RawResponse = JsonSerializer.Serialize(request.Parameters);
-        transaction.Status = responseCode == "00" ? TransactionStatus.Success : TransactionStatus.Failed;
+        transaction.Status = paymentSucceeded ? TransactionStatus.Success : TransactionStatus.Failed;
         transaction.UpdatedAt = DateTimeOffset.UtcNow;
 
         _context.AddAuditLog(
-            action: responseCode == "00" ? AuditAction.DirectPaymentSuccess : AuditAction.DirectPaymentFail,
+            action: paymentSucceeded ? AuditAction.DirectPaymentSuccess : AuditAction.DirectPaymentFail,
             entityName: nameof(DirectPaymentOrder),
             entityId: directPayment.Id.ToString(),
             oldValues: new { Status = oldStatus },
@@ -178,8 +193,50 @@ internal sealed class ProcessVnPayIpnCommandHandler : IRequestHandler<ProcessVnP
 
         await _context.SaveChangesAsync(cancellationToken);
         await dbTransaction.CommitAsync(cancellationToken);
-        return new VnPayIpnResponse("00", "Success");
+        return new VnPayIpnResponse("00", "Confirm Success");
     }
+
+    // Recorded outside the settlement transaction so rejected callbacks (bad signature, unknown order, ...) are kept too.
+    private async Task TryRecordCallbackAsync(
+        ProcessVnPayIpnCommand request,
+        VnPayIpnResponse response,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            _context.VnpayIpnLogs.Add(new VnpayIpnLog
+            {
+                Id = Guid.NewGuid(),
+                VnpTxnRef = Truncate(GetParameter(request.Parameters, "vnp_TxnRef"), MaxReferenceLength) ?? string.Empty,
+                VnpResponseCode = Truncate(GetParameter(request.Parameters, "vnp_ResponseCode"), 50),
+                VnpTransactionNo = Truncate(GetParameter(request.Parameters, "vnp_TransactionNo"), 100),
+                ClientIp = Truncate(request.ClientIp, 50),
+                RawPayload = SerializePayload(request.Parameters),
+                ProcessingStatus = response.ResponseCode switch
+                {
+                    "00" => IpnProcessingStatus.Processed,
+                    "02" => IpnProcessingStatus.Duplicate,
+                    "97" => IpnProcessingStatus.InvalidSignature,
+                    "01" => IpnProcessingStatus.OrderNotFound,
+                    "04" => IpnProcessingStatus.InvalidAmount,
+                    _ => IpnProcessingStatus.SystemError
+                }
+            });
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            _logger.LogError(exception, "Failed to record the VNPay IPN callback; the acknowledgement is unaffected.");
+        }
+    }
+
+    private static string SerializePayload(IReadOnlyDictionary<string, string> parameters) =>
+        JsonSerializer.Serialize(parameters
+            .Take(MaxPayloadParameters)
+            .ToDictionary(parameter => parameter.Key, parameter => Truncate(parameter.Value, MaxPayloadValueLength)));
+
+    private static string? Truncate(string? value, int maxLength) =>
+        value is not null && value.Length > maxLength ? value[..maxLength] : value;
 
     private static string? GetParameter(IReadOnlyDictionary<string, string> parameters, string key)
     {

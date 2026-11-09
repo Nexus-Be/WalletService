@@ -12,7 +12,7 @@
 - **Authorization:** Existing `x-user-id` service-to-service identity contract; this change does not alter authorization.
 - **Controller:** `Wallet.Api/Controllers/Public/WalletsController.cs`
 - **Handler:** `Wallet.Application/Features/Checkout/Commands/CheckoutDirect/CheckoutDirectCommandHandler.cs`
-- **VNPay settlement:** `POST /api/v1/wallets/vnpay/ipn`, handled by the existing `ProcessVnPayIpnCommandHandler`.
+- **VNPay settlement:** `GET /api/v1/wallets/vnpay/ipn` (VNPay's method; `POST` also accepted), handled by the existing `ProcessVnPayIpnCommandHandler`.
 - **Balance behavior:** Direct merchant checkout is an external payment. It records payment state but does not debit or credit the wallet balance.
 
 ## 2. Request
