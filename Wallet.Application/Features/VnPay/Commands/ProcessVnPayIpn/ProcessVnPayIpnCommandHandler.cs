@@ -60,8 +60,9 @@ internal sealed class ProcessVnPayIpnCommandHandler : IRequestHandler<ProcessVnP
         var paymentSucceeded = responseCode == "00" &&
                                (string.IsNullOrWhiteSpace(transactionStatus) || transactionStatus == "00");
 
+        // VNPay callbacks omit vnp_CurrCode; when supplied it must be VND.
         var currency = GetParameter(request.Parameters, "vnp_CurrCode");
-        if (!string.Equals(currency, "VND", StringComparison.OrdinalIgnoreCase) ||
+        if ((currency is not null && !string.Equals(currency, "VND", StringComparison.OrdinalIgnoreCase)) ||
             !long.TryParse(rawAmount, NumberStyles.None, CultureInfo.InvariantCulture, out var parsedAmount))
         {
             return new VnPayIpnResponse("04", "Invalid amount or currency");
