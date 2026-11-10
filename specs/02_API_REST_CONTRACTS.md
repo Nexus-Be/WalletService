@@ -1,6 +1,6 @@
 # 02 — HỢP ĐỒNG GIAO TIẾP RESTFUL (WALLET SERVICE REST CONTRACTS)
 
-> **Trạng thái triển khai (2026-10-31):** ✅ 100% RESTFUL + CLASSIC CQRS — 15 use case (11 Command, 4 Query; `EnsureWalletCommand` do `GetMyWalletQueryHandler` gọi nội bộ). Controller chỉ inject `ISender`. Bãi bỏ hoàn toàn gRPC, Protobuf, RabbitMQ và MassTransit.
+> **Trạng thái triển khai (2026-11-10):** ✅ 100% RESTFUL + CLASSIC CQRS — 17 handlers (11 Command, 6 Query; `EnsureWalletCommand` do `GetMyWalletQueryHandler` gọi nội bộ). Controller chỉ inject `ISender`. Bãi bỏ hoàn toàn gRPC, Protobuf, RabbitMQ và MassTransit.
 > **ĐÓNG BĂNG:** chạy `./scripts/verify-wallet-architecture.sh` trước khi sửa.
 > **Nguồn sự thật:** code (`Wallet.Api/Controllers/Public/`, `Wallet.Application/Features/`).
 > **Cập nhật lần cuối:** 2026-10-31.
@@ -21,6 +21,10 @@
 ### 1.2. Quản trị (`AdminWalletsController` — `/api/v1/admin/wallets`)
 * `PATCH /api/v1/admin/wallets/withdrawals/{id:guid}` → `ProcessWithdrawalCommand` → `ProcessWithdrawalCommandHandler`.
 * `POST /api/v1/admin/wallets/{walletId:guid}/adjustments` → `AdjustWalletBalanceCommand` → `AdjustWalletBalanceCommandHandler`.
+* `GET /api/v1/admin/wallets/ledger` → `ListWalletLedgerQuery` → `ListWalletLedgerQueryHandler` (admin only; filtered, database-paginated transaction report).
+* `GET /api/v1/admin/wallets/reconciliation` → `GetWalletReconciliationQuery` → `GetWalletReconciliationQueryHandler` (admin only; read-only wallet-balance snapshot report).
+
+Withdrawal approval requires `referenceCode` (non-blank, maximum 100 characters) and records the manual bank-transfer reference in `GatewayReferenceId`; the transfer must already have occurred. Withdrawal rejection does not require the reference and releases locked funds. See `docs/api/admin-financial-operations.md`.
 
 ### 1.3. Thanh toán trực tiếp (`WalletsController` — `/api/v1/wallets/checkout/direct`)
 * `POST /api/v1/wallets/checkout/direct` → `CheckoutDirectCommand` → `CheckoutDirectCommandHandler` (idempotent theo `OrderId`). Internal API tạm khóa nên route dùng tiền tố công khai.

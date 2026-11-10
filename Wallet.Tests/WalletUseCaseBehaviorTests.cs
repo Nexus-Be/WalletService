@@ -622,7 +622,7 @@ public class WalletUseCaseBehaviorTests
 
         var handler = new ProcessWithdrawalCommandHandler(context);
         var result = await handler.Handle(
-            new ProcessWithdrawalCommand("APPROVE")
+            new ProcessWithdrawalCommand("APPROVE", ReferenceCode: "BANK-REF-001")
             {
                 WithdrawalId = withdrawal.Id,
                 AdminUserId = Guid.NewGuid().ToString()

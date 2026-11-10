@@ -1,6 +1,6 @@
 # 00 — NHIỆM VỤ CỐT LÕI & RÀO CHẮN CHỐNG ẢO GIÁC (WALLET SERVICE)
 
-> **Trạng thái triển khai (2026-10-31):** ✅ CLASSIC CQRS — 15 use case (11 Command, 4 Query) trong `Wallet.Application/Features/`, 2 thin controller inject `ISender`, 146 test pass. Không còn gRPC, MassTransit, consumer, Outbox/Inbox.
+> **Trạng thái triển khai (2026-11-10):** ✅ CLASSIC CQRS — 17 handlers (11 Command, 6 Query) trong `Wallet.Application/Features/`, 2 thin controller inject `ISender`. Không còn gRPC, MassTransit, consumer, Outbox/Inbox.
 > **Nguồn sự thật:** code (`Wallet.Api/Controllers/Public/WalletsController.cs`, `Wallet.Application/Features/`, `Wallet.Infrastructure/Persistence/WalletDbContext.cs`).
 > **Cập nhật lần cuối:** 2026-10-31.
 > **ĐÓNG BĂNG:** chạy `./scripts/verify-wallet-architecture.sh` trước khi sửa.
@@ -20,10 +20,11 @@
 | 5 | Chuyển tiền nội bộ giữa hai ví | ✅ | `Features/Transfers/Commands/Transfer/TransferCommandHandler.cs` |
 | 6 | Thanh toán trực tiếp cho đơn hàng (idempotent theo `OrderId`) | ✅ | `Features/Checkout/Commands/CheckoutDirect/CheckoutDirectCommandHandler.cs` |
 | 7 | Duyệt / từ chối yêu cầu rút tiền, điều chỉnh số dư thủ công | ✅ | `Features/AdminWallets/Commands/` |
-| 8 | Endpoint tạo yêu cầu rút tiền cho người dùng | ⚠️ BỊ VÔ HIỆU | `Features/Withdrawals/Commands/RequestWithdrawal/RequestWithdrawalCommandHandler.cs` luôn ném `BUSINESS_RULE_VIOLATION` |
+| 8 | Endpoint tạo yêu cầu rút tiền cho người dùng | ✅ | `Features/Withdrawals/Commands/RequestWithdrawal/RequestWithdrawalCommandHandler.cs` tạo yêu cầu Pending và khóa số dư khả dụng |
 | 9 | Quản lý tài khoản ngân hàng liên kết (`BankAccount`) | ⚠️ CHỈ CÓ ENTITY | `Wallet.Domain/Entities/BankAccount.cs`; chưa có API đọc/ghi |
 | 10 | Ghi vết kiểm toán (`AuditLog`) qua `AddAuditLog(...)` | ✅ | `Wallet.Application/Common/Extensions/AuditLogExtensions.cs` |
 | 11 | gRPC server, MassTransit consumer, Saga, Outbox/Inbox | 🛑 ĐÃ XÓA | không còn file/thư mục tương ứng |
+| 12 | Báo cáo giao dịch và đối soát snapshot số dư ví | ✅ | `Features/AdminWallets/Queries/ListWalletLedger/`, `Features/AdminWallets/Queries/GetWalletReconciliation/` |
 
 ---
 

@@ -90,7 +90,7 @@ public class WalletContractRegressionTests
 
         var handler = new ProcessWithdrawalCommandHandler(context);
         var result = await handler.Handle(
-            new ProcessWithdrawalCommand("approve")
+            new ProcessWithdrawalCommand("approve", ReferenceCode: "BANK-REF-001")
             {
                 WithdrawalId = withdrawal.Id,
                 AdminUserId = Guid.NewGuid().ToString()

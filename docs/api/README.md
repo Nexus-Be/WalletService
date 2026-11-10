@@ -6,6 +6,7 @@
 - [Direct checkout](checkout/direct.md) — VNPay checkout initiation, retry behavior, and payment state.
 - [Direct payment status](checkout/direct-status.md) — polling endpoint for the settled VNPay result.
 - [VNPay IPN](vnpay/ipn.md) — signature validation, top-up credit, direct-order settlement, and duplicate callbacks.
+- [Administrator financial operations](admin-financial-operations.md) — withdrawal transfer-reference evidence, transaction reporting, and wallet reconciliation.
 
 ## Supporting documents
 

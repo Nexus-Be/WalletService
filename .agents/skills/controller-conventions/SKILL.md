@@ -19,7 +19,7 @@ Controllers serve strictly as **HTTP Transport Boundary Adapters**. They bind in
 WalletService operates under an explicit architecture freeze:
 - **Exactly 2 Controllers**: `WalletsController.cs` and `AdminWalletsController.cs` in `Wallet.Api/Controllers/Public/`. Prohibit splitting into per-resource controllers (`TopupsController`, `TransfersController`, `VnPayController`, etc.).
 - **ISender Injection Only**: Controllers inject ONLY `ISender` and `ILogger<{Controller}>`. Prohibit injecting DbContext, repositories, or creating `IWalletService` facades.
-- **Classic CQRS**: Exactly 11 use cases live at `Wallet.Application/Features/{Area}/{Commands|Queries}/{UseCase}/`.
+- **Classic CQRS**: Exactly 17 use cases (11 commands and 6 queries) live at `Wallet.Application/Features/{Area}/{Commands|Queries}/{UseCase}/`.
 - **Pre-Commit Verification**: Run `./scripts/verify-wallet-architecture.sh` to ensure CQRS layout integrity.
 
 ---

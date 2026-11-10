@@ -36,6 +36,7 @@ internal sealed class ProcessWithdrawalCommandHandler
         }
 
         var approve = decision == WithdrawalDecision.Approve;
+        var referenceCode = approve ? request.ReferenceCode?.Trim() : null;
 
         await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
         var withdrawal = await _context.LockWithdrawalRequestAsync(request.WithdrawalId, cancellationToken);
@@ -55,6 +56,7 @@ internal sealed class ProcessWithdrawalCommandHandler
             wallet.CompleteLockedWithdrawal(withdrawal.Amount);
             withdrawal.Status = WithdrawalStatus.Approved;
             withdrawal.ProcessedAt = DateTimeOffset.UtcNow;
+            withdrawal.GatewayReferenceId = referenceCode;
             var debit = new WalletTransaction
             {
                 WalletId = wallet.Id,
@@ -66,7 +68,7 @@ internal sealed class ProcessWithdrawalCommandHandler
                 BalanceAfter = wallet.Balance,
                 ReferenceId = withdrawal.Id,
                 Status = TransactionStatus.Success,
-                Note = $"Withdrawal to {withdrawal.BankName}, {withdrawal.BankAccountNumber}; fee {withdrawal.Fee.ToString("0.00", CultureInfo.InvariantCulture)}"
+                Note = $"Withdrawal to {withdrawal.BankName}, {MaskAccountNumber(withdrawal.BankAccountNumber)}; fee {withdrawal.Fee.ToString("0.00", CultureInfo.InvariantCulture)}"
             };
             _context.WalletTransactions.Add(debit);
             transactionId = debit.Id.ToString();
@@ -88,6 +90,7 @@ internal sealed class ProcessWithdrawalCommandHandler
             {
                 Status = withdrawal.Status.ToString(),
                 withdrawal.ProcessedBy,
+                ReferenceCode = withdrawal.GatewayReferenceId,
                 Reason = approve ? null : request.AdminNote
             },
             userId: adminGuid.ToString());
@@ -99,7 +102,13 @@ internal sealed class ProcessWithdrawalCommandHandler
             withdrawal.Id.ToString(),
             withdrawal.Status.ToString(),
             withdrawal.ProcessedAt ?? DateTimeOffset.UtcNow,
-            transactionId
+            transactionId,
+            withdrawal.GatewayReferenceId
         );
     }
+
+    private static string MaskAccountNumber(string accountNumber) =>
+        accountNumber.Length <= 4
+            ? new string('*', accountNumber.Length)
+            : new string('*', accountNumber.Length - 4) + accountNumber[^4..];
 }

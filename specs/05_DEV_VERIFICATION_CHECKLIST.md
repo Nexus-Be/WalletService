@@ -1,6 +1,6 @@
 # 05 — DANH SÁCH KIỂM CHỨNG & NGHIỆM THU (WALLET SERVICE CHECKLIST)
 
-> **Trạng thái triển khai (2026-11-03):** ✅ CLASSIC CQRS — build Release 0 error, 146 test pass, 15 use case (11 Command, 4 Query).
+> **Trạng thái triển khai (2026-11-10):** ✅ CLASSIC CQRS — 17 handlers (11 Command, 6 Query), 2 public controllers.
 > **Nguồn sự thật:** code (`Wallet.sln`, `Wallet.Application/Features/`, `Wallet.Tests/`).
 > **Cập nhật lần cuối:** 2026-11-03.
 
@@ -44,8 +44,8 @@
 # 1. Không còn feature service facade
 grep -rn "interface I.*Service\b" --include="*.cs" Wallet.Application Wallet.Api   # kỳ vọng rỗng
 
-# 2. Đủ 15 use case handler (11 Command, 4 Query)
-find Wallet.Application/Features -name "*Handler.cs" | wc -l                       # kỳ vọng 15
+# 2. Đủ 17 use case handler (11 Command, 6 Query)
+find Wallet.Application/Features -name "*Handler.cs" | wc -l                       # kỳ vọng 17
 
 # 3. MediatR + ValidationBehavior được đăng ký
 grep -n "AddMediatR\|AddOpenBehavior" Wallet.Application/DependencyInjection.cs    # kỳ vọng 2 dòng
@@ -62,5 +62,5 @@ grep -n "private readonly I" Wallet.Api/Controllers/*/*.cs
 ## 4. GHI CHÚ HIỆN TRẠNG
 
 * EF Core migrations are stored in `Wallet.Infrastructure/Persistence/Migrations/`; review migration and rollback impact before applying schema changes to a shared database.
-* `POST /api/v1/wallets/withdrawals` tạo yêu cầu `Pending` và khóa số dư khả dụng; payout ngân hàng, xác minh Seller và đối soát chưa được triển khai.
+* `POST /api/v1/wallets/withdrawals` tạo yêu cầu `Pending` và khóa số dư khả dụng. Admin reports inspect existing transaction records and wallet snapshots only; they are not double-entry accounting or bank-statement reconciliation.
 * `/health` trả `Healthy` vô điều kiện, không kiểm tra kết nối DB.

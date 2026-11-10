@@ -1,6 +1,6 @@
 # Implementation Plan: Wallet Service Phase 2 Financial Operations
 
-**Branch**: `002-wallet-phase2` | **Date**: 2026-11-10 | **Spec**: [spec.md](spec.md)
+**Branch**: `agents/wallet-phase2-plan-execution` | **Date**: 2026-11-10 | **Spec**: [spec.md](spec.md)
 
 **Input**: User-selected WalletService slice of the Phase 2 API catalog. In scope: P2-03 withdrawal completion and P2-04 admin transaction reporting/reconciliation. P2-05 purchase freeze and Auction escrow are deferred pending an approved internal-service security contract.
 
@@ -24,14 +24,14 @@ The implementation adds two CQRS queries, taking the current verified 15 handler
 
 ## GitNexus Impact and Preflight
 
-Repository binding: **WalletService-Workspace** at `/Users/tringuyen/Visual Studio Code/WalletService`, branch `dev`, indexed commit `f39b15b` (index generated 2026-11-10 08:27 local time). The working tree includes documentation changes; no source files have changed.
+Repository binding for implementation: the current worktree at `/Users/tringuyen/Visual Studio Code/WalletService.worktrees/wallet-phase2-plan-execution`, branch `agents/wallet-phase2-plan-execution`, indexed locally as `WalletService-Phase2` before impact analysis.
 
 | Target | Impact result | Planning consequence |
 |---|---|---|
-| `WalletAccount` | HIGH; 4 direct dependents, 1 depth-2 dependent; one top-up execution flow affected | Do not change wallet balance methods for this read-only report. Any future balance-related edit requires focused regression testing. |
-| `WalletTransaction` | HIGH; 15 impacted symbols, lower-bound result; transfer, top-up/IPN, checkout/refund/settlement, transaction-history paths appear in the graph | Read existing records only. Avoid changing its shared entity semantics. Run all financial regression tests if implementation touches its mapping or data. |
-| `RequestWithdrawalCommandHandler` and `ProcessWithdrawalCommandHandler` | UNKNOWN; no callers resolved by the graph | Source search confirms controller dispatch and direct test usage in `WalletUseCaseBehaviorTests`, `WalletContractRegressionTests`, and `WalletOperationsEdgeCaseTests`; do not treat UNKNOWN as unused. |
-| `AdminWalletsController` and `RequestWithdrawalCommand` | UNKNOWN/ambiguous graph results | Source search confirms route/action usage and request construction. Re-run impact with exact file/symbol selectors immediately before edits. |
+| `WalletAccount` | HIGH; 4 direct dependents and 1 depth-2 dependent; top-up flow affected | Do not change wallet balance methods. This implementation only reads wallet balances for reconciliation. |
+| `WalletTransaction` | HIGH; 15 impacted symbols, lower-bound result; VNPay IPN, checkout, transaction history, and test/support paths appear in the graph | Read existing records only. Do not change the entity or shared transaction semantics. |
+| `ProcessWithdrawalCommandHandler` | UNKNOWN; no callers resolved | Source search confirmed dispatch through `AdminWalletsController` and direct tests in `WalletUseCaseBehaviorTests`, `WalletContractRegressionTests`, and `WalletOperationsEdgeCaseTests`. |
+| `AdminWalletsController` | UNKNOWN; no callers resolved | Source search confirmed the controller's route/action and test coverage; preserve both existing actions and routes. |
 
 GitNexus identifies shared financial flows around `LockFunds`, `Withdraw`, and `Deduct`, and the entity impact shows the top-up, wallet initialization, and top-up URL generation paths. The current impact report is planning evidence, not an edit authorization; rerun it against the then-current index before implementation. Do not waive HIGH or UNKNOWN risk.
 
@@ -160,4 +160,4 @@ Also inspect `/swagger/v1/swagger.json` for the two new admin routes and authori
 
 ## Approval Gate
 
-This artifact is a plan, not implementation authorization. Do not edit source, routes, migrations, or architecture rules until the user reviews and approves the concrete implementation plan and the required architecture-count update.
+The user explicitly approved implementation on 2026-11-10, including the coordinated handler-count update to 17. Keep changes within this plan; preserve two controllers and all other frozen architecture, financial, and security invariants.

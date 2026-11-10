@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-10
 
-**Status**: Draft — scope decisions recorded; implementation plan pending review
+**Status**: Approved for implementation — scope and coordinated architecture update approved 2026-11-10
 
 **Input**: User requested a plan for the second-sprint requirements and selected the WalletService slice of the supplied Phase 2 API catalog.
 
@@ -51,7 +51,7 @@ The in-scope WalletService operations are:
 
 The existing service already exposes `POST /api/v1/wallets/withdrawals` and `PATCH /api/v1/admin/wallets/withdrawals/{id}`.
 
-- **Decision — architecture and API compatibility**: Plan a coordinated, explicitly approved amendment where needed. Retain the two controllers, CQRS/MediatR, and no-facade constraints. Reconcile the current handler count and governing documents, and update the verifier and API documentation together before implementation. This planning decision is not implementation authorization.
+- **Decision — architecture and API compatibility**: The user approved implementation on 2026-11-10, including a coordinated update from 15 to 17 handlers (11 Commands, 6 Queries). Retain exactly two controllers, CQRS/MediatR, and no-facade constraints; update the verifier and active governing documents together.
 
 - **Decision — service-to-service security**: Defer P2-05 purchase-freeze and Auction escrow endpoints from this sprint until a separate internal-authentication and API-contract decision is approved. Do not expose unauthenticated internal routes.
 - **Decision — ledger semantics**: Implement an administrator report and reconciliation view over existing `WalletTransaction` records only. Do not represent it as a double-entry general ledger or bank-statement reconciliation.
@@ -72,10 +72,10 @@ The deferred operations are `/api/v1/internal/wallets/freeze-purchase`, `/unfree
 ## Functional Requirements
 
 - **FR-001**: The system MUST reserve only the requesting seller's available VND balance for a valid withdrawal and reject requests outside the specified amount bounds.
-- **FR-002**: The system MUST record withdrawal approval or rejection, processing actor, processing time, and any bank transfer reference, and MUST prevent duplicate balance effects on retries.
+- **FR-002**: The system MUST record each withdrawal decision, processing actor and time, and the bank transfer reference when approved.
 - **FR-003**: The system MUST provide an authorized administrator a bounded, paginated report of existing wallet transaction records and a per-wallet balance reconciliation; the response MUST NOT claim double-entry or external bank reconciliation.
 - **FR-004**: Every balance-changing operation MUST preserve non-negative available balance and commit its balance, transaction, and audit changes atomically where applicable.
-- **FR-005**: Every withdrawal decision MUST prevent duplicate financial effects when retried.
+- **FR-005**: A repeated or concurrent withdrawal decision MUST NOT apply a second balance, transaction, or audit state transition.
 - **FR-006**: The system MUST enforce caller ownership and role authorization for user and administrator operations.
 - **FR-007**: The system MUST retain the two-controller, CQRS/MediatR, and no-facade architecture; any change to frozen counts or contracts MUST be explicitly approved and reflected in the verifier and governing documentation together.
 

@@ -4,8 +4,9 @@
 
 ### I. Preserve the Frozen Architecture
 WalletService remains a .NET 8 REST service using the existing four-layer
-architecture and classic CQRS through MediatR. Keep exactly 11 handlers and the
-two public controllers (`WalletsController` and `AdminWalletsController`). Do
+architecture and classic CQRS through MediatR. Keep exactly 17 handlers (11
+commands and 6 queries) and the two public controllers (`WalletsController`
+and `AdminWalletsController`). Do
 not add feature-service facades, repository abstractions, or per-resource
 controllers. Any requested change to these invariants requires explicit user
 approval and a coordinated update to the architecture verifier and governing

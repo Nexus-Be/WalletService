@@ -10,6 +10,8 @@ using Wallet.Api.Extensions;
 using Wallet.Api.Filters;
 using Wallet.Application.Features.AdminWallets.Commands.AdjustWalletBalance;
 using Wallet.Application.Features.AdminWallets.Commands.ProcessWithdrawal;
+using Wallet.Application.Features.AdminWallets.Queries.GetWalletReconciliation;
+using Wallet.Application.Features.AdminWallets.Queries.ListWalletLedger;
 
 [ApiController]
 [Route("api/v1/admin/wallets")]
@@ -70,6 +72,28 @@ public sealed class AdminWalletsController : ControllerBase
         var result = await _sender.Send(
             command with { WalletId = walletId, AdminUserId = adminId },
             cancellationToken);
+        return Ok(result);
+    }
+
+    /// <summary>Lists wallet transactions for administrator review.</summary>
+    [HttpGet("ledger")]
+    [RequireRole("admin")]
+    public async Task<IActionResult> ListWalletLedger(
+        [FromQuery] ListWalletLedgerQuery query,
+        CancellationToken cancellationToken)
+    {
+        var result = await _sender.Send(query, cancellationToken);
+        return Ok(result);
+    }
+
+    /// <summary>Compares recorded wallet balances with successful transaction snapshots.</summary>
+    [HttpGet("reconciliation")]
+    [RequireRole("admin")]
+    public async Task<IActionResult> GetWalletReconciliation(
+        [FromQuery] GetWalletReconciliationQuery query,
+        CancellationToken cancellationToken)
+    {
+        var result = await _sender.Send(query, cancellationToken);
         return Ok(result);
     }
 }

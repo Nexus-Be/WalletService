@@ -148,6 +148,74 @@ public class WalletRequestValidatorTests
         Assert.Contains(results, result => result.MemberNames.Contains(nameof(request.Action)));
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData("   ")]
+    public void ProcessWithdrawalCommand_ApprovalRequiresValidReference(string? referenceCode)
+    {
+        var request = new ProcessWithdrawalCommand("Approve", ReferenceCode: referenceCode)
+        {
+            WithdrawalId = Guid.NewGuid(),
+            AdminUserId = Guid.NewGuid().ToString()
+        };
+
+        var results = ValidateModel(request);
+
+        Assert.Contains(results, result => result.MemberNames.Contains(nameof(request.ReferenceCode)));
+    }
+
+    [Fact]
+    public void ProcessWithdrawalCommand_ApprovalAcceptsNonBlankReference()
+    {
+        var request = new ProcessWithdrawalCommand("Approve", ReferenceCode: "R")
+        {
+            WithdrawalId = Guid.NewGuid(),
+            AdminUserId = Guid.NewGuid().ToString()
+        };
+
+        Assert.Empty(ValidateModel(request));
+    }
+
+    [Fact]
+    public void ProcessWithdrawalCommand_ApprovalAcceptsReferenceAtMaximumLength()
+    {
+        var request = new ProcessWithdrawalCommand("Approve", ReferenceCode: new string('R', 100))
+        {
+            WithdrawalId = Guid.NewGuid(),
+            AdminUserId = Guid.NewGuid().ToString()
+        };
+
+        Assert.Empty(ValidateModel(request));
+    }
+
+    [Fact]
+    public void ProcessWithdrawalCommand_RejectionDoesNotRequireReference()
+    {
+        var request = new ProcessWithdrawalCommand("Reject")
+        {
+            WithdrawalId = Guid.NewGuid(),
+            AdminUserId = Guid.NewGuid().ToString()
+        };
+
+        Assert.Empty(ValidateModel(request));
+    }
+
+    [Fact]
+    public void ProcessWithdrawalCommand_ApprovalRejectsReferenceOverMaximumLength()
+    {
+        var request = new ProcessWithdrawalCommand("Approve", ReferenceCode: new string('R', 101))
+        {
+            WithdrawalId = Guid.NewGuid(),
+            AdminUserId = Guid.NewGuid().ToString()
+        };
+
+        var results = ValidateModel(request);
+
+        Assert.Contains(results, result => result.MemberNames.Contains(nameof(request.ReferenceCode)));
+    }
+
     [Fact]
     public void ExistingRequests_AcceptValidBoundaries()
     {
@@ -164,7 +232,7 @@ public class WalletRequestValidatorTests
                 WalletId = Guid.NewGuid(),
                 AdminUserId = adminId
             },
-            new ProcessWithdrawalCommand("Approve")
+            new ProcessWithdrawalCommand("Approve", ReferenceCode: "BANK-REF-001")
             {
                 WithdrawalId = Guid.NewGuid(),
                 AdminUserId = adminId

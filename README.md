@@ -11,7 +11,7 @@ Wallet Service quản lý số dư và giao dịch ví, nạp tiền qua VNPay, 
 | Runtime | .NET 8 / ASP.NET Core |
 | API | REST HTTP/JSON, mặc định `http://localhost:8008` |
 | Database | PostgreSQL, database `wallet_db`; compose local ánh xạ port `5440` |
-| Kiến trúc | Domain / Application / Infrastructure / API; 15 MediatR handlers và 2 controllers |
+| Kiến trúc | Domain / Application / Infrastructure / API; 17 MediatR handlers (11 commands, 6 queries) và 2 controllers |
 | Health | `GET /health` |
 | API contract | [API đang triển khai](docs/api/wallet-payments.md) |
 
@@ -66,7 +66,7 @@ dotnet build Wallet.sln -c Release
 dotnet test Wallet.sln -c Release
 ```
 
-The architecture script checks that MediatR remains wired, all 15 handlers remain under `Wallet.Application/Features`, and the two expected controllers remain in place.
+The architecture script checks that MediatR remains wired, all 17 handlers remain under `Wallet.Application/Features`, and the two expected controllers remain in place.
 
 ## Spec-driven feature workflow
 
@@ -95,12 +95,13 @@ and template overrides are in `.specify/`.
 | Internal transfer | Debits and credits the two wallets in one database transaction |
 | Direct checkout | Starts VNPay payment; signed IPN settles the order without changing wallet balance |
 | User withdrawal | Creates a pending request and reserves available funds; no bank payout is initiated |
-| Admin withdrawal | Approves a pending request by consuming reserved funds or rejects it by releasing the reservation; neither action initiates a bank transfer |
+| Admin withdrawal | Records a transfer reference after staff confirms the manual bank transfer; rejection releases reserved funds; no automated payout is initiated |
 | Admin balance adjustment | Credits/debits a wallet and records an audit log |
+| Admin financial reports | Lists paginated wallet transactions and reconciles stored wallet balances with successful transaction snapshots |
 | Gateway integration | Gateway/Commerce are external to this repository; routing and end-to-end integration are not verified here |
 
 ### Identity and deployment boundary
 
 Controllers read identity and roles from claims or forwarded `x-user-id` / `x-user-roles` headers. The current API host does not configure JWT authentication, and the internal-service authentication middleware is disabled. Treat forwarded identity headers as trusted only when they are set by a trusted gateway that authenticates the caller and overwrites client-supplied values. Do not expose the service directly to untrusted networks until the authentication boundary is verified and enforced.
 
-See [`docs/api/README.md`](docs/api/README.md) for API references and endpoint contracts.
+See [`docs/api/README.md`](docs/api/README.md) for API references and endpoint contracts, including the [administrator financial operations](docs/api/admin-financial-operations.md).

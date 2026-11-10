@@ -301,8 +301,17 @@ public class WalletOperationsEdgeCaseTests
 
     // ---- Withdrawal processing ------------------------------------------------
 
-    private static ProcessWithdrawalCommand Process(WithdrawalEntity withdrawal, string action, string? note = null) =>
-        new(action, note)
+    private static ProcessWithdrawalCommand Process(
+        WithdrawalEntity withdrawal,
+        string action,
+        string? note = null,
+        string? referenceCode = null) =>
+        new(
+            action,
+            note,
+            referenceCode ?? (string.Equals(action, "Approve", StringComparison.OrdinalIgnoreCase)
+                ? "BANK-REF-001"
+                : null))
         {
             WithdrawalId = withdrawal.Id,
             AdminUserId = Guid.NewGuid().ToString()
@@ -326,6 +335,26 @@ public class WalletOperationsEdgeCaseTests
         Assert.Single(context.AuditLogs.Where(a => a.Action == AuditAction.WithdrawalReject));
     }
 
+    [Fact]
+    public async Task ProcessWithdrawal_Approve_PersistsReferenceAndMasksBankAccount()
+    {
+        using var context = new TestWalletDbContext(nameof(ProcessWithdrawal_Approve_PersistsReferenceAndMasksBankAccount));
+        var wallet = AddWallet(context, 500_000m, lockedBalance: 100_000m);
+        var withdrawal = AddWithdrawal(context, wallet, 100_000m);
+        var command = Process(withdrawal, "Approve", referenceCode: "BANK-REF-123");
+
+        var result = await new ProcessWithdrawalCommandHandler(context).Handle(command, default);
+
+        var transaction = Assert.Single(TransactionsOf(context, wallet));
+        var audit = Assert.Single(context.AuditLogs.Where(a => a.Action == AuditAction.WithdrawalApprove));
+        Assert.Equal("BANK-REF-123", withdrawal.GatewayReferenceId);
+        Assert.Equal("BANK-REF-123", result.ReferenceCode);
+        Assert.Contains("****7890", transaction.Note);
+        Assert.DoesNotContain(withdrawal.BankAccountNumber, transaction.Note);
+        Assert.Contains("BANK-REF-123", audit.NewValues);
+        Assert.Equal(Guid.Parse(command.AdminUserId), withdrawal.ProcessedBy);
+    }
+
     [Theory]
     [InlineData("Approve")]
     [InlineData("Reject")]
@@ -345,6 +374,29 @@ public class WalletOperationsEdgeCaseTests
         Assert.Equal("Withdrawal request has already been processed.", exception.Message);
         Assert.Equal(balance, wallet.Balance);
         Assert.Equal(locked, wallet.LockedBalance);
+    }
+
+    [Fact]
+    public async Task ProcessWithdrawal_ConcurrentDecisionRetry_DoesNotApplyDuplicateEffects()
+    {
+        using var context = new TestWalletDbContext(nameof(ProcessWithdrawal_ConcurrentDecisionRetry_DoesNotApplyDuplicateEffects));
+        var wallet = AddWallet(context, 500_000m, lockedBalance: 100_000m);
+        var withdrawal = AddWithdrawal(context, wallet, 100_000m);
+        var handler = new ProcessWithdrawalCommandHandler(context);
+
+        await handler.Handle(Process(withdrawal, "Approve"), default);
+        var balanceAfterApproval = wallet.Balance;
+        var lockedAfterApproval = wallet.LockedBalance;
+
+        await Assert.ThrowsAsync<BusinessRuleValidationException>(
+            () => handler.Handle(Process(withdrawal, "Approve"), default));
+
+        Assert.Equal(400_000m, balanceAfterApproval);
+        Assert.Equal(0m, lockedAfterApproval);
+        Assert.Equal(balanceAfterApproval, wallet.Balance);
+        Assert.Equal(lockedAfterApproval, wallet.LockedBalance);
+        Assert.Single(TransactionsOf(context, wallet));
+        Assert.Single(context.AuditLogs.Where(a => a.Action == AuditAction.WithdrawalApprove));
     }
 
     [Fact]

@@ -21,7 +21,7 @@
 
 ## 4. Thin Controller Pairing
 * `WalletsController.cs` -> injects `ISender` (8 actions: me, topups, withdrawals, transfers, transactions, vnpay/ipn, vnpay/return, checkout/direct).
-* `AdminWalletsController.cs` -> injects `ISender` (2 actions: process withdrawal, adjust balance).
+* `AdminWalletsController.cs` -> injects `ISender` (4 actions: process withdrawal, adjust balance, list ledger, reconcile balances). The reports are admin-only; withdrawal and adjustment allow admin or staff.
 
 ## 5. Absolute Invariant: Non-Negative Balance
 * 🛑 **NEVER ALLOW NEGATIVE BALANCE**: Any withdrawal, transfer, or checkout deduction must verify `Balance >= Amount`. Throw `InsufficientBalanceException` if balance is insufficient.
