@@ -59,7 +59,8 @@ internal sealed class CheckoutDirectCommandHandler : IRequestHandler<CheckoutDir
             if (existingTransaction.WalletId != wallet.Id ||
                 existingTransaction.Status != TransactionStatus.Pending ||
                 existingTransaction.Amount != request.Amount ||
-                !string.Equals(existingTransaction.Note, "Payment for order via VNPAY", StringComparison.Ordinal))
+                (!string.Equals(existingTransaction.Note, BuildNote(orderId), StringComparison.Ordinal) &&
+                 !string.Equals(existingTransaction.Note, "Payment for order via VNPAY", StringComparison.Ordinal)))
                 throw OrderConflict();
 
             var existingOrder = await _context.DirectPaymentOrders
@@ -168,9 +169,11 @@ internal sealed class CheckoutDirectCommandHandler : IRequestHandler<CheckoutDir
             BalanceAfter = wallet.Balance,
             Status = TransactionStatus.Pending,
             ReferenceId = orderId,
-            Note = "Payment for order via VNPAY"
+            Note = BuildNote(orderId)
         };
     }
+
+    private static string BuildNote(Guid orderId) => $"Payment for order {orderId:D} via VNPAY";
 
     private static string ComputeFingerprint(
         CheckoutDirectCommand request,
