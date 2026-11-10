@@ -93,7 +93,9 @@ public sealed class VnPayService : IVnPayService
         var suppliedHashType = GetParameter(parameters, "vnp_SecureHashType");
         var suppliedMerchantCode = GetParameter(parameters, "vnp_TmnCode");
         if (string.IsNullOrWhiteSpace(suppliedSignature) ||
-            !string.Equals(suppliedHashType, "HmacSHA512", StringComparison.OrdinalIgnoreCase) ||
+            // VNPay callbacks omit vnp_SecureHashType; when supplied it must still be HmacSHA512.
+            (!string.IsNullOrWhiteSpace(suppliedHashType) &&
+             !string.Equals(suppliedHashType, "HmacSHA512", StringComparison.OrdinalIgnoreCase)) ||
             !string.Equals(suppliedMerchantCode, GetRequired("TmnCode"), StringComparison.Ordinal))
         {
             return false;

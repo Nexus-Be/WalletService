@@ -24,13 +24,13 @@ The endpoint accepts the query string of a `GET` (VNPay), `application/x-www-for
 | VNPay parameter | Required | Validation |
 |---|---:|---|
 | `vnp_SecureHash` | Yes | Hex-encoded HMAC-SHA512; compared in constant time |
-| `vnp_SecureHashType` | Yes | Must be `HmacSHA512` (case-insensitive) |
+| `vnp_SecureHashType` | No | VNPay omits it; when present it must be `HmacSHA512` (case-insensitive) |
 | `vnp_TmnCode` | Yes | Must exactly match configured `VnPay:TmnCode` |
 | `vnp_TxnRef` | Yes | Must identify an existing pending Wallet top-up or direct checkout order |
 | `vnp_ResponseCode` | Yes | Together with `vnp_TransactionStatus` decides the outcome (see below) |
 | `vnp_TransactionStatus` | No | When present it must also be `00` for a successful payment (VNPay's own sample requires both) |
 | `vnp_Amount` | Yes | Unsigned integer VND minor units; must equal the pending top-up or direct order amount multiplied by 100 |
-| `vnp_CurrCode` | Yes | Must be `VND` |
+| `vnp_CurrCode` | No | VNPay omits it; when present it must be `VND` |
 | `vnp_TransactionNo` | No | Provider transaction identifier; never treated as proof without a valid signature |
 | `vnp_BankCode` | No | Provider bank identifier; never treated as proof without a valid signature |
 

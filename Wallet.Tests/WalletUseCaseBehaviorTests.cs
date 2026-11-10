@@ -523,6 +523,39 @@ public class WalletUseCaseBehaviorTests
     }
 
     [Fact]
+    public async Task ProcessVnPayIpn_MissingCurrency_CreditsTopup()
+    {
+        using var context = new TestWalletDbContext(nameof(ProcessVnPayIpn_MissingCurrency_CreditsTopup));
+        var wallet = AddWallet(context, balance: 0m);
+        var topup = new WalletTopup
+        {
+            Id = Guid.NewGuid(),
+            WalletId = wallet.Id,
+            VnpTxnRef = "TOPUP-NO-CURRENCY",
+            Amount = 50_000m,
+            Status = TopupStatus.Pending
+        };
+        context.WalletTopups.Add(topup);
+        context.SaveChanges();
+
+        var handler = new ProcessVnPayIpnCommandHandler(
+            context,
+            new FakeVnPayService(),
+            NullLogger<ProcessVnPayIpnCommandHandler>.Instance);
+        var result = await handler.Handle(new ProcessVnPayIpnCommand(new Dictionary<string, string>
+        {
+            ["vnp_TxnRef"] = "TOPUP-NO-CURRENCY",
+            ["vnp_ResponseCode"] = "00",
+            ["vnp_TransactionStatus"] = "00",
+            ["vnp_Amount"] = "5000000"
+        }), default);
+
+        Assert.Equal("00", result.ResponseCode);
+        Assert.Equal(TopupStatus.Success, topup.Status);
+        Assert.Equal(50_000m, wallet.Balance);
+    }
+
+    [Fact]
     public async Task ProcessVnPayIpn_DuplicateSuccess_DoesNotCreditTwice()
     {
         using var context = new TestWalletDbContext(nameof(ProcessVnPayIpn_DuplicateSuccess_DoesNotCreditTwice));

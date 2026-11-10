@@ -43,6 +43,16 @@ public sealed class VnPayServiceTests
     }
 
     [Fact]
+    public void ValidateSignature_MissingHashType_ReturnsTrue()
+    {
+        var service = CreateService();
+        var parameters = CreateSignedParameters();
+        parameters.Remove("vnp_SecureHashType");
+
+        Assert.True(service.ValidateSignature(parameters));
+    }
+
+    [Fact]
     public void ValidateSignature_UnsupportedHashType_ReturnsFalse()
     {
         var service = CreateService();
