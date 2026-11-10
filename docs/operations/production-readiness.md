@@ -1,144 +1,92 @@
 # Wallet Service Production Readiness Checklist
 
-## Executive Summary
+Last reviewed: 2026-11-10
 
-This repository shows a solid internal-service foundation for a wallet platform, with a clean CQRS/MediatR structure, domain-level balance rules, and a passing test suite. However, it is not yet production-ready for direct public exposure because the identity/auth boundary is still trust-based on forwarded headers, some features are intentionally incomplete, and key financial flows require stricter production safeguards.
+## Decision
 
-The service is best positioned as a trusted internal API behind an authenticated gateway or BFF until the items below are completed.
+**Not approved for direct public exposure or broad production use.** The current service is suitable for development and controlled integration testing. A production decision requires evidence for every applicable P0 gate below and explicit owner sign-off.
 
-## Current Assessment
+This checklist records the current implementation and deployment boundaries; it does not prescribe replacing the project's intended gateway-forwarded identity model. The API has no configured JWT authentication, and identity/role headers are trusted by the application. Any deployment using this model must be isolated behind a gateway that authenticates callers, removes client-supplied identity headers, and writes trusted values. Never expose the API directly to untrusted networks.
 
-Status: Needs hardening before broad production rollout
+## Current implementation to account for
 
-- Strengths
-  - Clean Domain / Application / Infrastructure / API layering
-  - MediatR pattern used consistently
-  - Core wallet balance rules enforced in the domain model
-  - 80 tests passing
-  - Clear documentation of API contracts and deployment boundaries
+- .NET 8 REST API with classic MediatR/CQRS, PostgreSQL, and a domain rule preventing negative available balances.
+- `GET /health` returns `Healthy` unconditionally; it does not verify database connectivity or readiness.
+- The API applies EF Core migrations at startup for relational databases. Migration/seeding exceptions are logged as warnings and startup continues.
+- User withdrawals reserve available funds. Admin approval consumes the reservation and records a debit; rejection releases the reservation. Neither path sends a bank payout. Seller verification, payout execution, retry handling, and reconciliation are outside the current implementation.
+- VNPay top-ups and direct checkout rely on signed IPN processing. Direct checkout reuses a matching pending request for the same order; this is not idempotency for transfers or top-up creation.
+- The checked-in sample configuration and Compose defaults are for local/development use (including VNPay sandbox settings). Do not use them as a production deployment configuration.
 
-- Risks
-  - Identity trust depends on `x-user-id` and `x-user-roles` headers
-  - Wallet can create and review pending withdrawal requests, but does not verify seller status or execute/reconcile bank payouts
-  - Payment callback verification and replay protection must be formally hardened
-  - Financial operations need stronger idempotency and concurrency safeguards
+## P0 — Required before any production financial traffic
 
-## P0 — Must fix before production
+### Identity and network boundary
 
-- [ ] Enforce a real authentication boundary at the service
-  - The README explicitly states forwarded identity headers are only safe behind a trusted gateway.
-  - The service should reject direct spoofing and not rely on client-supplied identity values.
-  - Configure proper JWT or equivalent service-level authentication at the API boundary.
+- [ ] Record the deployed trust boundary and verify the gateway authenticates every caller.
+- [ ] Verify the gateway strips inbound `x-user-id`, `x-user-roles`, `x-user-email`, and `x-user-permissions` headers, then injects authoritative values.
+- [ ] Restrict network access so clients cannot bypass the gateway and reach WalletService directly.
+- [ ] Verify admin/staff routes cannot be reached with caller-controlled role headers.
 
-- [ ] Remove or harden spoofable identity assumptions
-  - `x-user-id`, `x-user-roles`, and related headers are currently treated as trusted when present.
-  - This is acceptable only behind a verified upstream gateway; it is not safe for a public-facing deployment.
+### Product and money movement scope
 
-- [ ] Complete or hide the user withdrawal flow
-  - Wallet creates pending requests and reserves funds; staff can approve or reject them.
-  - Seller verification, bank payout execution, payout failure/retry handling, and reconciliation need a separately agreed contract and tests.
+- [ ] Decide whether withdrawals are in scope for launch. If they are, define and test the authorized payout procedure, payout result/failure handling, and reconciliation before approving withdrawal requests as a production cash-out flow.
+- [ ] If bank payout is not part of launch, disable or clearly withhold the withdrawal capability from production clients; do not describe an approved request as a completed bank transfer.
+- [ ] Reconcile wallet balances against the transaction ledger and payment-provider records, and define ownership and frequency for investigating differences.
+- [ ] Verify every balance-changing flow is transactional, auditable, and protected against concurrent execution; record actor, operation/reference, and trace/correlation identifier where available.
 
-- [ ] Verify payment callback security end-to-end
-  - VNPay IPN validates HMAC-SHA512, configured merchant code, VND currency, and integer minor-unit amount for both top-ups and direct orders. Pending records are row-locked and terminal callbacks are not settled twice.
-  - Complete signed-provider sandbox verification, PostgreSQL concurrent-replay testing, and financial reconciliation before marking this item complete.
+### Payments and retry safety
 
-- [ ] Add transaction idempotency and duplicate protection
-  - Direct VNPay checkout now persists a unique order/payment intent and reuses the provider reference for matching pending retries.
-  - Repeated top-up and transfer requests still need operation-level idempotency; checkout idempotency does not cover all financial operations.
-  - This is essential for financial correctness.
+- [ ] Verify production VNPay merchant credentials, payment URL, HTTPS return URL, callback routing, and provider account configuration. No sandbox credentials or URLs may be used in production.
+- [ ] Exercise valid, invalid-signature, amount/currency mismatch, duplicate, out-of-order, and concurrent IPN scenarios against PostgreSQL using provider-approved test procedures.
+- [ ] Verify callback retries cannot credit or settle a transaction more than once, and document alerting and manual reconciliation for unresolved payments.
+- [ ] Define client retry behavior and duplicate protection for every financial operation. Direct-checkout order matching does not cover repeated top-up creation or transfers.
 
-- [ ] Add explicit auditability for all money movement
-  - Every balance-changing action should be traceable to a request, actor, and correlation ID.
-  - Business-state transitions should be recorded in the same transaction boundary where practical.
+### Database and release operations
 
-## P1 — High priority before broader rollout
+- [ ] Replace the unconditional health endpoint with deployment-appropriate liveness/readiness checks; readiness must fail when required dependencies such as PostgreSQL are unavailable.
+- [ ] Decide whether automatic schema migration at API startup is acceptable for the deployment. If not, apply reviewed migrations as a controlled release step. In either case, migration failure must block traffic or fail deployment rather than leave a partially ready service.
+- [ ] Review each production migration, backup the database before schema changes, and document a tested rollback/recovery procedure.
+- [ ] Demonstrate a database restore drill and define backup retention, access controls, and recovery objectives.
 
-- [ ] Implement and test the complete withdrawal lifecycle
-  - User request creation and admin approval/rejection are implemented with wallet fund reservation.
-  - Seller verification, bank payout execution, and payout failure/retry handling are not implemented.
+### Production configuration and secrets
 
-- [ ] Add comprehensive request validation
-  - Validate all public inputs consistently.
-  - Standardize on the repo’s problem-details/error model.
-  - Ensure every command/query has meaningful validation and error mapping.
+- [ ] Set `ASPNETCORE_ENVIRONMENT=Production` explicitly and use a production-specific deployment manifest rather than the development Compose defaults.
+- [ ] Load database credentials, VNPay secrets, and other sensitive configuration from the deployment secret manager; verify they are absent from source, images, logs, and diagnostics.
+- [ ] Configure production database TLS and network restrictions; do not carry local `SSL Mode=Disable` settings into production.
+- [ ] Verify allowed hosts, HTTPS termination, proxy behavior, request limits, and Swagger exposure for the actual deployment topology.
 
-- [ ] Add concurrency and race-condition protection
-  - Simultaneous transfers and debits must not create negative balances or inconsistent ledger rows.
-  - Review wallet mutations for lock semantics or optimistic concurrency protections.
+## P1 — Required before expanding rollout
 
-- [ ] Harden API security posture
-  - Rate limiting
-  - CORS policy
-  - request-size limits
-  - secret management via environment/secret manager only
-  - log sanitization to avoid leaking sensitive values
+### Security and abuse controls
 
-- [ ] Improve operational observability
-  - Health metrics
-  - wallet balance drift alerts
-  - failed payment monitoring
-  - request tracing with correlation IDs
+- [ ] Define request-rate and abuse limits appropriate to payment, transfer, and callback traffic.
+- [ ] Review CORS, payload-size limits, and outbound/network egress rules for the deployed topology.
+- [ ] Confirm logs redact credentials, payment data, bank account data, and other sensitive values; restrict access and retention.
+- [ ] Review authorization for user, admin, and staff operations, including ownership checks and negative/unauthorized cases.
 
-## P2 — Important for larger-scale adoption
+### Reliability and observability
 
-- [ ] Add end-to-end integration tests for real flows
-  - VNPay IPN success/failure paths
-  - transfer race scenarios
-  - withdrawal approval/rejection
-  - direct checkout state transitions
+- [ ] Export and verify traces, metrics, and structured logs in the production telemetry environment; ensure trace IDs can be followed across gateway and service.
+- [ ] Alert on elevated API errors/latency, database availability, payment failures or pending-payment age, rejected callbacks, and reconciliation drift.
+- [ ] Define on-call ownership, incident escalation, and safe procedures for pausing payment or withdrawal traffic.
+- [ ] Test restart, database outage, provider timeout, and recovery behavior without duplicate financial effects.
 
-- [ ] Define disaster recovery and DB operations
-  - backup strategy
-  - migration review and rollback plan
-  - restore drills
+### Verification evidence
 
-- [ ] Document lifecycle states clearly
-  - pending / approved / rejected / failed states
-  - idempotency semantics
-  - wallet balance semantics
+- [ ] Run `./scripts/verify-wallet-architecture.sh` and confirm `OK: Wallet CQRS architecture is intact`.
+- [ ] Run `dotnet build Wallet.sln -c Release`.
+- [ ] Run `dotnet test Wallet.sln -c Release`; retain the output for the release record rather than relying on a stale test count.
+- [ ] Run integration tests against PostgreSQL for transfer concurrency, balance invariants, withdrawal reservation/decision, VNPay callback settlement, and direct-checkout retry behavior.
+- [ ] Complete gateway-to-WalletService and payment-provider end-to-end tests in the production-like environment.
 
-- [ ] Add feature gating
-  - Keep incomplete or experimental endpoints behind flags until they are fully validated.
+## Release sign-off
 
-## Features to Prioritize to Reach Production Readiness
+Do not mark this checklist complete based only on a successful build or unit-test run. Attach the deployment configuration review, test evidence, database recovery evidence, and named approvals from the service owner, gateway/security owner, payment owner, and database/operations owner.
 
-### 1. Secure identity and auth boundary
-This is the highest-priority item. Without a trustworthy auth layer, the service should not be exposed directly.
-
-### 2. Complete the withdrawal feature
-This is the most visible incomplete business capability and likely blocks end-to-end user wallet usage.
-
-### 3. Harden payment processing and callback security
-Protect against duplicate or forged callbacks, and ensure the top-up state machine is resilient.
-
-### 4. Add stronger financial integrity controls
-Protect against negative balances, double-crediting, duplicate workflows, and race conditions.
-
-### 5. Improve visibility and incident response
-Operational monitoring is necessary for any production money movement service.
-
-### 6. Finalize external integration verification
-Payments and gateway integration must be validated end-to-end before broad rollout.
-
-## Recommended Rollout Stance
-
-### Suitable for
-- Internal services behind a trusted authenticated gateway
-- Controlled, low-risk deployments with strong upstream auth
-
-### Not yet suitable for
-- Direct public exposure to untrusted clients
-- Broad production rollout without a hardened auth boundary and completed wallet flows
-
-## Suggested Implementation Order
-
-1. Authentication + trusted identity boundary
-2. Withdrawal workflow completion
-3. Payment callback verification and idempotency
-4. Concurrency safety and financial invariants
-5. Monitoring and alerting
-6. Full end-to-end validation and feature gating
-
-## Bottom Line
-
-The repository has strong engineering fundamentals and a solid internal-service architecture, but it still needs production hardening before it should be treated as a public-facing financial service. The most important work is securing the boundary, finishing the withdrawal lifecycle, and closing the gaps around payment security and financial consistency.
+| Area | Owner | Evidence / link | Decision / date |
+|---|---|---|---|
+| Gateway identity and network boundary | | | |
+| Payments and reconciliation | | | |
+| Withdrawal scope and payout operations | | | |
+| Database migration and recovery | | | |
+| Monitoring and incident response | | | |
+| Release verification | | | |
