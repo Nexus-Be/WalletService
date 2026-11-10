@@ -31,8 +31,17 @@ Admin routes also require an authorized `x-user-roles` value (`admin` or `staff`
 | `GET` / `POST` | `/api/v1/wallets/vnpay/ipn` | Anonymous callback | Processes VNPay IPN (VNPay calls `GET`) |
 | `GET` | `/api/v1/wallets/vnpay/return` | Anonymous callback | Reports VNPay browser-return result |
 | `POST` | `/api/v1/wallets/checkout/direct` | `x-user-id` required by handler | Starts direct checkout through VNPay (`200`) |
+| `GET` | `/api/v1/wallets/checkout/direct/{orderId}` | `x-user-id` required by handler | Reads a direct checkout payment |
+| `POST` | `/api/v1/wallets/orders/{orderId}/payment` | `x-user-id`; private, hidden from Swagger | Pays a Commerce order from the wallet |
+| `POST` | `/api/v1/wallets/sub-orders/{subOrderId}/settle` | None; private, hidden from Swagger | Credits the seller wallet |
+| `POST` | `/api/v1/wallets/orders/{orderId}/refund` | None; private, hidden from Swagger | Refunds an order payment to the buyer |
+| `POST` | `/api/v1/wallets/sub-orders/{subOrderId}/refund` | None; private, hidden from Swagger | Refunds a sub-order to the buyer |
 | `PATCH` | `/api/v1/admin/wallets/withdrawals/{id}` | `admin` or `staff` | Processes an existing pending withdrawal |
 | `POST` | `/api/v1/admin/wallets/{walletId}/adjustments` | `admin` or `staff` | Adjusts wallet balance |
+| `GET` | `/api/v1/admin/wallets/ledger` | `admin` | Paginated ledger report |
+| `GET` | `/api/v1/admin/wallets/reconciliation` | `admin` | Balance versus ledger snapshot |
+
+Consumer-facing detail for these routes is in [integration-contract.md](integration-contract.md).
 | `GET` | `/health` | Anonymous | Service health response |
 
 ## User wallet routes
@@ -193,7 +202,7 @@ Content-Type: application/json
 }
 ```
 
-The route requires the `seller` role; the shared role filter also permits `admin` and `staff`. This service does not independently verify seller verification status. A bank payout, payout failure/retry handling, and reconciliation are not implemented.
+The route requires the `seller` role; the shared role filter also permits `admin` and `staff`. This service does not independently verify seller verification status. A bank payout and payout failure/retry handling are not implemented; admin reporting is in [admin-financial-operations.md](admin-financial-operations.md).
 
 The route returns `400 INSUFFICIENT_BALANCE` when available funds are insufficient, `400 VAL_INVALID_INPUT` for invalid request fields, `401 UNAUTHORIZED` when user identity is missing, `403 FORBIDDEN` when the caller lacks an allowed role, and `404 WALLET_NOT_FOUND` when the user has no wallet.
 
@@ -270,11 +279,12 @@ Content-Type: application/json
 
 {
   "action": "Approve",
-  "adminNote": "Reviewed"
+  "adminNote": "Reviewed",
+  "referenceCode": "FT26110112345"
 }
 ```
 
-`action` must be `Approve` or `Reject`. The operation requires an existing pending withdrawal request; approval debits the previously locked funds and rejection releases them. This records the staff decision but does not initiate or confirm an external bank transfer.
+`action` must be `Approve` or `Reject`. The operation requires an existing pending withdrawal request; approval debits the previously locked funds and rejection releases them. `referenceCode` (at most 100 characters) is required for `Approve`; it is the staff-entered bank transfer reference, stored with the request and the audit log. This records the staff decision but WalletService does not initiate or confirm the external bank transfer.
 
 ### Adjust a wallet balance
 

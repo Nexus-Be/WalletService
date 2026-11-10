@@ -13,7 +13,7 @@ This checklist records the current implementation and deployment boundaries; it 
 - .NET 8 REST API with classic MediatR/CQRS, PostgreSQL, and a domain rule preventing negative available balances.
 - `GET /health` returns `Healthy` unconditionally; it does not verify database connectivity or readiness.
 - The API applies EF Core migrations at startup for relational databases. Migration/seeding exceptions are logged as warnings and startup continues.
-- User withdrawals reserve available funds. Admin approval consumes the reservation and records a debit; rejection releases the reservation. Neither path sends a bank payout. Seller verification, payout execution, retry handling, and reconciliation are outside the current implementation.
+- User withdrawals reserve available funds. Admin approval consumes the reservation and records a debit; rejection releases the reservation. Neither path sends a bank payout. Seller verification, payout execution, and retry handling are outside the current implementation. Admin ledger and reconciliation report routes exist, but they only compare wallet balances with the internal ledger; reconciliation against bank or payment-provider records is not implemented.
 - VNPay top-ups and direct checkout rely on signed IPN processing. Direct checkout reuses a matching pending request for the same order; this is not idempotency for transfers or top-up creation.
 - The checked-in sample configuration and Compose defaults are for local/development use (including VNPay sandbox settings). Do not use them as a production deployment configuration.
 
@@ -30,7 +30,7 @@ This checklist records the current implementation and deployment boundaries; it 
 
 - [ ] Decide whether withdrawals are in scope for launch. If they are, define and test the authorized payout procedure, payout result/failure handling, and reconciliation before approving withdrawal requests as a production cash-out flow.
 - [ ] If bank payout is not part of launch, disable or clearly withhold the withdrawal capability from production clients; do not describe an approved request as a completed bank transfer.
-- [ ] Reconcile wallet balances against the transaction ledger and payment-provider records, and define ownership and frequency for investigating differences.
+- [ ] Review the admin reconciliation report (`GET /api/v1/admin/wallets/reconciliation`) for balance/ledger differences, reconcile against payment-provider and bank records outside the service, and define ownership and frequency for investigating differences.
 - [ ] Verify every balance-changing flow is transactional, auditable, and protected against concurrent execution; record actor, operation/reference, and trace/correlation identifier where available.
 
 ### Payments and retry safety

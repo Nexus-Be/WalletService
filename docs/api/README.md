@@ -2,6 +2,7 @@
 
 ## Implemented API
 
+- [Integration contract](integration-contract.md) — consumer-facing summary for the Gateway, Commerce, and other services: identity, errors, service-to-service routes, idempotency, and flows.
 - [Wallet and payments API](wallet-payments.md) — route catalog and request/response behavior verified against this repository.
 - [Direct checkout](checkout/direct.md) — VNPay checkout initiation, retry behavior, and payment state.
 - [Direct payment status](checkout/direct-status.md) — polling endpoint for the settled VNPay result.

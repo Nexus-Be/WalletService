@@ -6,9 +6,9 @@ This guide is for the Gateway, User, Commerce, and future Auction repositories i
 
 | Service | Current relationship to WalletService | Integration responsibility |
 |---|---|---|
-| API Gateway | Wallet routes are implemented, but Gateway routing is not verified in this repository. | Proxy the supported client-facing Wallet routes and preserve the caller's bearer token, request, status code, and response. Do not expose the internal order-payment route as a frontend operation. |
-| UserService | Wallet validates JWTs using its configured HTTPS issuer and reads the user ID from the configured claim (default: `sub`). There is no synchronous UserService lookup in Wallet request handling. | Issue tokens with a stable user-ID claim and configure the same issuer, audience, and claim contract in WalletService. A request to UserService is not needed to authorize each Wallet call. |
-| CommerceService | The authenticated internal order-payment route is implemented. | Call Wallet after reserving inventory; only mark the order paid after a successful Wallet response. On a confirmed business failure, release the reservation. |
+| API Gateway | Wallet routes are implemented, but Gateway routing is not verified in this repository. | Authenticate the caller, overwrite the forwarded `x-user-id`/`x-user-roles` headers, proxy the supported client-facing Wallet routes, and preserve the status code and response. Do not expose the order-payment, settlement, or refund routes as frontend operations. |
+| UserService | Wallet does not validate JWTs and makes no synchronous UserService lookup. It trusts the gateway-forwarded `x-user-id` and `x-user-roles` headers. | Ensure the gateway-forwarded user ID is the same stable user ID used by Commerce orders. |
+| CommerceService | Order-payment, seller-settlement, and order/sub-order refund routes are implemented. | Call Wallet after reserving inventory; only mark the order paid after a successful Wallet response. On a confirmed business failure, release the reservation. See the [integration contract](../docs/api/integration-contract.md) for settle and refund. |
 | AuctionService | No auction-specific Wallet endpoint or integration is implemented. | Do not use order-payment semantics for auction deposits, holds, bids, or refunds. Agree on a separate contract before implementing an integration. |
 
 WalletService owns wallet balances and wallet transactions. Other services must not read or write its database directly. Internal service traffic should use the private service network, not a public Gateway URL. Use the deployment's service DNS name and port `8008`; `localhost` is suitable only when the caller and WalletService run in the same network namespace.
@@ -24,26 +24,27 @@ The Gateway is the frontend entry point and should proxy the supported public ro
 | `POST` | `/api/v1/wallets/withdrawals` |
 | `POST` | `/api/v1/wallets/transfers` |
 | `GET` | `/api/v1/wallets/transactions` |
-| `GET` | `/api/v1/wallet/vnpay/ipn` and `/api/v1/wallets/vnpay/ipn` |
-| `GET` | `/api/v1/wallet/vnpay/return` and `/api/v1/wallets/vnpay/return` |
+| `GET`, `POST` | `/api/v1/wallets/vnpay/ipn` (VNPay callback) |
+| `GET` | `/api/v1/wallets/vnpay/return` |
+| `POST` | `/api/v1/wallets/checkout/direct` |
+| `GET` | `/api/v1/wallets/checkout/direct/{orderId}` |
+| `PATCH` | `/api/v1/admin/wallets/withdrawals/{id}` (admin/staff) |
+| `POST` | `/api/v1/admin/wallets/{walletId}/adjustments` (admin/staff) |
+| `GET` | `/api/v1/admin/wallets/ledger` (admin only) |
+| `GET` | `/api/v1/admin/wallets/reconciliation` (admin only) |
 
-For authenticated requests, forward the original `Authorization: Bearer <user-access-token>` header. WalletService validates the token itself and derives the wallet owner from its authenticated claims; do not replace the identity with a user ID supplied by the frontend or trust identity headers as a substitute for the token.
 
-Do not publish `POST /api/v1/wallets/orders/{orderId}/payment` as a user-facing Gateway route. Commerce calls it directly over the private service network. The route is excluded from WalletService's public Swagger description; that exclusion alone is not network access control.
+For authenticated requests, the gateway authenticates the caller and sets `x-user-id` (and `x-user-roles` for role-restricted routes), overwriting any client-supplied values. WalletService derives the wallet owner only from these headers and never from a request body.
+
+Do not publish `POST /api/v1/wallets/orders/{orderId}/payment`, `POST /api/v1/wallets/sub-orders/{subOrderId}/settle`, or the order/sub-order `refund` routes as user-facing Gateway routes. Commerce calls them directly over the private service network. They are excluded from WalletService's public Swagger description; that exclusion is not network access control, and the settle and refund routes perform no identity check.
 
 Pass through WalletService response status codes and bodies, including Problem Details errors. Do not convert a timeout into a success or a payment failure: the operation may have committed even if the Gateway did not receive its response.
 
-## 3. User identity and token contract
+## 3. User identity contract
 
-WalletService does not call UserService synchronously to look up a user during each request. It validates JWT issuer, audience, signature, and lifetime locally using the configured HTTPS authority, then reads the configured user-ID claim (`sub` by default). The claim must identify the same user ID used by Commerce orders.
+WalletService does not validate JWTs, and the internal service-key middleware is disabled. It reads the caller from the forwarded `x-user-id` header and roles from `x-user-roles`. The service must be reachable only from the trusted gateway and private network; the gateway must overwrite client-supplied identity headers. The user ID must match the one used by Commerce orders.
 
-Configure WalletService with:
-
-- `Authentication:Authority`: the HTTPS token issuer URL.
-- `Authentication:Audience`: the audience expected by WalletService.
-- `Authentication:UserIdClaimType`: the stable user-ID claim name, default `sub`.
-
-The Gateway and Commerce must forward the user's bearer token when performing operations on that user's behalf. Do not send a user ID in the order-payment body: the current request body contains only `amount`, and Wallet derives the buyer from the token. If future service-to-service authentication needs a distinct service identity, define and implement that contract explicitly; the current endpoint requires a user identity.
+The order-payment body contains only `amount`: Wallet derives the buyer from `x-user-id`. The settle and refund routes carry the seller or buyer ID in the body because they have no caller identity.
 
 ## 4. Commerce order-payment contract
 
@@ -53,7 +54,7 @@ Call after inventory has been reserved:
 
 ```http
 POST /api/v1/wallets/orders/{orderId}/payment
-Authorization: Bearer <buyer's access token>
+x-user-id: <buyer-uuid>
 Content-Type: application/json
 
 {
@@ -79,7 +80,7 @@ Content-Type: application/json
   "currency": "Vnd",
   "balanceAfter": 520000,
   "status": "Success",
-  "note": "Order payment #6f3a5a51-a35f-4e56-a960-00ab7d54e9fd",
+  "note": "Payment for order via wallet",
   "createdAt": "2026-11-01T10:00:00+00:00"
 }
 ```
@@ -87,7 +88,7 @@ Content-Type: application/json
 ### Processing sequence
 
 1. Commerce reserves inventory using its synchronous Catalog integration.
-2. Commerce calls WalletService with the order ID, amount, and buyer's bearer token.
+2. Commerce calls WalletService with the order ID, amount, and buyer's `x-user-id`.
 3. Wallet atomically debits the buyer's wallet and records the order ID as the payment reference.
 4. On `200 OK`, Commerce marks the order paid and proceeds with checkout.
 5. On a definitive Wallet business failure, Commerce releases the inventory reservation and returns the failure.
@@ -96,23 +97,23 @@ These are separate service-local database transactions, not one distributed tran
 
 ### Idempotency and failure handling
 
-WalletService serializes concurrent attempts for the same order ID and persists the payment in PostgreSQL. Repeating the same order ID, buyer, and amount returns the original transaction without debiting again. Reusing the order ID with a different buyer or amount returns `409 ORDER_ALREADY_PAID`.
+WalletService serializes concurrent attempts for the same order ID and persists the payment in PostgreSQL. Repeating the same order ID, buyer, and amount returns the original transaction without debiting again. Reusing the order ID with a different buyer or amount returns `409 PAYMENT_ORDER_CONFLICT`.
 
 | Result | Meaning and caller action |
 |---|---|
 | `200 OK` | Payment succeeded or an identical retry returned the existing payment. Mark the order paid. |
 | `400 Bad Request` | Invalid order ID or amount. Do not retry unchanged input. |
-| `401 Unauthorized` | Missing, invalid, expired, or unusable buyer identity. Do not treat as a payment success. |
+| `401 Unauthorized` | Missing or invalid `x-user-id`. Do not treat as a payment success. |
 | `404 WALLET_NOT_FOUND` | No wallet exists for the buyer. This endpoint does not create one. Surface or handle as a definitive business failure. |
-| `409 INSUFFICIENT_BALANCE` | Payment was not completed for insufficient funds. Release the inventory reservation according to Commerce's checkout policy. |
-| `409 ORDER_ALREADY_PAID` | The order reference has already been used with different payment details. Do not retry with altered details; reconcile the order and wallet transaction. |
-| Timeout, connection loss, or `5xx` | Outcome may be unknown. Retry with the same order ID, buyer token, and amount before compensation. Never create a new order ID merely to retry the same payment. |
+| `400 INSUFFICIENT_BALANCE` | Payment was not completed for insufficient funds. Release the inventory reservation according to Commerce's checkout policy. |
+| `409 PAYMENT_ORDER_CONFLICT` | The order already has a payment with a different buyer or amount. Do not retry with altered details; reconcile the order and wallet transaction. |
+| Timeout, connection loss, or `5xx` | Outcome may be unknown. Retry with the same order ID, buyer, and amount before compensation. Never create a new order ID merely to retry the same payment. |
 
 Use bounded HTTP timeouts and a small, bounded retry policy for transient failures. Do not automatically retry ordinary `4xx` responses. Because a timeout does not establish whether Wallet committed, preserve the order's pending state until a same-key retry returns a definitive result; do not release inventory solely because the original response was lost.
 
 ## 5. HTTP client implementation guidance
 
-Each caller should configure its WalletService base URL from deployment configuration, register a reusable HTTP client, set a bounded timeout, and propagate request cancellation. Forward the buyer's token only for a user-authorized operation. Avoid hard-coded `localhost` URLs in container deployments.
+Each caller should configure its WalletService base URL from deployment configuration, register a reusable HTTP client, set a bounded timeout, and propagate request cancellation. Send `x-user-id` only for a user-authorized operation. Avoid hard-coded `localhost` URLs in container deployments.
 
 Example in .NET:
 
@@ -132,7 +133,7 @@ The timeout above is an example, not a WalletService SLA. Tune it with the deplo
 
 ## 6. Future Auction integration
 
-WalletService currently has no API to reserve/freeze wallet funds for auction deposits, bids, or refunds. The transfer and order-payment endpoints do not implement those semantics. Before AuctionService integrates:
+WalletService currently has no API to reserve/freeze wallet funds for auction deposits, bids, or refunds. The transfer, order-payment, settlement, and refund endpoints do not implement those semantics. Before AuctionService integrates:
 
 1. Agree on a dedicated REST contract, ownership of the auction lifecycle, and response/error semantics.
 2. Define a stable idempotency key for each auction operation and its retry behavior.
@@ -146,4 +147,4 @@ Until that contract exists, AuctionService must not infer that a successful orde
 - WalletService listens on port `8008`; configure internal service discovery to reach it over the deployment's private network.
 - This repository does not currently define a dedicated readiness endpoint. Do not use the root `GET /` response as proof that the database or a payment dependency is ready.
 - No gRPC, message broker, fire-and-forget call, or payment event is part of the current service-to-service contract.
-- The verified WalletService API details are in [`docs/api/wallet-payments.md`](../docs/api/wallet-payments.md). The broader REST and checkout behavior is in [`specs/02_API_REST_CONTRACTS.md`](02_API_REST_CONTRACTS.md) and [`specs/03_SYNCHRONOUS_REST_COMMUNICATION.md`](03_SYNCHRONOUS_REST_COMMUNICATION.md).
+- The consumer contract is in [`docs/api/integration-contract.md`](../docs/api/integration-contract.md); route detail is in [`docs/api/wallet-payments.md`](../docs/api/wallet-payments.md). The broader REST and checkout behavior is in [`specs/02_API_REST_CONTRACTS.md`](02_API_REST_CONTRACTS.md) and [`specs/03_SYNCHRONOUS_REST_COMMUNICATION.md`](03_SYNCHRONOUS_REST_COMMUNICATION.md).
