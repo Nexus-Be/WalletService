@@ -37,7 +37,7 @@ internal sealed class ListTransactionsQueryHandler : IRequestHandler<ListTransac
             var types = request.Type.Trim().ToUpperInvariant() switch
             {
                 "ALL" => Array.Empty<WalletTransactionType>(),
-                "DEPOSIT" => new[] { WalletTransactionType.TopupVnpay },
+                "DEPOSIT" => new[] { WalletTransactionType.TopupVnpay, WalletTransactionType.TopupStripe },
                 "WITHDRAWAL" => new[]
                 {
                     WalletTransactionType.WithdrawalDebit,

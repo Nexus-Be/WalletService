@@ -10,10 +10,13 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Wallet.Api.Common;
 using Wallet.Api.Middleware;
 using Wallet.Application.Common.Exceptions;
+using Wallet.Application.Interfaces;
+using Wallet.Infrastructure.Payments;
 using Xunit;
 
 public sealed class ApiValidationProblemFactoryTests
@@ -110,6 +113,70 @@ public sealed class ApiValidationProblemFactoryTests
         Assert.Equal(
             mvcRoot.GetProperty("errors").GetProperty("Amount")[0].GetString(),
             middlewareRoot.GetProperty("errors").GetProperty("Amount")[0].GetString());
+    }
+
+    [Fact]
+    public async Task ProviderUnavailable_ReturnsSanitized503Problem()
+    {
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+        var exception = new PaymentProviderUnavailableException(new InvalidOperationException("Provider internal detail"));
+        var middleware = new GlobalExceptionHandlerMiddleware(
+            _ => Task.FromException(exception),
+            NullLogger<GlobalExceptionHandlerMiddleware>.Instance);
+
+        await middleware.InvokeAsync(context);
+        context.Response.Body.Position = 0;
+        using var document = await JsonDocument.ParseAsync(context.Response.Body);
+
+        Assert.Equal(StatusCodes.Status503ServiceUnavailable, context.Response.StatusCode);
+        Assert.Equal("PAYMENT_PROVIDER_UNAVAILABLE", document.RootElement.GetProperty("errorCode").GetString());
+        Assert.DoesNotContain("Provider internal detail", document.RootElement.ToString());
+    }
+
+    [Fact]
+    public async Task InvalidStripeSignature_ReturnsSanitized400Problem()
+    {
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+        var exception = new StripeWebhookSignatureException(new InvalidOperationException("Sensitive signature details"));
+        var middleware = new GlobalExceptionHandlerMiddleware(
+            _ => Task.FromException(exception),
+            NullLogger<GlobalExceptionHandlerMiddleware>.Instance);
+
+        await middleware.InvokeAsync(context);
+        context.Response.Body.Position = 0;
+        using var document = await JsonDocument.ParseAsync(context.Response.Body);
+
+        Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
+        Assert.Equal("VAL_INVALID_SIGNATURE", document.RootElement.GetProperty("errorCode").GetString());
+        Assert.DoesNotContain("Sensitive signature details", document.RootElement.ToString());
+    }
+
+    [Fact]
+    public async Task MissingStripeSignature_FromVerifier_ReturnsSignatureProblem()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Stripe:WebhookSecret"] = "whsec_test_only_not_real"
+        }).Build();
+        var verifier = new StripeWebhookVerifier(configuration);
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+        var middleware = new GlobalExceptionHandlerMiddleware(
+            _ =>
+            {
+                verifier.Verify(new byte[] { 123, 125 }, string.Empty);
+                return Task.CompletedTask;
+            },
+            NullLogger<GlobalExceptionHandlerMiddleware>.Instance);
+
+        await middleware.InvokeAsync(context);
+        context.Response.Body.Position = 0;
+        using var document = await JsonDocument.ParseAsync(context.Response.Body);
+
+        Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
+        Assert.Equal("VAL_INVALID_SIGNATURE", document.RootElement.GetProperty("errorCode").GetString());
     }
 
     private static ActionContext CreateActionContext() =>

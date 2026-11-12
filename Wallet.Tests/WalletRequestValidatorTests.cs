@@ -10,7 +10,7 @@ using Wallet.Application.Features.Checkout.Commands.CheckoutDirect;
 using Wallet.Application.Features.Topups.Commands.TopupVnPay;
 using Wallet.Application.Features.Transfers.Commands.Transfer;
 using Wallet.Application.Features.VnPay.Commands.ProcessVnPayIpn;
-using Wallet.Application.Features.VnPay.Queries.ProcessVnPayReturn;
+using Wallet.Application.Features.Topups.Queries.GetTopupStatus;
 using Wallet.Application.Features.Wallets.Commands.EnsureWallet;
 using Wallet.Application.Features.Wallets.Queries.GetMyWallet;
 using Wallet.Application.Features.Wallets.Queries.ListTransactions;
@@ -129,7 +129,7 @@ public class WalletRequestValidatorTests
         var request =
             new AdjustWalletBalanceCommand(Amount: 50_000m, AdjustmentType: "Credit", Reason: "Manual Correction")
             {
-                WalletId = Guid.NewGuid(),
+                UserId = Guid.NewGuid(),
                 AdminUserId = Guid.NewGuid().ToString()
             };
         var results = ValidateModel(request);
@@ -161,7 +161,7 @@ public class WalletRequestValidatorTests
         {
             new AdjustWalletBalanceCommand(50_000m, "Credit", "Manual correction")
             {
-                WalletId = Guid.NewGuid(),
+                UserId = Guid.NewGuid(),
                 AdminUserId = adminId
             },
             new ProcessWithdrawalCommand("Approve")
@@ -171,15 +171,14 @@ public class WalletRequestValidatorTests
             },
             new CheckoutDirectCommand(
                 Guid.NewGuid().ToString(),
-                50_000m,
-                ReturnUrl: "https://shop.example/return")
+                50_000m)
             {
-                UserId = userId
+                UserId = Guid.Parse(userId)
             },
             new TopupVnPayCommand(50_000m) { UserId = userId },
             new TransferCommand(Guid.NewGuid().ToString(), 10_000m) { SenderUserId = userId },
             new ProcessVnPayIpnCommand(new Dictionary<string, string>()),
-            new ProcessVnPayReturnQuery(new Dictionary<string, string>()),
+            new GetTopupStatusQuery(Guid.NewGuid()) { UserId = Guid.Parse(userId) },
             new EnsureWalletCommand(Guid.NewGuid()),
             new GetMyWalletQuery(userId),
             transactionsQuery,
@@ -202,19 +201,18 @@ public class WalletRequestValidatorTests
         var requests = new object[]
         {
             new AdjustWalletBalanceCommand(1.001m, "Cash", "Correction")
-                { WalletId = Guid.Empty, AdminUserId = "not-a-guid" },
+                { UserId = Guid.Empty, AdminUserId = "not-a-guid" },
             new ProcessWithdrawalCommand("1")
                 { WithdrawalId = Guid.Empty, AdminUserId = "not-a-guid" },
             new CheckoutDirectCommand(
                     "not-a-guid",
-                    10.5m,
-                    ReturnUrl: "http://shop.example/return")
-                { UserId = "not-a-guid" },
+                    10.5m)
+                { UserId = Guid.Empty },
             new TopupVnPayCommand(9_999m, Currency: "USD", PaymentMethod: "CARD")
                 { UserId = "not-a-guid" },
             new TransferCommand("not-a-guid", 999m) { SenderUserId = "not-a-guid" },
             new ProcessVnPayIpnCommand(null!),
-            new ProcessVnPayReturnQuery(null!),
+            new GetTopupStatusQuery(Guid.Empty) { UserId = Guid.Empty },
             new EnsureWalletCommand(Guid.Empty),
             new GetMyWalletQuery("not-a-guid"),
             new ListTransactionsQuery(
@@ -244,10 +242,9 @@ public class WalletRequestValidatorTests
     {
         var request = new CheckoutDirectCommand(
             Guid.NewGuid().ToString(),
-            10.5m,
-            ReturnUrl: "https://shop.example/return")
+            10.5m)
         {
-            UserId = Guid.NewGuid().ToString()
+            UserId = Guid.NewGuid()
         };
 
         var results = ValidateModel(request);

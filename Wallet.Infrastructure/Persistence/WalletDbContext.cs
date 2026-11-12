@@ -18,9 +18,21 @@ public class WalletDbContext : DbContext, IWalletDbContext
     public DbSet<BankAccount> BankAccounts => Set<BankAccount>();
     public DbSet<WalletTopup> WalletTopups => Set<WalletTopup>();
     public DbSet<DirectPaymentOrder> DirectPaymentOrders => Set<DirectPaymentOrder>();
+    public DbSet<StripePaymentAttempt> StripePaymentAttempts => Set<StripePaymentAttempt>();
+    public DbSet<StripeWebhookEvent> StripeWebhookEvents => Set<StripeWebhookEvent>();
     public DbSet<WithdrawalRequest> WithdrawalRequests => Set<WithdrawalRequest>();
     public DbSet<VnpayIpnLog> VnpayIpnLogs => Set<VnpayIpnLog>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+
+    public Task LockOrderPaymentAsync(Guid orderId, CancellationToken cancellationToken)
+    {
+        if (orderId == Guid.Empty)
+            throw new ArgumentException("Order ID must not be empty.", nameof(orderId));
+        if (Database.CurrentTransaction is null)
+            throw new InvalidOperationException("Order payment lock requires a transaction.");
+        return Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock(hashtextextended({orderId.ToString("D")}, 0))", cancellationToken);
+    }
 
     public Task<WalletAccount?> LockWalletByUserIdAsync(Guid userId, CancellationToken cancellationToken)
     {
@@ -33,6 +45,27 @@ public class WalletDbContext : DbContext, IWalletDbContext
     {
         return Wallets
             .FromSqlRaw(BuildLockQuery<WalletAccount>(nameof(WalletAccount.Id)), walletId)
+            .SingleOrDefaultAsync(cancellationToken);
+    }
+
+    public Task<WalletTopup?> LockTopupByIdAsync(Guid topupId, CancellationToken cancellationToken)
+    {
+        return WalletTopups
+            .FromSqlRaw(BuildLockQuery<WalletTopup>(nameof(WalletTopup.Id)), topupId)
+            .SingleOrDefaultAsync(cancellationToken);
+    }
+
+    public Task<DirectPaymentOrder?> LockDirectPaymentOrderByIdAsync(Guid orderId, CancellationToken cancellationToken)
+    {
+        return DirectPaymentOrders
+            .FromSqlRaw(BuildLockQuery<DirectPaymentOrder>(nameof(DirectPaymentOrder.Id)), orderId)
+            .SingleOrDefaultAsync(cancellationToken);
+    }
+
+    public Task<StripePaymentAttempt?> LockStripePaymentAttemptAsync(Guid attemptId, CancellationToken cancellationToken)
+    {
+        return StripePaymentAttempts
+            .FromSqlRaw(BuildLockQuery<StripePaymentAttempt>(nameof(StripePaymentAttempt.Id)), attemptId)
             .SingleOrDefaultAsync(cancellationToken);
     }
 
@@ -60,6 +93,24 @@ public class WalletDbContext : DbContext, IWalletDbContext
         return WithdrawalRequests
             .FromSqlRaw(BuildLockQuery<WithdrawalRequest>(nameof(WithdrawalRequest.Id)), withdrawalId)
             .SingleOrDefaultAsync(cancellationToken);
+    }
+
+    public void EnsureNoPendingChanges()
+    {
+        if (ChangeTracker.HasChanges())
+            throw new InvalidOperationException("Settlement requires a context without pending changes.");
+    }
+
+    public async Task ReloadUnmodifiedAsync<TEntity>(TEntity entity, CancellationToken cancellationToken)
+        where TEntity : class
+    {
+        ChangeTracker.DetectChanges();
+        var entry = Entry(entity);
+        if (entry.State != EntityState.Unchanged)
+            throw new InvalidOperationException("Cannot reload a modified or untracked entity during settlement.");
+        await entry.ReloadAsync(cancellationToken);
+        if (entry.State == EntityState.Detached)
+            throw new InvalidOperationException("Settlement entity no longer exists.");
     }
 
     private string BuildLockQuery<TEntity>(string propertyName)

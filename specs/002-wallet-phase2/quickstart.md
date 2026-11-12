@@ -23,14 +23,15 @@ Expected baseline architecture output: `OK: Wallet CQRS architecture is intact (
 
 ## Validation scenarios
 
-1. **Withdrawal approval**: create a pending request, approve with a valid transfer reference, and verify locked funds are consumed, the reference and audit actor are stored, and status is `Approved`.
-2. **Withdrawal rejection/retry**: reject a separate request and verify funds return to available balance; repeat either decision and verify no second balance change.
-3. **Approval input validation**: omit or exceed the reference length on approval and verify the standard validation response and unchanged financial state.
-4. **Ledger report**: query a stable test dataset with wallet/type/date filters and multiple pages; compare returned items and metadata with the database rows.
-5. **Sensitive-data exclusion**: verify report results and transaction notes do not expose an unmasked bank account number.
-6. **Reconciliation**: verify `Balanced`, `Discrepancy`, and `InsufficientHistory` results for matching snapshots, mismatched wallet balances, and wallets without successful transaction history.
-7. **Authorization**: verify admin-only query actions reject unauthenticated and non-admin callers.
-8. **Read-only behavior**: verify ledger and reconciliation requests do not change balances, transactions, withdrawal states, or audit rows.
+1. **Admin balance adjustment by user ID**: submit a credit and debit for a wallet owner's user ID; verify the existing balance, transaction, audit, response, and insufficient-balance behavior. Verify that a user ID without a wallet returns the existing not-found error.
+2. **Withdrawal approval**: create a pending request, approve with a valid transfer reference, and verify locked funds are consumed, the reference and audit actor are stored, and status is `Approved`.
+3. **Withdrawal rejection/retry**: reject a separate request and verify funds return to available balance; repeat either decision and verify no second balance change.
+4. **Approval input validation**: omit or exceed the reference length on approval and verify the standard validation response and unchanged financial state.
+5. **Ledger report**: query a stable test dataset with wallet/type/date filters and multiple pages; compare returned items and metadata with the database rows.
+6. **Sensitive-data exclusion**: verify report results and transaction notes do not expose an unmasked bank account number.
+7. **Reconciliation**: verify `Balanced`, `Discrepancy`, and `InsufficientHistory` results for matching snapshots, mismatched wallet balances, and wallets without successful transaction history.
+8. **Authorization**: verify admin-only query actions reject unauthenticated and non-admin callers.
+9. **Read-only behavior**: verify ledger and reconciliation requests do not change balances, transactions, withdrawal states, or audit rows.
 
 ## Final verification
 

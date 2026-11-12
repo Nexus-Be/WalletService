@@ -1,17 +1,14 @@
 namespace Wallet.Api.Controllers;
 
 using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Text.Json;
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Primitives;
+using Wallet.Api.Common;
 using Wallet.Api.Extensions;
 using Wallet.Api.Filters;
 using Wallet.Application.Features.Checkout.Commands.CheckoutDirect;
@@ -19,10 +16,10 @@ using Wallet.Application.Features.Checkout.Commands.PayOrderWithWallet;
 using Wallet.Application.Features.Checkout.Commands.RefundOrderPayment;
 using Wallet.Application.Features.Checkout.Commands.SettleSellerOrder;
 using Wallet.Application.Features.Checkout.Queries.GetDirectPaymentStatus;
-using Wallet.Application.Features.Topups.Commands.TopupVnPay;
+using Wallet.Application.Features.Stripe.Commands.ProcessStripeWebhook;
+using Wallet.Application.Features.Topups.Commands.TopupStripe;
+using Wallet.Application.Features.Topups.Queries.GetTopupStatus;
 using Wallet.Application.Features.Transfers.Commands.Transfer;
-using Wallet.Application.Features.VnPay.Commands.ProcessVnPayIpn;
-using Wallet.Application.Features.VnPay.Queries.ProcessVnPayReturn;
 using Wallet.Application.Features.Wallets.Queries.GetMyWallet;
 using Wallet.Application.Features.Wallets.Queries.ListTransactions;
 using Wallet.Application.Features.Withdrawals.Commands.RequestWithdrawal;
@@ -59,11 +56,13 @@ public sealed class WalletsController : ControllerBase
         return Ok(wallet);
     }
 
-    /// <summary>Initiates VNPay wallet topup transaction.</summary>
-    [HttpPost("topups/vnpay")]
+    /// <summary>Initiates a Stripe wallet topup.</summary>
+    [HttpPost("topups/stripe")]
     [RequireRole]
-    public async Task<IActionResult> TopupVnPay(
-        [FromBody] TopupVnPayCommand command,
+    [ProducesResponseType(typeof(TopupStripeResponse), StatusCodes.Status201Created)]
+    public async Task<IActionResult> TopupStripe(
+        [FromBody] TopupStripeCommand command,
+        [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey,
         CancellationToken cancellationToken)
     {
         if (!this.TryGetUserId(out var userGuid, out var authError))
@@ -71,10 +70,9 @@ public sealed class WalletsController : ControllerBase
             return authError;
         }
 
-        var clientIp = this.GetClientIp() ?? "127.0.0.1";
         _logger.LogInformation("Processing deposit for user: '{UserId}', Amount: {Amount}", userGuid, command.Amount);
         var result = await _sender.Send(
-            command with { UserId = userGuid.ToString(), ClientIp = clientIp },
+            command with { UserId = userGuid, IdempotencyKey = idempotencyKey ?? string.Empty },
             cancellationToken);
 
         return StatusCode(StatusCodes.Status201Created, result);
@@ -142,83 +140,52 @@ public sealed class WalletsController : ControllerBase
         return Ok(result);
     }
 
-    /// <summary>
-    /// Processes the VNPay IPN (server-to-server callback). VNPay calls this with GET and a query string;
-    /// POST (form or JSON) is also accepted. The reply is the RspCode/Message JSON that VNPay requires.
-    /// </summary>
-    [HttpGet("vnpay/ipn")]
-    [HttpPost("vnpay/ipn")]
-    public async Task<IActionResult> VnPayIpn(CancellationToken cancellationToken)
-    {
-        Dictionary<string, string> parameters;
-        try
-        {
-            if (HttpMethods.IsGet(Request.Method))
-            {
-                parameters = ToParameters(Request.Query);
-            }
-            else if (Request.HasFormContentType)
-            {
-                var form = await Request.ReadFormAsync(cancellationToken);
-                parameters = ToParameters(form);
-            }
-            else
-            {
-                using var document = await JsonDocument.ParseAsync(Request.Body, cancellationToken: cancellationToken);
-                parameters = document.RootElement.EnumerateObject().ToDictionary(
-                    p => p.Name,
-                    p => p.Value.ValueKind == JsonValueKind.String
-                        ? p.Value.GetString() ?? string.Empty
-                        : p.Value.ToString(),
-                    StringComparer.OrdinalIgnoreCase);
-            }
-        }
-        catch (Exception exception) when (
-            exception is JsonException or InvalidOperationException or ArgumentException or InvalidDataException)
-        {
-            _logger.LogWarning(exception, "Invalid VNPay IPN request payload.");
-            return Ok(new VnPayIpnResponse("99", "Invalid request payload"));
-        }
-
-        var clientIp = HttpContext.Connection.RemoteIpAddress?.ToString();
-        var result = await _sender.Send(new ProcessVnPayIpnCommand(parameters, clientIp), cancellationToken);
-        return Ok(result);
-    }
-
-    /// <summary>Handles browser return callback from VNPay after payment completion.</summary>
-    [HttpGet("vnpay/return")]
-    public async Task<IActionResult> VnPayReturn(CancellationToken cancellationToken)
-    {
-        var parameters = Request.Query.ToDictionary(pair => pair.Key, pair => pair.Value.ToString(),
-            StringComparer.OrdinalIgnoreCase);
-        var result = await _sender.Send(new ProcessVnPayReturnQuery(parameters), cancellationToken);
-        if (!result.Success && result.ResponseCode == "97")
-        {
-            return BadRequest(new { errorCode = "VAL_INVALID_SIGNATURE", message = result.Message });
-        }
-
-        return Ok(result);
-    }
-
-    /// <summary>Processes direct order checkout payment from the user wallet.</summary>
-    [HttpPost("checkout/direct")]
+    /// <summary>Processes a signed Stripe webhook.</summary>
+    [HttpPost("stripe/webhooks")]
+    [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public async Task<ActionResult<DirectPaymentResponse>> CheckoutDirect(
+    public async Task<IActionResult> StripeWebhook(
+        [FromHeader(Name = "Stripe-Signature")] string? signature, CancellationToken cancellationToken)
+    {
+        var body = await StripeWebhookBodyReader.ReadAsync(Request.Body, Request.ContentLength, cancellationToken);
+        await _sender.Send(new ProcessStripeWebhookCommand(body, signature ?? string.Empty),
+            cancellationToken);
+        return Ok();
+    }
+
+    /// <summary>Gets the authenticated user's Stripe topup status.</summary>
+    [HttpGet("topups/{id:guid}")]
+    [RequireRole]
+    [ProducesResponseType(typeof(TopupStatusResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetTopupStatus(Guid id, CancellationToken cancellationToken)
+    {
+        if (!this.TryGetUserId(out var userGuid, out var authError))
+        {
+            return authError;
+        }
+
+        var result = await _sender.Send(new GetTopupStatusQuery(id) { UserId = userGuid }, cancellationToken);
+        return Ok(result);
+    }
+
+    /// <summary>Initiates a Stripe direct order payment.</summary>
+    [HttpPost("checkout/direct")]
+    [RequireRole]
+    [ProducesResponseType(typeof(DirectPaymentResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> CheckoutDirect(
         [FromBody] CheckoutDirectCommand command,
-        [FromHeader(Name = "x-user-id")] string? userIdHeader,
         CancellationToken cancellationToken)
     {
+        if (!this.TryGetUserId(out var userGuid, out var authError))
+        {
+            return authError;
+        }
+
         _logger.LogInformation(
             "[REST Wallet] Initiating direct payment for user '{UserId}', order '{OrderId}'",
-            userIdHeader,
+            userGuid,
             command.OrderId);
-        var result = await _sender.Send(
-            command with
-            {
-                UserId = userIdHeader ?? string.Empty,
-                ClientIp = this.GetClientIp() ?? "127.0.0.1"
-            },
-            cancellationToken);
+        var result = await _sender.Send(command with { UserId = userGuid }, cancellationToken);
         return Ok(result);
     }
 
@@ -306,18 +273,4 @@ public sealed class WalletsController : ControllerBase
         return Ok(result);
     }
 
-    // A repeated parameter name would be ambiguous for signature validation, so it is rejected rather than merged.
-    private static Dictionary<string, string> ToParameters(IEnumerable<KeyValuePair<string, StringValues>> source)
-    {
-        var parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (key, values) in source)
-        {
-            if (values.Count > 1 || !parameters.TryAdd(key, values.ToString()))
-            {
-                throw new InvalidDataException($"Duplicate IPN parameter '{key}'.");
-            }
-        }
-
-        return parameters;
-    }
 }

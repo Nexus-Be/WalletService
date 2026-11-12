@@ -6,7 +6,7 @@ namespace Wallet.Domain.Entities;
 public class WalletTopup : BaseEntity<Guid>
 {
     public required Guid WalletId { get; set; }
-    public required string VnpTxnRef { get; set; }
+    public string? VnpTxnRef { get; set; }
     public string? VnpTransactionNo { get; set; }
     public string? VnpBankCode { get; set; }
     public required decimal Amount { get; set; }

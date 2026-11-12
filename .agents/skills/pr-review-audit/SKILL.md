@@ -6,7 +6,7 @@ description: Audit and review Pull Requests in WalletService (port 8008). Valida
 # Pull Request Review and Audit Skill (`pr-review-audit`) - WalletService
 
 > **Scope:** WalletService repository only (`src/Services/Wallet/`). 100% Inward-Only. Never reference the root workspace or sibling services.
-> **Kiến trúc đóng băng (Architecture Freeze):** WalletService là service duy nhất sử dụng classic CQRS qua MediatR. Đúng 11 use case tại `Wallet.Application/Features/{Area}/Commands|Queries/{UseCase}/`, đúng 2 controllers chỉ inject `ISender`.
+> **Kiến trúc đóng băng (Architecture Freeze):** WalletService là service duy nhất sử dụng classic CQRS qua MediatR. Đúng 15 use case tại `Wallet.Application/Features/{Area}/Commands|Queries/{UseCase}/`, đúng 2 controllers chỉ inject `ISender`.
 
 This skill governs the standardized quality audit and review process for Pull Requests in WalletService.
 

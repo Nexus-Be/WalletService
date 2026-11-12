@@ -18,7 +18,7 @@
 - **Persistence**: EF Core / PostgreSQL (`wallet_db`)
 - **Tests**: `Wallet.Tests` (xUnit)
 - **Service/API ports**: API `8008`; local PostgreSQL `5440`
-- **Constraints**: Preserve the 11-handler/two-controller architecture,
+- **Constraints**: Preserve the 15-handler/two-controller architecture,
   existing REST contracts, balance safety, ownership, and security rules.
 
 ## GitNexus Impact and Preflight

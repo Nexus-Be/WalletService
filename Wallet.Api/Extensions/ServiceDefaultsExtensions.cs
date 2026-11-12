@@ -108,6 +108,8 @@ public static class ServiceDefaultsExtensions
                 }
             });
 
+            options.OperationFilter<AnonymousOperationFilter>();
+            options.OperationFilter<StripeHeaderOperationFilter>();
             // options.OperationFilter<InternalOperationFilter>();
 
             var xmlDocumentationPath = Path.Combine(

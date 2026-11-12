@@ -17,22 +17,22 @@ For authenticated user routes, include:
 x-user-id: 11111111-1111-1111-1111-111111111111
 ```
 
-Admin routes also require an authorized `x-user-roles` value (`admin` or `staff`). The API accepts forwarded headers; these examples do not imply that the service validates the caller's bearer token itself. VNPay callbacks are intentionally callable without user identity.
+Admin routes also require an authorized `x-user-roles` value (`admin` or `staff`). The API accepts forwarded headers; these examples do not imply that the service validates the caller's bearer token itself. Stripe webhooks are anonymous and require a verified signature.
 
 ## Route summary
 
 | Method | Route | Access | Result |
 |---|---|---|---|
 | `GET` | `/api/v1/wallets/me` | User identity required | Current wallet; creates a default wallet if absent |
-| `POST` | `/api/v1/wallets/topups/vnpay` | User identity required | Creates pending VNPay top-up (`201`) |
+| `POST` | `/api/v1/wallets/topups/stripe` | User identity required | Creates pending Stripe top-up (`201`) |
+| `GET` | `/api/v1/wallets/topups/{id}` | Top-up owner | Reads top-up status (`200`) |
 | `POST` | `/api/v1/wallets/transfers` | User identity required | Transfers between wallets (`200`) |
 | `GET` | `/api/v1/wallets/transactions` | User identity required | Paginated transaction history (`200`) |
 | `POST` | `/api/v1/wallets/withdrawals` | Seller role and user identity required; shared filter also permits admin/staff | Creates a pending withdrawal request and reserves available funds (`201`) |
-| `GET` / `POST` | `/api/v1/wallets/vnpay/ipn` | Anonymous callback | Processes VNPay IPN (VNPay calls `GET`) |
-| `GET` | `/api/v1/wallets/vnpay/return` | Anonymous callback | Reports VNPay browser-return result |
-| `POST` | `/api/v1/wallets/checkout/direct` | `x-user-id` required by handler | Starts direct checkout through VNPay (`200`) |
+| `POST` | `/api/v1/wallets/stripe/webhooks` | Anonymous, signature required | Processes Stripe webhooks (`200` when acknowledged) |
+| `POST` | `/api/v1/wallets/checkout/direct` | User identity required | Starts direct checkout through Stripe (`200`) |
 | `PATCH` | `/api/v1/admin/wallets/withdrawals/{id}` | `admin` or `staff` | Processes an existing pending withdrawal |
-| `POST` | `/api/v1/admin/wallets/{walletId}/adjustments` | `admin` or `staff` | Adjusts wallet balance |
+| `POST` | `/api/v1/admin/wallets/{userId}/adjustments` | `admin` or `staff` | Adjusts wallet balance by owner user ID |
 | `GET` | `/health` | Anonymous | Service health response |
 
 ## User wallet routes
@@ -64,30 +64,27 @@ If the user does not yet have a wallet, the service creates a VND wallet with ze
 }
 ```
 
-### Create a VNPay top-up
+### Create a Stripe top-up
 
 ```http
-POST /api/v1/wallets/topups/vnpay
+POST /api/v1/wallets/topups/stripe
 x-user-id: 11111111-1111-1111-1111-111111111111
+Idempotency-Key: topup-12345678
 Content-Type: application/json
 
 {
-  "amount": 100000,
-  "currency": "VND",
-  "paymentMethod": "VNPAY",
-  "bankCode": null,
-  "returnUrl": "https://shop.example/checkout/return"
+  "amount": 100000
 }
 ```
 
-`amount` must be between VND 10,000 and VND 100,000,000 and fit the persisted `decimal(18,2)` precision. Currency and payment method default to `VND` and `VNPAY`; when provided, only `VND` and `VNPAY` are accepted. The bank code and return URL are optional.
+`amount` must be whole VND between 10,000 and 99,999,999. Retain the same idempotency key and amount for retries.
 
 **`201 Created`**
 
 ```json
 {
   "transactionId": "transaction-id",
-  "paymentUrl": "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?...",
+  "paymentUrl": "https://checkout.stripe.com/...",
   "amount": 100000,
   "currency": "Vnd",
   "status": "Pending",
@@ -95,7 +92,7 @@ Content-Type: application/json
 }
 ```
 
-This creates a pending top-up. The balance is credited only after the service validates a successful VNPay IPN.
+This creates a pending top-up. The balance is credited only after a verified Stripe webhook and provider-state reconciliation. Poll the owned top-up status route after redirect.
 
 ### Transfer funds
 
@@ -132,7 +129,7 @@ GET /api/v1/wallets/transactions?page=1&pageSize=10&type=DEPOSIT&fromDate=2026-1
 x-user-id: 11111111-1111-1111-1111-111111111111
 ```
 
-All query parameters are optional. `page` defaults to `1`; `pageSize` defaults to `10`. `page` must be at least `1`, and `pageSize` must be between `1` and `100`; out-of-range values return `400 VAL_INVALID_INPUT`. `fromDate` and `toDate` are optional ISO-8601 timestamps, and `fromDate` must not be later than `toDate`. `type` accepts `ALL`, `DEPOSIT`, `WITHDRAWAL`, `PAYMENT`, `REFUND`, or a defined `WalletTransactionType` name. An invalid type returns a validation error.
+All query parameters are optional. `page` defaults to `1`; `pageSize` defaults to `10`. `page` must be at least `1`, and `pageSize` must be between `1` and `100`; out-of-range values return `400 VAL_INVALID_INPUT`. `fromDate` and `toDate` are optional ISO-8601 timestamps, and `fromDate` must not be later than `toDate`. `type` accepts `ALL`, `DEPOSIT`, `WITHDRAWAL`, `PAYMENT`, `REFUND`, or a defined `WalletTransactionType` name. `DEPOSIT` includes historical `TopupVnpay` and `TopupStripe` transactions. An invalid type returns a validation error.
 
 **`200 OK`**
 
@@ -199,34 +196,12 @@ The route returns `400 INSUFFICIENT_BALANCE` when available funds are insufficie
 
 The route has no idempotency key. A repeated request can create another pending withdrawal and reserve additional funds; clients should not blindly retry when the result is unknown.
 
-## VNPay callbacks
+## Stripe webhook and direct checkout
 
-### IPN
-
-```http
-GET /api/v1/wallets/vnpay/ipn?vnp_TmnCode=<configured-merchant>&vnp_TxnRef=TOPUP-reference&vnp_Amount=10000000&vnp_CurrCode=VND&vnp_ResponseCode=00&vnp_TransactionStatus=00&vnp_SecureHashType=HmacSHA512&vnp_SecureHash=<signature>
-```
-
-VNPay calls the IPN with `GET` and a query string. The endpoint also accepts `POST` with `application/x-www-form-urlencoded` or a JSON object using the same VNPay parameter names. A repeated parameter name is rejected with `99`. `vnp_Amount` must be an unsigned integer in VND minor units (the pending top-up or direct-order amount multiplied by 100), and `vnp_CurrCode` must be `VND`. The signature must be a valid HMAC-SHA512 using the configured hash secret; `vnp_SecureHashType` must be `HmacSHA512`, and `vnp_TmnCode` must match the configured merchant code. A payment counts as successful only when `vnp_ResponseCode` is `00` and, if sent, `vnp_TransactionStatus` is also `00`. A matching pending top-up is required before the wallet is credited; a matching pending direct order transitions its payment state without changing the wallet balance.
-
-The payment row is locked while its state and associated effects are committed atomically. A duplicate notification returns response code `02` without another credit or settlement; an invalid signature/merchant/algorithm returns `97`, a missing order returns `01`, an invalid amount/currency returns `04`, and malformed or incomplete input returns `99`. The endpoint acknowledges with HTTP `200` and the JSON object VNPay requires (`RspCode`/`Message`); see [`vnpay/ipn.md`](vnpay/ipn.md) for the full table and retry semantics:
-
-```json
-{
-  "RspCode": "00",
-  "Message": "Confirm Success"
-}
-```
-
-### Browser return
-
-```http
-GET /api/v1/wallets/vnpay/return?<vnpay-query-parameters>
-```
-
-The route uses the same configured HMAC-SHA512, hash-type, and merchant-code validation and reports the result; it does not credit the wallet. A valid callback returns fields `success`, `transactionReference`, `responseCode`, `transactionNumber`, and `message`. An invalid signature, merchant code, or signature algorithm returns `400` with `errorCode: "VAL_INVALID_SIGNATURE"`.
-
-## VNPay direct checkout
+`POST /api/v1/wallets/stripe/webhooks` accepts the unmodified raw body and
+`Stripe-Signature`. A committed, duplicate or irrelevant event returns an empty
+`200`; invalid signatures return `400` and retryable failures return `5xx`.
+See [Stripe payment contracts](stripe/payments.md).
 
 ```http
 POST /api/v1/wallets/checkout/direct
@@ -235,26 +210,24 @@ Content-Type: application/json
 
 {
   "orderId": "33333333-3333-3333-3333-333333333333",
-  "amount": 100000,
-  "bankCode": null,
-  "returnUrl": "https://shop.example/checkout/return"
+  "amount": 100000
 }
 ```
 
-`orderId` must be a non-empty UUID. The wallet must use VND, the amount must be a positive whole-VND value within the persisted `decimal(18,2)` precision, and `returnUrl` must be absolute HTTPS. The service creates a pending `DirectPaymentOrder` and `DirectGatewayPayment` transaction, then returns a signed VNPay URL:
+`orderId` must be a non-empty UUID. The wallet must use VND and the amount must be a whole VND value from 1 to 99,999,999. The service creates a pending direct payment and returns a Stripe Checkout URL:
 
 ```json
 {
   "transactionId": "transaction-id",
   "orderId": "33333333-3333-3333-3333-333333333333",
   "amount": 100000,
-  "paymentUrl": "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?...",
+  "paymentUrl": "https://checkout.stripe.com/...",
   "status": "Pending",
   "createdAt": "2026-11-02T10:00:00+00:00"
 }
 ```
 
-This endpoint initiates a VNPay payment; it does not debit the wallet balance. A matching retry while pending reuses the same VNPay reference; changed parameters, a different owner, or a terminal order returns `409 PAYMENT_ORDER_CONFLICT`. The signed IPN route settles direct orders as well as wallet top-ups; the browser return is informational only.
+This endpoint does not debit the wallet balance. A matching retry reuses an active session; changed inputs or an unresolved attempt return `409 PAYMENT_CONFLICT`. A replacement requires provider-confirmed finality.
 
 ## Admin routes
 
@@ -279,7 +252,7 @@ Content-Type: application/json
 ### Adjust a wallet balance
 
 ```http
-POST /api/v1/admin/wallets/{walletId}/adjustments
+POST /api/v1/admin/wallets/{userId}/adjustments
 x-user-id: 11111111-1111-1111-1111-111111111111
 x-user-roles: admin
 Content-Type: application/json
@@ -291,7 +264,7 @@ Content-Type: application/json
 }
 ```
 
-`adjustmentType` must be `Credit` or `Debit`; `amount` must be positive and `reason` is required. The result includes `adjustmentId`, `walletId`, `amount`, `balanceAfter`, and `createdAt`. The operation records an audit log.
+`userId` is the wallet owner's user ID, not the WalletService wallet ID. `adjustmentType` must be `Credit` or `Debit`; `amount` must be positive and `reason` is required. The result includes `adjustmentId`, `walletId`, `amount`, `balanceAfter`, and `createdAt`. The operation records an audit log.
 
 ## Errors and operational notes
 
@@ -312,6 +285,6 @@ Validation and business-rule errors use `application/problem+json`. Invalid requ
 }
 ```
 
-Common status codes are `400` for invalid input or business rules, `401` when user identity is missing, `403` for missing admin/staff role, and `404` for missing wallets/resources. Exact business error codes and details depend on the failing operation. VNPay IPN acknowledgements are provider response objects, not Problem Details.
+Common status codes are `400` for invalid input or business rules, `401` when user identity is missing, `403` for missing admin/staff role, and `404` for missing wallets/resources. Exact business error codes and details depend on the failing operation.
 
-The service applies EF Core migrations at startup. Review database state and backups before connecting it to a shared database. VNPay routes require configured merchant credentials and callback URLs. This repository does not include the API Gateway or Commerce service, so their routing, authentication boundary, and end-to-end checkout behavior remain to be verified.
+The service applies EF Core migrations at startup. Review database state and backups before connecting it to a shared database. Stripe test credentials and HTTPS return URLs must be configured; gateway and real Stripe integration remain to be verified.

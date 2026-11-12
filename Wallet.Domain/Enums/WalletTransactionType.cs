@@ -14,5 +14,6 @@ public enum WalletTransactionType
     AdjustmentDebit = 9,
     DirectGatewayPayment = 10,
     TransferIn = 11,
-    TransferOut = 12
+    TransferOut = 12,
+    TopupStripe = 13
 }

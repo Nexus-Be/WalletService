@@ -158,6 +158,24 @@ dotnet test Wallet.sln -c Release
 
 Also inspect `/swagger/v1/swagger.json` for the two new admin routes and authorization documentation. Run the query tests against PostgreSQL and review query plans before adding any migration/index.
 
+## Bounded contract addition: balance adjustment by user ID
+
+The user approved adding this bounded requirement to this feature's scope; this does not authorize implementation of the broader Phase 2 plan.
+
+- Change only the admin balance-adjustment target from `walletId` to the owning `userId`. Keep the route shape `POST /api/v1/admin/wallets/{userId:guid}/adjustments`, renaming only the route parameter.
+- Resolve and lock the wallet through the existing `IWalletDbContext.LockWalletByUserIdAsync` operation.
+- Keep the request body, response DTO, role authorization, balance validation, transaction, audit behavior, and error semantics unchanged. Do not alter withdrawal decision identifiers.
+- Add regression tests for user-ID lookup, missing wallets, and existing credit/debit invariants. Update the service API contract and caller example to describe the path value as a user ID.
+- Do not add a use case, handler, entity, database schema, or migration; the frozen handler and controller counts remain unchanged.
+
+GitNexus impact recorded during planning:
+
+| Target | Impact | Consequence |
+|---|---|---|
+| `AdminWalletsController.AdjustBalance` | UNKNOWN; no callers resolved | Text search confirms the controller route and documentation references. External callers are not represented in the local graph, so preserve the route shape and explicitly document the identifier semantic change. |
+| `AdjustWalletBalanceCommandHandler` | UNKNOWN; no callers resolved | Text search confirms direct test usage and controller dispatch. Preserve all financial behavior and add targeted handler tests. |
+| `IWalletDbContext` | LOW; one direct relationship to `WalletDbContext`, lower-bound | No interface change is planned; reuse its existing `LockWalletByUserIdAsync` operation. |
+
 ## Approval Gate
 
-This artifact is a plan, not implementation authorization. Do not edit source, routes, migrations, or architecture rules until the user reviews and approves the concrete implementation plan and the required architecture-count update.
+This gate applies to the broader Phase 2 plan above: do not edit source, routes, migrations, or architecture rules for withdrawal/report work until that work and its architecture-count update are separately approved. The bounded user-ID adjustment addendum has its own approval recorded in `.agents/plan/PLAN-20261112-0827-ADMIN-ADJUSTMENT-USER-ID.md`.

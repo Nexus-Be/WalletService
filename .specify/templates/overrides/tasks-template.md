@@ -61,7 +61,7 @@
 
 ## Notes
 
-- Preserve the two-controller, 11-handler architecture unless the user
+- Preserve the two-controller, 15-handler architecture unless the user
   explicitly approves changing it.
 - Never create a feature service, repository/unit-of-work abstraction, or
   per-resource controller.

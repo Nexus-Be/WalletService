@@ -172,7 +172,6 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(100)");
 
                     b.Property<string>("VnpTxnRef")
-                        .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
@@ -185,6 +184,157 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("DirectPaymentOrders");
+                });
+
+            modelBuilder.Entity("Wallet.Domain.Entities.StripePaymentAttempt", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<bool>("BlocksReplacement")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("CheckoutSessionId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("CheckoutUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<string>("ClientIdempotencyKey")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DirectPaymentOrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("PaymentIntentId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("ProviderIdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<int>("Purpose")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("RequestFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset?>("SessionExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("WalletTopupId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CheckoutSessionId")
+                        .IsUnique();
+
+                    b.HasIndex("DirectPaymentOrderId")
+                        .IsUnique()
+                        .HasFilter("\"BlocksReplacement\" = TRUE AND \"DirectPaymentOrderId\" IS NOT NULL");
+
+                    b.HasIndex("PaymentIntentId")
+                        .IsUnique();
+
+                    b.HasIndex("ProviderIdempotencyKey")
+                        .IsUnique();
+
+                    b.HasIndex("WalletTopupId")
+                        .IsUnique()
+                        .HasFilter("\"BlocksReplacement\" = TRUE AND \"WalletTopupId\" IS NOT NULL");
+
+                    b.HasIndex("OwnerId", "ClientIdempotencyKey")
+                        .IsUnique();
+
+                    b.ToTable("StripePaymentAttempts", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_StripePaymentAttempts_Purpose", "(\"Purpose\" = 0 AND \"WalletTopupId\" IS NOT NULL AND \"DirectPaymentOrderId\" IS NULL) OR (\"Purpose\" = 1 AND \"WalletTopupId\" IS NULL AND \"DirectPaymentOrderId\" IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_StripePaymentAttempts_WholeAmount", "\"Amount\" > 0 AND \"Amount\" = trunc(\"Amount\")");
+                        });
+                });
+
+            modelBuilder.Entity("Wallet.Domain.Entities.StripeWebhookEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<Guid?>("PaymentAttemptId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("ProcessedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ProviderEventId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTimeOffset>("ReceivedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PaymentAttemptId");
+
+                    b.HasIndex("ProviderEventId")
+                        .IsUnique();
+
+                    b.ToTable("StripeWebhookEvents", (string)null);
                 });
 
             modelBuilder.Entity("Wallet.Domain.Entities.VnpayIpnLog", b =>
@@ -323,7 +473,6 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(100)");
 
                     b.Property<string>("VnpTxnRef")
-                        .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
@@ -468,6 +617,27 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     b.HasIndex("WalletId");
 
                     b.ToTable("WithdrawalRequests");
+                });
+
+            modelBuilder.Entity("Wallet.Domain.Entities.StripePaymentAttempt", b =>
+                {
+                    b.HasOne("Wallet.Domain.Entities.DirectPaymentOrder", null)
+                        .WithMany()
+                        .HasForeignKey("DirectPaymentOrderId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Wallet.Domain.Entities.WalletTopup", null)
+                        .WithMany()
+                        .HasForeignKey("WalletTopupId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("Wallet.Domain.Entities.StripeWebhookEvent", b =>
+                {
+                    b.HasOne("Wallet.Domain.Entities.StripePaymentAttempt", null)
+                        .WithMany()
+                        .HasForeignKey("PaymentAttemptId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("Wallet.Domain.Entities.WalletTopup", b =>

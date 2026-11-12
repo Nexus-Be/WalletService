@@ -1,6 +1,10 @@
 namespace Wallet.Tests;
 
+using System.Reflection;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
+using Wallet.Api.Controllers;
+using Wallet.Api.Filters;
 using Wallet.Application.Common.Extensions;
 using Wallet.Application.Features.AdminWallets.Commands.AdjustWalletBalance;
 using Wallet.Application.Features.AdminWallets.Commands.ProcessWithdrawal;
@@ -14,6 +18,8 @@ using Wallet.Domain.Exceptions;
 using Wallet.Tests.Support;
 using Xunit;
 using WithdrawalEntity = Wallet.Domain.Entities.WithdrawalRequest;
+using CheckoutDirectCommand = Wallet.Tests.Support.LegacyCheckout.CheckoutDirectCommand;
+using CheckoutDirectCommandHandler = Wallet.Tests.Support.LegacyCheckout.CheckoutDirectCommandHandler;
 
 public class WalletContractRegressionTests
 {
@@ -134,7 +140,7 @@ public class WalletContractRegressionTests
         var exception = await Assert.ThrowsAsync<BusinessRuleValidationException>(() => handler.Handle(
             new AdjustWalletBalanceCommand(Amount: 50_000m, AdjustmentType: "HACK", Reason: "Typos")
             {
-                WalletId = wallet.Id,
+                UserId = wallet.UserId,
                 AdminUserId = Guid.NewGuid().ToString()
             },
             default));
@@ -158,12 +164,25 @@ public class WalletContractRegressionTests
         await Assert.ThrowsAsync<BusinessRuleValidationException>(() => handler.Handle(
             new AdjustWalletBalanceCommand(Amount: 50_000m, AdjustmentType: adjustmentType, Reason: "Numeric")
             {
-                WalletId = wallet.Id,
+                UserId = wallet.UserId,
                 AdminUserId = Guid.NewGuid().ToString()
             },
             default));
 
         Assert.Equal(200_000m, wallet.Balance);
+    }
+
+    [Fact]
+    public void AdminBalanceAdjustment_UsesUserIdRouteParameterAndAdminAuthorization()
+    {
+        var controllerType = typeof(AdminWalletsController);
+        var action = controllerType.GetMethod(nameof(AdminWalletsController.AdjustBalance));
+
+        Assert.Equal("api/v1/admin/wallets", controllerType.GetCustomAttribute<RouteAttribute>()?.Template);
+        Assert.Equal(
+            "{userId:guid}/adjustments",
+            action?.GetCustomAttribute<HttpPostAttribute>()?.Template);
+        Assert.NotNull(controllerType.GetCustomAttribute<RequireRoleAttribute>());
     }
 
     [Fact]

@@ -20,12 +20,11 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       ASPNETCORE_ENVIRONMENT: "${ASPNETCORE_ENVIRONMENT:-Development}"
-      ConnectionStrings__DefaultConnection: "${WALLET_CONNECTION_STRING:-Host=postgres-wallet;Port=5432;Database=wallet_db;Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:-postgres};SSL Mode=Disable}"
-      VnPay__TmnCode: "${VNPAY_TMN_CODE:-}"
-      VnPay__HashSecret: "${VNPAY_HASH_SECRET:-}"
-      VnPay__PaymentUrl: "${VNPAY_PAYMENT_URL:-https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}"
-      VnPay__ReturnUrl: "${VNPAY_RETURN_URL:-https://localhost:8080/api/v1/wallets/vnpay/return}"
-      VnPay__Version: "${VNPAY_VERSION:-2.1.0}"
+      ConnectionStrings__DefaultConnection: "${WALLET_CONNECTION_STRING}"
+      Stripe__SecretKey: "${STRIPE_SECRET_KEY:-}"
+      Stripe__WebhookSecret: "${STRIPE_WEBHOOK_SECRET:-}"
+      Stripe__SuccessUrl: "${STRIPE_SUCCESS_URL:-}"
+      Stripe__CancelUrl: "${STRIPE_CANCEL_URL:-}"
       InternalSecurity__ServiceKey: "${INTERNAL_SERVICE_SECRET:?INTERNAL_SERVICE_SECRET must be set}"
       OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-http://tempo:4317}"
     restart: unless-stopped

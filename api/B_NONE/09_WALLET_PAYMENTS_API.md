@@ -1,5 +1,10 @@
 # 09 — TÀI LIỆU API VÍ ĐIỆN TỬ & GIAO DỊCH TIỀN TỆ (WALLET & PAYMENTS API)
 
+> **Historical contract:** VNPay endpoint details below are obsolete. See
+> [Stripe payment contracts](../../docs/api/stripe/payments.md) for implemented
+> payment routes and [handover](../../docs/api/stripe/frontend-gateway-handover.md)
+> for integration status.
+
 > **Dịch vụ phụ trách:** `WalletService (Port 8008 / Gateway Proxy: Port 8080)`  
 > **Cổng Gateway duy nhất cho Frontend:** `http://localhost:8080`  
 > **Số lượng Endpoint:** `8 endpoints`  
@@ -19,7 +24,7 @@ Tài liệu chuẩn hóa toàn bộ các API quản lý tài chính cá nhân: T
 | 5 | `POST` | [`/api/v1/wallets/withdrawals`](#5-post-api-v1-wallets-withdrawals) | `Seller` | Người bán (Seller) tạo yêu cầu rút tiền từ ví về tài khoản ngân hàng |
 | 6 | `PATCH` | [`/api/v1/admin/wallets/withdrawals/{id}`](#6-patch-api-v1-admin-wallets-withdrawals-id-) | `Admin` / `SuperAdmin` | Quản trị viên duyệt hoặc từ chối yêu cầu rút tiền của Seller |
 | 7 | `GET` | [`/api/v1/wallets/transactions`](#7-get-api-v1-wallets-transactions) | `Buyer` (Yêu cầu JWT Bearer Token) | Tra cứu lịch sử biến động sổ cái (wallet_transactions) cá nhân |
-| 8 | `POST` | [`/api/v1/admin/wallets/{walletId}/adjustments`](#8-post-api-v1-admin-wallets-walletid-adjustments) | `Admin` / `SuperAdmin` | Admin điều chỉnh số dư ví thủ công (Cộng/Trừ tiền kèm kiểm toán) |
+| 8 | `POST` | [`/api/v1/admin/wallets/{userId}/adjustments`](#8-post-api-v1-admin-wallets-userid-adjustments) | `Admin` / `SuperAdmin` | Admin điều chỉnh số dư ví theo mã người dùng |
 
 ---
 
@@ -442,14 +447,14 @@ Tài liệu chuẩn hóa toàn bộ các API quản lý tài chính cá nhân: T
 
 ---
 
-<a id="8-post-api-v1-admin-wallets-walletid-adjustments"></a>
-### 8. `POST /api/v1/admin/wallets/{walletId}/adjustments`
+<a id="8-post-api-v1-admin-wallets-userid-adjustments"></a>
+### 8. `POST /api/v1/admin/wallets/{userId}/adjustments`
 
 **Admin điều chỉnh số dư ví thủ công (Cộng/Trừ tiền kèm kiểm toán)**
 
 - **Quyền hạn (RBAC)**: `Admin` / `SuperAdmin`
 - **Phương thức**: `POST`
-- **Đường dẫn**: `/api/v1/admin/wallets/{walletId}/adjustments`
+- **Đường dẫn**: `/api/v1/admin/wallets/{userId}/adjustments`
 - **Mã tham chiếu Excel**: `WAL-10`
 
 #### 1. Yêu cầu (Request)
@@ -464,9 +469,11 @@ Tài liệu chuẩn hóa toàn bộ các API quản lý tài chính cá nhân: T
 - **Path Parameters:**
   ```json
   {
-    "walletId": "uuid"
+    "userId": "uuid"
   }
   ```
+
+`userId` là mã người dùng sở hữu ví, không phải mã ví nội bộ của WalletService.
 
 - **Request Body (JSON Payload):**
   ```json

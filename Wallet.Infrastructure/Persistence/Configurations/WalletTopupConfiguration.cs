@@ -9,7 +9,7 @@ public class WalletTopupConfiguration : IEntityTypeConfiguration<WalletTopup>
     public void Configure(EntityTypeBuilder<WalletTopup> builder)
     {
         builder.HasKey(x => x.Id);
-        builder.Property(x => x.VnpTxnRef).HasMaxLength(100).IsRequired();
+        builder.Property(x => x.VnpTxnRef).HasMaxLength(100);
         builder.HasIndex(x => x.VnpTxnRef).IsUnique();
         builder.Property(x => x.VnpTransactionNo).HasMaxLength(100);
         builder.Property(x => x.VnpBankCode).HasMaxLength(50);

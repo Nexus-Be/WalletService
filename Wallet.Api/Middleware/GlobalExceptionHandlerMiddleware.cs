@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Wallet.Api.Common;
 using Wallet.Application.Common.Exceptions;
+using Wallet.Application.Interfaces;
 using Wallet.Domain.Exceptions;
 
 public sealed class GlobalExceptionHandlerMiddleware
@@ -37,6 +38,16 @@ public sealed class GlobalExceptionHandlerMiddleware
 
         var (statusCode, errorCode, title, detail) = exception switch
         {
+            StripeWebhookSignatureException => (
+                StatusCodes.Status400BadRequest,
+                "VAL_INVALID_SIGNATURE",
+                "Invalid webhook signature",
+                "Stripe webhook signature is invalid."),
+            PaymentProviderUnavailableException providerException => (
+                StatusCodes.Status503ServiceUnavailable,
+                "PAYMENT_PROVIDER_UNAVAILABLE",
+                "Payment provider unavailable",
+                providerException.Message),
             RequestValidationException rve => (
                 rve.StatusCode,
                 rve.ErrorCode,

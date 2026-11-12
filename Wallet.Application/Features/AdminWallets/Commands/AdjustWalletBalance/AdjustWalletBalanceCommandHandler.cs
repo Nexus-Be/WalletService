@@ -37,8 +37,8 @@ internal sealed class AdjustWalletBalanceCommandHandler
         var credit = adjustmentType == BalanceAdjustmentType.Credit;
 
         await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
-        var wallet = await _context.LockWalletByIdAsync(request.WalletId, cancellationToken)
-                     ?? throw new WalletNotFoundException(request.WalletId.ToString());
+        var wallet = await _context.LockWalletByUserIdAsync(request.UserId, cancellationToken)
+                     ?? throw new WalletNotFoundException(request.UserId.ToString());
 
         var balanceBefore = wallet.Balance;
         if (credit)

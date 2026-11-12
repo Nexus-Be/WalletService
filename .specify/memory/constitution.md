@@ -1,10 +1,19 @@
+<!--
+Sync Impact Report
+Version: 1.0.0 -> 2.0.0
+Modified principle: I. Preserve the Frozen Architecture (11 -> 15 handlers)
+Added sections: none
+Removed sections: none
+Follow-up: none.
+Remove this report before committing the amendment.
+-->
 # WalletService Constitution
 
 ## Core Principles
 
 ### I. Preserve the Frozen Architecture
 WalletService remains a .NET 8 REST service using the existing four-layer
-architecture and classic CQRS through MediatR. Keep exactly 11 handlers and the
+architecture and classic CQRS through MediatR. Keep exactly 15 handlers and the
 two public controllers (`WalletsController` and `AdminWalletsController`). Do
 not add feature-service facades, repository abstractions, or per-resource
 controllers. Any requested change to these invariants requires explicit user
@@ -77,6 +86,8 @@ stop and ask the user rather than weakening a frozen invariant. Amendments to
 architecture, public API contracts, or financial invariants require explicit
 user approval; update the affected rules, templates, verifier, and tests in the
 same approved change. Review Spec Kit artifacts against the implementation
-before merging.
+before merging. Version amendments using semantic versioning: major for
+incompatible principle changes, minor for new or materially expanded guidance,
+and patch for non-semantic corrections.
 
-**Version**: 1.0.0 | **Ratified**: 2026-11-03 | **Last Amended**: 2026-11-03
+**Version**: 2.0.0 | **Ratified**: 2026-11-03 | **Last Amended**: 2026-11-12

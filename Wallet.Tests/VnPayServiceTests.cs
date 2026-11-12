@@ -1,5 +1,6 @@
 namespace Wallet.Tests;
 
+using System.Globalization;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
@@ -89,6 +90,35 @@ public sealed class VnPayServiceTests
         Assert.Equal(orderId.ToString("D"), parameters["vnp_OrderInfo"].Replace("Direct order checkout ", ""));
         Assert.Equal("85000000", parameters["vnp_Amount"]);
         Assert.Equal("https://sandbox.vnpayment.vn/paymentv2/vpcpay.html", uri.GetLeftPart(UriPartial.Path));
+        Assert.True(service.ValidateSignature(parameters));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CreatePaymentUrl_UsesVietnamTimeForSignedCreateDate(bool directCheckout)
+    {
+        var service = CreateService();
+        var before = DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(7));
+
+        var paymentUrl = directCheckout
+            ? service.CreateDirectPaymentUrl("DIRECT-1", Guid.NewGuid(), 100_000m, "203.0.113.10",
+                returnUrl: "https://shop.example/return")
+            : service.CreatePaymentUrl("TOPUP-1", 100_000m, "203.0.113.10",
+                returnUrl: "https://shop.example/return");
+
+        var after = DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(7));
+        var parameters = new Uri(paymentUrl).Query.TrimStart('?')
+            .Split('&')
+            .Select(pair => pair.Split('=', 2))
+            .ToDictionary(
+                pair => WebUtility.UrlDecode(pair[0]),
+                pair => WebUtility.UrlDecode(pair[1]),
+                StringComparer.Ordinal);
+        var createDate = DateTime.ParseExact(
+            parameters["vnp_CreateDate"], "yyyyMMddHHmmss", CultureInfo.InvariantCulture);
+
+        Assert.InRange(createDate, before.DateTime.AddTicks(-(before.Ticks % TimeSpan.TicksPerSecond)), after.DateTime);
         Assert.True(service.ValidateSignature(parameters));
     }
 

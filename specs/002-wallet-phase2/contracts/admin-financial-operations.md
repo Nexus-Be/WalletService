@@ -43,6 +43,18 @@ This contract draft covers only the WalletService P2-03 and P2-04 work approved 
 - **Limitations**: this endpoint reconciles stored wallet snapshots only; it is not double-entry accounting, journal balancing, or external bank reconciliation.
 - **Errors**: same authorization and pagination behavior as the ledger route.
 
+## Balance adjustment by user ID (existing route)
+
+`POST /api/v1/admin/wallets/{userId:guid}/adjustments`
+
+- **Authorization**: admin or staff, unchanged.
+- **Path parameter**: `userId` is the wallet owner's user ID, not the WalletService wallet ID.
+- **Request body**: unchanged (`amount`, `adjustmentType`, and `reason`).
+- **Behavior**: find and lock the wallet by `userId`, then apply the existing balance adjustment rules and audit behavior.
+- **Response**: unchanged, including the wallet ID in the response.
+- **Errors**: preserve existing validation, insufficient-balance, and wallet-not-found behavior.
+- **Compatibility**: withdrawal decisions remain keyed by withdrawal-request ID. No new use case, entity, or migration is required.
+
 ## Deferred API surface
 
 Do not add `/api/v1/internal/wallets/*` or auction-deposit routes in this implementation. Their route shape, service authentication, idempotency, ownership semantics, and cross-service failure behavior need a separate approved contract.

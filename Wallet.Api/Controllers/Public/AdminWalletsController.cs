@@ -50,9 +50,9 @@ public sealed class AdminWalletsController : ControllerBase
     }
 
     /// <summary>Manually adjusts a wallet balance by administrative action.</summary>
-    [HttpPost("{walletId:guid}/adjustments")]
+    [HttpPost("{userId:guid}/adjustments")]
     public async Task<IActionResult> AdjustBalance(
-        Guid walletId,
+        Guid userId,
         [FromBody] AdjustWalletBalanceCommand command,
         CancellationToken cancellationToken)
     {
@@ -63,12 +63,12 @@ public sealed class AdminWalletsController : ControllerBase
 
         var adminId = adminUserId.ToString();
         _logger.LogInformation(
-            "Adjusting wallet '{WalletId}' by admin '{AdminId}', Amount: {Amount}",
-            walletId,
+            "Adjusting wallet for user '{UserId}' by admin '{AdminId}', Amount: {Amount}",
+            userId,
             adminId,
             command.Amount);
         var result = await _sender.Send(
-            command with { WalletId = walletId, AdminUserId = adminId },
+            command with { UserId = userId, AdminUserId = adminId },
             cancellationToken);
         return Ok(result);
     }

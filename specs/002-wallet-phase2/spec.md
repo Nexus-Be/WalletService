@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-10
 
-**Status**: Draft — scope decisions recorded; implementation plan pending review
+**Status**: Draft — broader P2 work pending approval; bounded User Story 3 implementation approved
 
 **Input**: User requested a plan for the second-sprint requirements and selected the WalletService slice of the supplied Phase 2 API catalog.
 
@@ -42,12 +42,28 @@ An authorized administrator reviews wallet transaction records and identifies wh
 4. **Given** a wallet with no successful transaction snapshot, **When** reconciliation is run, **Then** the result is `InsufficientHistory`.
 5. **Given** an unauthenticated or non-admin caller, **When** an admin report is queried, **Then** access is denied.
 
+### User Story 3 - Adjust a wallet balance using the owner's user ID (Priority: P2)
+
+An authorized administrator or staff member adjusts a wallet balance by supplying the owner's user ID, which is available to other services without first looking up a wallet-specific identifier.
+
+**Why this priority**: This removes the need for callers to discover WalletService's internal wallet ID before requesting an administrative balance adjustment.
+
+**Independent Test**: Submit an adjustment for a user ID with an existing wallet and verify that the same balance, transaction, audit, and response behavior is preserved.
+
+**Acceptance Scenarios**:
+
+1. **Given** a user with an existing wallet, **When** an authorized administrator submits a valid credit or debit adjustment using that user's ID, **Then** the user's wallet is adjusted and the existing response is returned.
+2. **Given** a user ID with no wallet, **When** an authorized administrator submits an adjustment, **Then** the request returns the existing wallet-not-found error without changing financial records.
+3. **Given** an invalid user ID or an unauthorized caller, **When** an adjustment is submitted, **Then** the request is rejected without changing financial records.
+
 ## API Contract
 
-The in-scope WalletService operations are:
+The broader Phase 2 plan covers these WalletService operations:
 
 - P2-03 withdrawal creation and staff processing.
 - P2-04 administrator reporting and reconciliation over existing wallet transaction records.
+
+For the currently approved implementation slice, only the bounded balance-adjustment request below is authorized. P2-03 and P2-04 remain planning items and require separate implementation approval.
 
 The existing service already exposes `POST /api/v1/wallets/withdrawals` and `PATCH /api/v1/admin/wallets/withdrawals/{id}`.
 
@@ -60,6 +76,15 @@ Use the existing withdrawal routes and status values. Add the transfer reference
 
 The deferred operations are `/api/v1/internal/wallets/freeze-purchase`, `/unfreeze-purchase`, `/purchase-status`, and the Auction deposit/refund/deduct/forfeit operations. They require a separate security and cross-service contract plan.
 
+### Additional bounded request — balance adjustment by user ID
+
+- Keep `POST /api/v1/admin/wallets/{userId:guid}/adjustments`, changing the route parameter meaning from `walletId` to `userId` without changing the URL segment shape.
+- Continue to require `admin` or `staff`; the user ID identifies the target wallet and does not change caller authorization.
+- Keep the JSON body (`amount`, `adjustmentType`, and `reason`) and response shape unchanged. The response may continue to include the wallet ID.
+- Resolve and lock the wallet by its owner `userId`. A user with no wallet receives the existing wallet-not-found error.
+- Preserve the current balance checks, transaction and audit writes, and transaction boundary. No new use case, handler, entity, table, or migration is required.
+- Keep withdrawal processing keyed by withdrawal-request ID; it is not part of this input change.
+
 ## Edge Cases
 
 - Concurrent withdrawal requests or decisions compete for the same available or reserved funds.
@@ -68,6 +93,7 @@ The deferred operations are `/api/v1/internal/wallets/freeze-purchase`, `/unfree
 - A transaction succeeds in the database but its caller times out and retries.
 - A ledger query uses invalid date ranges, extreme pagination, or records spanning multiple currencies.
 - A per-wallet reconciliation finds missing history or a balance inconsistent with the latest successful transaction snapshot.
+- A user ID has no wallet, or an attempted debit exceeds the wallet's available balance.
 
 ## Functional Requirements
 
@@ -78,6 +104,7 @@ The deferred operations are `/api/v1/internal/wallets/freeze-purchase`, `/unfree
 - **FR-005**: Every withdrawal decision MUST prevent duplicate financial effects when retried.
 - **FR-006**: The system MUST enforce caller ownership and role authorization for user and administrator operations.
 - **FR-007**: The system MUST retain the two-controller, CQRS/MediatR, and no-facade architecture; any change to frozen counts or contracts MUST be explicitly approved and reflected in the verifier and governing documentation together.
+- **FR-008**: An authorized administrator or staff member MUST be able to target a balance adjustment by the wallet owner's user ID, without supplying a wallet ID. The adjustment's existing authorization, validation, balance, transaction, audit, and response behavior MUST remain unchanged.
 
 ## Key Entities
 
@@ -91,6 +118,7 @@ The deferred operations are `/api/v1/internal/wallets/freeze-purchase`, `/unfree
 - **SC-001**: Every approved withdrawal transition changes reserved/available funds exactly once; retries and duplicate decisions cause no additional movement.
 - **SC-002**: Every ledger report page matches the filtered source transaction records, and reconciliation identifies seeded balance-to-transaction inconsistencies without changing source records.
 - **SC-003**: All authorization, validation, concurrency, retry, and failure scenarios have automated tests; the architecture verifier, Release build, and full test suite pass after approved implementation.
+- **SC-004**: A valid adjustment request using a wallet owner's user ID targets that owner's wallet, and no adjustment request requires a wallet ID.
 
 ## Assumptions
 
@@ -100,3 +128,4 @@ The deferred operations are `/api/v1/internal/wallets/freeze-purchase`, `/unfree
 - P2-04 is limited to reporting and reconciling records stored by WalletService; it does not establish a general ledger or reconcile an external bank statement.
 - P2-05 purchase freeze and Auction escrow operations are deferred until their internal service authentication and cross-service contracts are approved.
 - No migration or endpoint is implemented until the required architecture and API approvals are explicit.
+- The balance-adjustment identifier change is a bounded addition to this plan; withdrawal decisions continue to use withdrawal-request IDs.

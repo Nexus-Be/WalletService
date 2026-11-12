@@ -75,7 +75,8 @@ public sealed class VnPayService : IVnPayService
             ["vnp_Locale"] = "vn",
             ["vnp_ReturnUrl"] = effectiveReturnUrl,
             ["vnp_IpAddr"] = ipAddress,
-            ["vnp_CreateDate"] = DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture)
+            ["vnp_CreateDate"] = DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(7))
+                .ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture)
         };
         if (!string.IsNullOrWhiteSpace(bankCode))
             parameters["vnp_BankCode"] = bankCode;

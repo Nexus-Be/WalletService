@@ -235,7 +235,7 @@ public class WalletOperationsEdgeCaseTests
     private static AdjustWalletBalanceCommand Adjust(WalletAccount wallet, decimal amount, string type) =>
         new(amount, type, "  support ticket 42  ")
         {
-            WalletId = wallet.Id,
+            UserId = wallet.UserId,
             AdminUserId = Guid.NewGuid().ToString()
         };
 
@@ -278,7 +278,7 @@ public class WalletOperationsEdgeCaseTests
         using var context = new TestWalletDbContext(nameof(AdjustBalance_UnknownWallet_ThrowsWalletNotFound));
         var command = new AdjustWalletBalanceCommand(1_000m, "Credit", "reason")
         {
-            WalletId = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
             AdminUserId = Guid.NewGuid().ToString()
         };
 
@@ -460,7 +460,7 @@ public class WalletOperationsEdgeCaseTests
         var wallet = AddWallet(context, 0m);
         var topup = AddTopup(context, wallet, "TOPUP-BADAMT-" + amount, 50_000m);
 
-        var result = await IpnHandler(context).Handle(Ipn(topup.VnpTxnRef, "00", amount), default);
+        var result = await IpnHandler(context).Handle(Ipn(Assert.IsType<string>(topup.VnpTxnRef), "00", amount), default);
 
         Assert.Equal("04", result.ResponseCode);
         Assert.Equal(TopupStatus.Pending, topup.Status);

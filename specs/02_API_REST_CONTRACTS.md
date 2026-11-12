@@ -11,16 +11,16 @@
 
 ### 1.1. Khách hàng (`WalletsController` — `/api/v1/wallets`)
 * `GET /api/v1/wallets/me` → `GetMyWalletQuery` → `GetMyWalletQueryHandler` (read-only; khi chưa có ví thì gửi `EnsureWalletCommand` → `EnsureWalletCommandHandler` tạo ví 0 đồng + `AuditLog` `WalletCreate`; Swagger hiển thị `x-user-id` header parameter).
-* `POST /api/v1/wallets/topups/vnpay` → `TopupVnPayCommand` → `TopupVnPayCommandHandler` (HTTP 201).
+* `POST /api/v1/wallets/topups/stripe` → `TopupStripeCommand` → `TopupStripeCommandHandler` (HTTP 201; cần `Idempotency-Key`).
+* `GET /api/v1/wallets/topups/{id:guid}` → `GetTopupStatusQuery` → `GetTopupStatusQueryHandler` (chỉ chủ ví).
 * `POST /api/v1/wallets/withdrawals` → `RequestWithdrawalCommand` → `RequestWithdrawalCommandHandler` (HTTP 201; tạo yêu cầu Pending và khóa số dư khả dụng; không khởi tạo chuyển khoản ngân hàng).
 * `POST /api/v1/wallets/transfers` → `TransferCommand` → `TransferCommandHandler`.
 * `GET /api/v1/wallets/transactions` → `ListTransactionsQuery` → `ListTransactionsQueryHandler`.
-* `GET /api/v1/wallets/vnpay/ipn` (VNPay's method; `POST` form/JSON also accepted) → `ProcessVnPayIpnCommand` → `ProcessVnPayIpnCommandHandler`. Trả JSON `{"RspCode","Message"}` theo chuẩn VNPay (`00` `Confirm Success`, `02` `Order already confirmed`, `97` `Invalid signature`…); mỗi callback được ghi vào `VnpayIpnLogs`. Chi tiết: `docs/api/vnpay/ipn.md`.
-* `GET /api/v1/wallets/vnpay/return` → `ProcessVnPayReturnQuery` → `ProcessVnPayReturnQueryHandler`.
+* `POST /api/v1/wallets/stripe/webhooks` → `ProcessStripeWebhookCommand` → `ProcessStripeWebhookCommandHandler` (anonymous; xác minh `Stripe-Signature`, body nguyên bản).
 
 ### 1.2. Quản trị (`AdminWalletsController` — `/api/v1/admin/wallets`)
 * `PATCH /api/v1/admin/wallets/withdrawals/{id:guid}` → `ProcessWithdrawalCommand` → `ProcessWithdrawalCommandHandler`.
-* `POST /api/v1/admin/wallets/{walletId:guid}/adjustments` → `AdjustWalletBalanceCommand` → `AdjustWalletBalanceCommandHandler`.
+* `POST /api/v1/admin/wallets/{userId:guid}/adjustments` → `AdjustWalletBalanceCommand` → `AdjustWalletBalanceCommandHandler` (target identified by wallet owner's user ID).
 
 ### 1.3. Thanh toán trực tiếp (`WalletsController` — `/api/v1/wallets/checkout/direct`)
 * `POST /api/v1/wallets/checkout/direct` → `CheckoutDirectCommand` → `CheckoutDirectCommandHandler` (idempotent theo `OrderId`). Internal API tạm khóa nên route dùng tiền tố công khai.

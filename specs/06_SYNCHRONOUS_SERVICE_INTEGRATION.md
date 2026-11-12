@@ -1,5 +1,10 @@
 # 06 — Synchronous Service Integration Guide
 
+> **Payment and authentication warning:** This older integration guide contains
+> stale JWT and VNPay statements. For the implemented Stripe routes and current
+> trusted-header boundary, use [Stripe handover](../docs/api/stripe/frontend-gateway-handover.md)
+> and [Wallet payments API](../docs/api/wallet-payments.md).
+
 This guide is for the Gateway, User, Commerce, and future Auction repositories integrating with WalletService. It describes the current HTTP contracts and separates implemented behavior from integration guidance. WalletService uses synchronous REST over HTTP/JSON; callers wait for a response, while server-side I/O remains asynchronous.
 
 ## 1. Service boundaries and current integration status

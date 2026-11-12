@@ -47,11 +47,24 @@ internal sealed class GetDirectPaymentStatusQueryHandler
             .FirstOrDefaultAsync(cancellationToken)
             ?? throw new EntityNotFoundException("PAYMENT_NOT_FOUND", "DirectPayment", orderId);
 
-        var gatewayTransactionNo = await _context.DirectPaymentOrders
+        var order = await _context.DirectPaymentOrders
             .AsNoTracking()
             .Where(o => o.OrderId == orderId)
-            .Select(o => o.VnpTransactionNo)
+            .Select(o => new { o.Id, o.VnpTxnRef, o.VnpTransactionNo })
             .FirstOrDefaultAsync(cancellationToken);
+
+        var gatewayTransactionNo = order?.VnpTransactionNo;
+        if (order is not null && order.VnpTxnRef is null)
+        {
+            gatewayTransactionNo = await _context.StripePaymentAttempts
+                .AsNoTracking()
+                .Where(a => a.DirectPaymentOrderId == order.Id)
+                .OrderByDescending(a => a.Status == StripePaymentAttemptStatus.Successful)
+                .ThenByDescending(a => a.CreatedAt)
+                .ThenByDescending(a => a.Id)
+                .Select(a => a.PaymentIntentId)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
 
         return new DirectPaymentStatusResponse(
             transaction.Id.ToString(),

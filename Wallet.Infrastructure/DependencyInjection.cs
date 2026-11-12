@@ -35,7 +35,9 @@ public static class DependencyInjection
         });
 
         services.AddScoped<IWalletDbContext>(sp => sp.GetRequiredService<WalletDbContext>());
-        services.AddSingleton<IVnPayService, VnPayService>();
+        services.AddHttpClient<IStripeCheckoutClient, StripeCheckoutClient>(client =>
+            client.Timeout = TimeSpan.FromSeconds(10));
+        services.AddSingleton<IStripeWebhookVerifier, StripeWebhookVerifier>();
 
         // Identity propagation delegating handler for outgoing inter-service HTTP requests
         services.AddTransient<Services.Common.IdentityPropagationHandler>();

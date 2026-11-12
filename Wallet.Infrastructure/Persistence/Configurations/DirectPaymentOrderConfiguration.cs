@@ -13,7 +13,7 @@ public class DirectPaymentOrderConfiguration : IEntityTypeConfiguration<DirectPa
         builder.Property(x => x.OrderId).IsRequired();
         builder.HasIndex(x => x.OrderId).IsUnique();
 
-        builder.Property(x => x.VnpTxnRef).HasMaxLength(100).IsRequired();
+        builder.Property(x => x.VnpTxnRef).HasMaxLength(100);
         builder.HasIndex(x => x.VnpTxnRef).IsUnique();
 
         builder.Property(x => x.VnpTransactionNo).HasMaxLength(100);

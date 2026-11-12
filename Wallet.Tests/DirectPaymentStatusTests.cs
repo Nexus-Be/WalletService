@@ -15,6 +15,8 @@ using Wallet.Domain.Enums;
 using Wallet.Domain.Exceptions;
 using Wallet.Tests.Support;
 using Xunit;
+using CheckoutDirectCommand = Wallet.Tests.Support.LegacyCheckout.CheckoutDirectCommand;
+using CheckoutDirectCommandHandler = Wallet.Tests.Support.LegacyCheckout.CheckoutDirectCommandHandler;
 
 public class DirectPaymentStatusTests
 {
@@ -59,7 +61,7 @@ public class DirectPaymentStatusTests
             .Handle(
                 new ProcessVnPayIpnCommand(new Dictionary<string, string>
                 {
-                    ["vnp_TxnRef"] = order.VnpTxnRef,
+                    ["vnp_TxnRef"] = Assert.IsType<string>(order.VnpTxnRef),
                     ["vnp_ResponseCode"] = responseCode,
                     ["vnp_Amount"] = (order.Amount * 100).ToString("0"),
                     ["vnp_CurrCode"] = "VND",
@@ -100,6 +102,78 @@ public class DirectPaymentStatusTests
         Assert.Equal("Success", result.Status);
         Assert.Equal("777", result.GatewayTransactionNo);
         Assert.Equal(500_000m, wallet.Balance);
+    }
+
+    [Fact]
+    public async Task StripeStatus_UsesSuccessfulAttemptPaymentIntent()
+    {
+        using var context = new TestWalletDbContext(nameof(StripeStatus_UsesSuccessfulAttemptPaymentIntent));
+        var wallet = AddWallet(context);
+        var orderId = Guid.NewGuid();
+        var order = new DirectPaymentOrder
+        {
+            Id = Guid.NewGuid(), OrderId = orderId, Amount = 80000, Status = TopupStatus.Success
+        };
+        context.DirectPaymentOrders.Add(order);
+        context.WalletTransactions.Add(new WalletTransaction
+        {
+            Id = Guid.NewGuid(), WalletId = wallet.Id, UserId = wallet.UserId.ToString(),
+            ReferenceId = orderId, Type = WalletTransactionType.DirectGatewayPayment,
+            Amount = 80000, Currency = "Vnd", Status = TransactionStatus.Success
+        });
+        context.StripePaymentAttempts.Add(new StripePaymentAttempt
+        {
+            Id = Guid.NewGuid(), OwnerId = wallet.UserId, Purpose = StripePaymentPurpose.DirectOrder,
+            DirectPaymentOrderId = order.Id, Amount = 80000, RequestFingerprint = "fingerprint",
+            ProviderIdempotencyKey = "provider-key", Status = StripePaymentAttemptStatus.Successful,
+            PaymentIntentId = "pi_success"
+        });
+        await context.SaveChangesAsync();
+
+        var result = await Handler(context).Handle(Query(orderId, wallet), default);
+
+        Assert.Equal("Success", result.Status);
+        Assert.Equal("pi_success", result.GatewayTransactionNo);
+    }
+
+    [Fact]
+    public async Task StripeStatus_PendingReplacementDoesNotReturnPreviousIntent()
+    {
+        using var context = new TestWalletDbContext(nameof(StripeStatus_PendingReplacementDoesNotReturnPreviousIntent));
+        var wallet = AddWallet(context);
+        var orderId = Guid.NewGuid();
+        var order = new DirectPaymentOrder
+        {
+            Id = Guid.NewGuid(), OrderId = orderId, Amount = 80000, Status = TopupStatus.Pending
+        };
+        context.DirectPaymentOrders.Add(order);
+        context.WalletTransactions.Add(new WalletTransaction
+        {
+            Id = Guid.NewGuid(), WalletId = wallet.Id, UserId = wallet.UserId.ToString(),
+            ReferenceId = orderId, Type = WalletTransactionType.DirectGatewayPayment,
+            Amount = 80000, Currency = "Vnd", Status = TransactionStatus.Pending
+        });
+        context.StripePaymentAttempts.AddRange(
+            new StripePaymentAttempt
+            {
+                Id = Guid.NewGuid(), OwnerId = wallet.UserId, Purpose = StripePaymentPurpose.DirectOrder,
+                DirectPaymentOrderId = order.Id, Amount = 80000, RequestFingerprint = "fingerprint",
+                ProviderIdempotencyKey = "previous-key", Status = StripePaymentAttemptStatus.Failed,
+                BlocksReplacement = false, PaymentIntentId = "pi_old", CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-1)
+            },
+            new StripePaymentAttempt
+            {
+                Id = Guid.NewGuid(), OwnerId = wallet.UserId, Purpose = StripePaymentPurpose.DirectOrder,
+                DirectPaymentOrderId = order.Id, Amount = 80000, RequestFingerprint = "fingerprint",
+                ProviderIdempotencyKey = "current-key", Status = StripePaymentAttemptStatus.CreationPending,
+                BlocksReplacement = true, CreatedAt = DateTimeOffset.UtcNow
+            });
+        await context.SaveChangesAsync();
+
+        var result = await Handler(context).Handle(Query(orderId, wallet), default);
+
+        Assert.Equal("Pending", result.Status);
+        Assert.Null(result.GatewayTransactionNo);
     }
 
     [Fact]

@@ -3,9 +3,10 @@
 ## Implemented API
 
 - [Wallet and payments API](wallet-payments.md) — route catalog and request/response behavior verified against this repository.
-- [Direct checkout](checkout/direct.md) — VNPay checkout initiation, retry behavior, and payment state.
-- [Direct payment status](checkout/direct-status.md) — polling endpoint for the settled VNPay result.
-- [VNPay IPN](vnpay/ipn.md) — signature validation, top-up credit, direct-order settlement, and duplicate callbacks.
+- [Direct checkout](checkout/direct.md) — Stripe checkout initiation, retry behavior, and payment state.
+- [Direct payment status](checkout/direct-status.md) — polling endpoint for the settled payment result.
+- [Stripe payment contracts](stripe/payments.md) — top-up, direct checkout and signed webhook contracts.
+- [Frontend and gateway handover](stripe/frontend-gateway-handover.md) — test-mode integration requirements and remaining gates.
 
 ## Supporting documents
 

@@ -28,6 +28,15 @@ internal sealed class PayOrderWithWalletCommandHandler
         var buyerId = Guid.Parse(request.UserId);
 
         await using var dbTransaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+        await _context.LockOrderPaymentAsync(request.OrderId, cancellationToken);
+        var directOrderId = await _context.DirectPaymentOrders.AsNoTracking()
+            .Where(order => order.OrderId == request.OrderId)
+            .Select(order => (Guid?)order.Id)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (directOrderId is not null &&
+            await _context.LockDirectPaymentOrderByIdAsync(directOrderId.Value, cancellationToken) is null)
+            throw new InvalidOperationException("Direct payment order changed while locking.");
+
         var wallet = await _context.LockWalletByUserIdAsync(buyerId, cancellationToken)
                      ?? throw new WalletNotFoundException(request.UserId);
 
@@ -52,6 +61,17 @@ internal sealed class PayOrderWithWalletCommandHandler
             }
 
             return Map(existing);
+        }
+
+        if (directOrderId is Guid parentId && await _context.StripePaymentAttempts.AnyAsync(
+                attempt => attempt.DirectPaymentOrderId == parentId &&
+                           (attempt.BlocksReplacement || attempt.Status == StripePaymentAttemptStatus.ReconciliationRequired),
+                cancellationToken))
+        {
+            throw new BusinessRuleValidationException(
+                "PAYMENT_ORDER_CONFLICT",
+                "The order already has a different or completed payment.",
+                409);
         }
 
         if (wallet.Balance < request.Amount)

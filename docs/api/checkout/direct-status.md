@@ -16,7 +16,7 @@
 
 ## 2. Purpose
 
-[`POST /checkout/direct`](direct.md) returns a VNPay URL and a `Pending` payment. VNPay settles it through the IPN (`GET /vnpay/ipn`). This endpoint lets the caller (frontend or Commerce Service) poll the settled result. The browser return alone is informational; this status is the source of truth.
+[`POST /checkout/direct`](direct.md) returns a Stripe Checkout URL and a `Pending` payment. A verified Stripe webhook and provider reconciliation settle it. This endpoint lets the caller poll the result. Browser return alone is informational.
 
 ## 3. Response
 
@@ -36,9 +36,9 @@
 | Field | Notes |
 |---|---|
 | `status` | PascalCase `TransactionStatus`: `Pending`, `Success`, `Failed` |
-| `gatewayTransactionNo` | VNPay transaction number, set once the IPN settles the payment; otherwise `null` |
+| `gatewayTransactionNo` | Stripe PaymentIntent ID when available; historical VNPay payments may contain their legacy transaction number |
 
-`status` changes only through the VNPay IPN. Pending payments are not expired by the wallet service; expiry is owned by Commerce Service.
+`status` changes through verified Stripe webhook reconciliation. A browser cancellation or local timeout does not establish provider finality.
 
 ## 4. Error matrix
 

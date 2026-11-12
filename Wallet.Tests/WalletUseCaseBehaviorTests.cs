@@ -9,7 +9,6 @@ using Wallet.Application.Features.Checkout.Commands.CheckoutDirect;
 using Wallet.Application.Features.Topups.Commands.TopupVnPay;
 using Wallet.Application.Features.Transfers.Commands.Transfer;
 using Wallet.Application.Features.VnPay.Commands.ProcessVnPayIpn;
-using Wallet.Application.Features.VnPay.Queries.ProcessVnPayReturn;
 using Wallet.Application.Features.Wallets.Queries.GetMyWallet;
 using Wallet.Application.Features.Wallets.Queries.ListTransactions;
 using Wallet.Application.Features.Withdrawals.Commands.RequestWithdrawal;
@@ -19,6 +18,8 @@ using Wallet.Domain.Exceptions;
 using Wallet.Tests.Support;
 using Xunit;
 using WithdrawalEntity = Wallet.Domain.Entities.WithdrawalRequest;
+using CheckoutDirectCommand = Wallet.Tests.Support.LegacyCheckout.CheckoutDirectCommand;
+using CheckoutDirectCommandHandler = Wallet.Tests.Support.LegacyCheckout.CheckoutDirectCommandHandler;
 
 public class WalletUseCaseBehaviorTests
 {
@@ -716,7 +717,7 @@ public class WalletUseCaseBehaviorTests
         var result = await handler.Handle(
             new AdjustWalletBalanceCommand(Amount: 50_000m, AdjustmentType: "Debit", Reason: "Correction")
             {
-                WalletId = wallet.Id,
+                UserId = wallet.UserId,
                 AdminUserId = Guid.NewGuid().ToString()
             },
             default);
@@ -724,21 +725,6 @@ public class WalletUseCaseBehaviorTests
         Assert.Equal(150_000m, result.BalanceAfter);
         Assert.Equal(150_000m, wallet.Balance);
         Assert.Single(context.WalletTransactions.Where(t => t.Type == WalletTransactionType.AdjustmentDebit));
-    }
-
-    [Fact]
-    public async Task ProcessVnPayReturn_InvalidSignature_ReturnsFailure()
-    {
-        using var context = new TestWalletDbContext(nameof(ProcessVnPayReturn_InvalidSignature_ReturnsFailure));
-        var vnPay = new FakeVnPayService { SignatureIsValid = false };
-        var handler = new ProcessVnPayReturnQueryHandler(vnPay, NullLogger<ProcessVnPayReturnQueryHandler>.Instance);
-
-        var result = await handler.Handle(
-            new ProcessVnPayReturnQuery(new Dictionary<string, string>()),
-            default);
-
-        Assert.False(result.Success);
-        Assert.Equal("97", result.ResponseCode);
     }
 
     [Fact]

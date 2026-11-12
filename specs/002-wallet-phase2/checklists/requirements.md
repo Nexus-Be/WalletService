@@ -34,3 +34,4 @@
 - The user selected the WalletService slice. Service-to-service P2-05 and Auction endpoints are deferred by the user's follow-up decision.
 - The catalog contains no explicit Sprint 2 endpoint boundary; the planned slice is P2-03 and P2-04 WalletService work only.
 - The architecture/API amendment decision is for planning only; implementation still requires review and approval of the concrete plan and the required governance updates.
+- The user approved adding a bounded balance-adjustment requirement: use the wallet owner's user ID as the target while preserving the existing body, response, authorization, and withdrawal-request identifier.

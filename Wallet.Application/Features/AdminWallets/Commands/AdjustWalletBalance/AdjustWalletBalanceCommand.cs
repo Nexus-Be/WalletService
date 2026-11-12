@@ -17,16 +17,16 @@ public sealed record AdjustWalletBalanceCommand(
     [Required(ErrorMessage = "Reason is required.")]
     string Reason = "") : IRequest<BalanceAdjustmentResponse>, IRequestValidation
 {
-    [JsonIgnore] public Guid WalletId { get; init; }
+    [JsonIgnore] public Guid UserId { get; init; }
 
     [JsonIgnore] public string AdminUserId { get; init; } = string.Empty;
 
     public IEnumerable<ValidationResult> ValidateRequest()
     {
-        var walletIdError = RequestValidation.ValidateGuid(WalletId, nameof(WalletId), "Wallet ID");
-        if (walletIdError is not null)
+        var userIdError = RequestValidation.ValidateGuid(UserId, nameof(UserId), "User ID");
+        if (userIdError is not null)
         {
-            yield return walletIdError;
+            yield return userIdError;
         }
 
         var adminUserIdError = RequestValidation.ValidateGuid(AdminUserId, nameof(AdminUserId), "Admin user ID");
