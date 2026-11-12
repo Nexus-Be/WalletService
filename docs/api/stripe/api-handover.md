@@ -1,9 +1,14 @@
-# Stripe checkout handover: frontend and gateway
+# Stripe checkout handover: frontend, gateway and Commerce
 
 > **Status: implemented in WalletService, not yet verified end to end.**
 > Stripe initiation, status and webhook routes are wired; VNPay payment routes
 > are removed. Gateway forwarding and real Stripe test-mode payments still
 > require verification before consumer cutover.
+
+**Commerce cutover blocker:** WalletService records the Stripe payment but
+does not notify Commerce or update its order. The Commerce order-payment
+integration, order validation and recovery described below are requirements
+for the receiving teams, not implemented or verified end-to-end behavior.
 
 The approved WalletService contract is described in
 [payments.md](payments.md). This handover covers test-mode integration only.
@@ -39,7 +44,8 @@ be verified.
 
 ### Direct order checkout
 
-Send `POST /api/v1/wallets/checkout/direct` with authentication and:
+The existing WalletService endpoint accepts authenticated
+`POST /api/v1/wallets/checkout/direct` requests with:
 
 ```json
 {"orderId":"11111111-1111-1111-1111-111111111111","amount":100000}
@@ -52,6 +58,11 @@ The `200` response contains `transactionId`, `orderId`, `amount`,
 `transactionId`, `orderId`, `amount`, `currency`, `status`,
 `gatewayTransactionNo`, `createdAt` and `updatedAt`. The gateway transaction
 number may be null and, when available, is the Stripe PaymentIntent ID.
+
+This is the WalletService contract, not a recommendation for the frontend to
+call it directly. Commerce must first validate the buyer and authoritative
+order terms, and the integration must prevent bypassing that validation; see
+the Commerce section below.
 
 Do not send VNPay bank codes or return URLs. Success and cancellation URLs
 are configured on the server. A browser return or cancellation is not proof
@@ -128,8 +139,120 @@ end-to-end forwarding must be verified before integration.
   `404 PAYMENT_NOT_FOUND` or `WALLET_NOT_FOUND`, `409 PAYMENT_CONFLICT`, and
   `503 PAYMENT_PROVIDER_UNAVAILABLE`. Surface failures to the user; do not
   treat an error or a browser redirect as a successful payment.
-- Payment statuses are PascalCase: `Pending`, `Success`, `Failed`, `Expired`.
-  The effective retry behavior depends on confirmed provider finality.
+- Payment statuses are PascalCase. Top-ups can return `Pending`, `Success`,
+  `Failed` or `Expired`; the direct-payment ledger returns `Pending`,
+  `Success` or `Failed`. Retry behavior depends on confirmed provider finality.
+
+## Commerce: end-to-end order payment
+
+### Current boundaries
+
+- Commerce owns the order, buyer, payable total, currency, order lifecycle and
+  fulfilment. WalletService owns the direct-payment attempt and payment ledger;
+  Stripe owns the provider payment. These are separate records and a
+  successful WalletService payment does **not** automatically mark a Commerce
+  order paid. WalletService does not currently push a payment notification to
+  Commerce.
+- `POST /api/v1/wallets/checkout/direct` accepts the authenticated user,
+  `orderId` and `amount`; it does not fetch the Commerce order or verify the
+  order's owner, payable state or authoritative total. The user must have a
+  VND wallet. Do not treat a frontend-supplied amount or order ID as proof of
+  the order terms.
+- After a verified Stripe webhook and provider reconciliation, WalletService
+  updates its own direct-payment order and ledger. Commerce must independently
+  reconcile that result before advancing its order. The browser redirect and
+  frontend-reported status are not proof of settlement.
+
+### Required direct-Stripe integration
+
+The following is an integration design, not a claim that Commerce routes,
+background workers or delivery mechanisms already exist:
+
+1. The buyer starts checkout through the frontend and gateway. Commerce must
+   authenticate the buyer, retrieve the order server-side, verify ownership and
+   that it is payable, and derive the exact whole-VND amount and currency from
+   authoritative order data. Protect or mediate direct WalletService
+   initiation so a caller cannot bypass these checks by posting an arbitrary
+   order ID or amount. Agree the service-to-service identity and network
+   boundary with the gateway and Commerce teams before enabling this flow.
+2. Commerce or a trusted orchestration layer initiates WalletService
+   `POST /api/v1/wallets/checkout/direct` with that order ID and amount,
+   preserving the authenticated buyer identity. Return the resulting
+   `paymentUrl` to the frontend, which retains the order ID and redirects the
+   buyer to Stripe. Agree the actual Commerce-facing route and response
+   envelope with Commerce; none is specified or implemented here.
+3. Stripe sends a signed webhook to WalletService. WalletService verifies it,
+   retrieves provider state and reconciles the payment to its own ledger.
+   The frontend polls the WalletService direct-payment status endpoint for
+   display; it must not mark the Commerce order paid.
+4. Commerce must query
+   `GET /api/v1/wallets/checkout/direct/{orderId}` server-to-server using
+   an agreed authorized identity. WalletService permits the payer or an
+   `admin`/`staff` identity to read that payment. Verify the returned
+   `orderId`, `amount`, currency and `status` against the stored order and
+   expected buyer/payment context before applying a paid transition. The
+   status response does not itself include the buyer ID. `transactionId`
+   identifies the WalletService ledger transaction; `gatewayTransactionNo`
+   can be null and is the Stripe PaymentIntent ID when available.
+5. Only a verified matching `Success` should authorize an idempotent Commerce
+   paid transition and subsequent fulfilment. Keep `Pending` pending; `Failed`
+   or a conflicting/unknown result must not be interpreted as a paid order.
+   Serialize competing payment and order-state changes, including cancellation,
+   so late success, concurrent wallet payment, duplicate polls and retries
+   cannot cause double fulfilment or silently discard a charge.
+6. Implement durable, bounded retry/reconciliation independent of the browser,
+   including recovery after service restarts and provider/WalletService
+   outages. Persist the correlation and transition outcome. Escalate
+   mismatches, late payments on cancelled orders, timeouts and unresolved
+   attempts to an operator; do not assume failure or initiate a replacement
+   payment while the earlier attempt may still succeed.
+
+WalletService currently exposes ledger statuses `Pending`, `Success` and
+`Failed` for the direct status endpoint; a provider-expired direct attempt is
+represented by a failed ledger status. Commerce must not infer that a new
+attempt is safe solely from a browser cancel or timeout. Settlement and
+Commerce order transitions are not a distributed transaction; the Commerce
+recovery mechanism and ownership of manual reconciliation must be agreed.
+
+### Wallet-balance order payments
+
+For payment from an existing wallet balance, the WalletService endpoint called
+by Commerce is `POST /api/v1/wallets/orders/{orderId}/payment` with the buyer
+identity and body `{"amount":100000}`. It debits the buyer's wallet and
+returns a wallet transaction; the handler checks balance, serializes the order
+payment against competing Stripe attempts and reuses an equivalent existing
+wallet debit. A different or unresolved payment can return
+`409 PAYMENT_ORDER_CONFLICT`. This endpoint does not update the Commerce
+order: Commerce must apply its own idempotent order transition and recover
+after a response timeout without assuming the debit failed. The endpoint is
+hidden from Swagger, and its identity/network boundary and Commerce-side
+integration must be verified before use.
+
+This wallet-balance debit is a separate payment path from direct Stripe
+Checkout. Do not call it to confirm a successful direct Stripe payment: that
+would attempt a second payment. Refunds, disputes and reversals require the
+separately approved operational policy and are not implemented by the
+proposed Commerce reconciliation flow above.
+
+### Cross-service acceptance tests
+
+Run against a disposable test order, Stripe test mode and isolated test
+wallets; capture order ID and WalletService transaction ID, but never log
+secrets or signed webhook bodies.
+
+- Verify Commerce rejects another buyer's order, altered amount/currency,
+  non-payable order and attempts to bypass authoritative validation.
+- Complete a direct Stripe checkout and verify webhook delivery, one
+  WalletService success, one matching Commerce paid transition and one
+  fulfilment. Refresh/replay the webhook and reconciliation; nothing repeats.
+- Exercise delayed, failed and expired payments, browser cancellation and a
+  closed browser. Commerce must not mark the order paid without a verified
+  matching WalletService success, and reconciliation must continue without the
+  browser.
+- Simulate WalletService/Commerce outages, a lost response after commit,
+  mismatched amount, concurrent wallet/direct attempts and a late success
+  after cancellation. Verify idempotent recovery or explicit operator
+  escalation, with no silent double charge or fulfilment.
 
 ## Gateway
 
@@ -137,7 +260,7 @@ end-to-end forwarding must be verified before integration.
   `https://walletservice-r8fp.onrender.com/api/v1/wallets/stripe/webhooks`.
   This is a Stripe-to-service webhook, not a browser return page or an
   authenticated frontend API.
-- Route the three authenticated payment requests and their status requests to
+- Route the authenticated payment initiation and status requests to
   WalletService. Preserve the existing authenticated user context and forward
   the top-up `Idempotency-Key` header unchanged.
 - Route anonymous `POST /api/v1/wallets/stripe/webhooks` to WalletService.
@@ -161,6 +284,12 @@ end-to-end forwarding must be verified before integration.
 - [ ] Frontend verifies owner-only status, redirect and delayed payment flows.
 - [ ] A Stripe test-mode payment and webhook replay are verified end to end.
 - [ ] Gateway and frontend agree on the deployed response envelope.
+- [ ] Commerce validates authoritative order terms and buyer identity before
+      direct checkout; the bypass path is addressed.
+- [ ] Commerce reconciles WalletService settlement independently of the
+      browser and applies order/fulfilment transitions once.
+- [ ] Cross-service retries, outages, payment conflicts and late-success
+      recovery pass the acceptance tests above.
 
 Live operation remains blocked pending Stripe wallet-funding eligibility,
 account/payment-method confirmation and an approved refunds/disputes policy.
