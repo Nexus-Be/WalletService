@@ -76,6 +76,16 @@ Do not configure the URLs until the frontend route is updated and accessible
 at the chosen origin. WalletService currently uses the same fixed URLs for
 all attempts and does not append a top-up ID or order ID.
 
+| Browser route | Purpose | Frontend behavior |
+|---|---|---|
+| `/buyer/payment/result?checkout=return` | Customer returned from Stripe Checkout | Retrieve and display the current payment status. |
+| `/buyer/payment/result?checkout=cancel` | Customer left Stripe Checkout | Retrieve and display the current payment status; do not assume the attempt is cancelled or safe to retry. |
+
+Set `Stripe__SuccessUrl` and `Stripe__CancelUrl` in the Render service
+environment to the corresponding absolute frontend URLs. The Render
+WalletService host is not the frontend origin; do not use it as the return
+page host unless a frontend is actually served there.
+
 Before redirecting to Stripe, the frontend must retain the payment kind and
 the corresponding `transactionId` for a top-up or `orderId` for a direct
 checkout, for example in tab-scoped session storage. On return, use that
@@ -84,6 +94,25 @@ above. Handle missing context by showing a neutral message and links back to
 the wallet and orders, rather than claiming success or failure. A return or
 cancellation hint is not authoritative, and delayed payment may remain
 pending; display the API status and allow the user to refresh it.
+
+Use a distinct browser tab for each concurrent checkout, or otherwise prevent
+one checkout from overwriting another's retained context. Tab-scoped storage
+may be unavailable after a browser restart or when a return opens a new tab;
+in that case, show the neutral recovery UI instead of guessing an identifier.
+Keep authentication tokens and secrets out of the stored payment context.
+
+The existing WalletService APIs for the return page are:
+
+| Payment kind | Authenticated API | Identifier to retain |
+|---|---|---|
+| Wallet top-up | `GET /api/v1/wallets/topups/{transactionId}` | `transactionId` from top-up creation |
+| Direct order | `GET /api/v1/wallets/checkout/direct/{orderId}` | `orderId` from direct checkout |
+
+Call these through the gateway with the original user's authenticated
+identity. Show `Pending` as awaiting confirmation, including after a cancel
+return. Show `Success`, `Failed`, or `Expired` only when reported by the API;
+surface lookup errors and offer a retry. The gateway response envelope and
+end-to-end forwarding must be verified before integration.
 
 ### Retries and errors
 
@@ -104,6 +133,10 @@ pending; display the API status and allow the user to refresh it.
 
 ## Gateway
 
+- The Render WalletService webhook target is
+  `https://walletservice-r8fp.onrender.com/api/v1/wallets/stripe/webhooks`.
+  This is a Stripe-to-service webhook, not a browser return page or an
+  authenticated frontend API.
 - Route the three authenticated payment requests and their status requests to
   WalletService. Preserve the existing authenticated user context and forward
   the top-up `Idempotency-Key` header unchanged.
