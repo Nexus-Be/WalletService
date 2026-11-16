@@ -18,6 +18,8 @@ using Wallet.Application.Features.Checkout.Commands.SettleSellerOrder;
 using Wallet.Application.Features.Checkout.Queries.GetDirectPaymentStatus;
 using Wallet.Application.Features.Stripe.Commands.ProcessStripeWebhook;
 using Wallet.Application.Features.Topups.Commands.TopupStripe;
+using Wallet.Application.Features.Topups.Commands.ResumeTopup;
+using Wallet.Application.Features.Topups.Queries.ListTopups;
 using Wallet.Application.Features.Topups.Queries.GetTopupStatus;
 using Wallet.Application.Features.Transfers.Commands.Transfer;
 using Wallet.Application.Features.Wallets.Queries.GetMyWallet;
@@ -151,6 +153,28 @@ public sealed class WalletsController : ControllerBase
         await _sender.Send(new ProcessStripeWebhookCommand(body, signature ?? string.Empty),
             cancellationToken);
         return Ok();
+    }
+
+    /// <summary>Gets the authenticated user's Stripe topup status.</summary>
+    [HttpGet("topups")]
+    [RequireRole]
+    [ProducesResponseType(typeof(Wallet.Application.Common.Models.PagedData<TopupListItem>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListTopups(
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 10,
+        CancellationToken cancellationToken = default)
+    {
+        if (!this.TryGetUserId(out var userGuid, out var authError)) return authError;
+        return Ok(await _sender.Send(new ListTopupsQuery(page, pageSize) { UserId = userGuid }, cancellationToken));
+    }
+
+    /// <summary>Returns an existing open Stripe Checkout URL for an owned topup.</summary>
+    [HttpPost("topups/{id:guid}/resume")]
+    [RequireRole]
+    [ProducesResponseType(typeof(ResumeTopupResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ResumeTopup(Guid id, CancellationToken cancellationToken)
+    {
+        if (!this.TryGetUserId(out var userGuid, out var authError)) return authError;
+        return Ok(await _sender.Send(new ResumeTopupCommand(id) { UserId = userGuid }, cancellationToken));
     }
 
     /// <summary>Gets the authenticated user's Stripe topup status.</summary>

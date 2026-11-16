@@ -5,7 +5,7 @@ public static class StripeAmountLimits
     public const long MaximumVnd = 99999999;
 }
 
-public sealed record StripeCheckoutRequest(Guid AttemptId, long AmountVnd, string IdempotencyKey);
+public sealed record StripeCheckoutRequest(Guid AttemptId, long AmountVnd, string IdempotencyKey, Guid? TopupId = null);
 
 public sealed record StripeCheckoutSession(string SessionId, string PaymentUrl, DateTimeOffset ExpiresAt);
 
