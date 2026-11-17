@@ -656,7 +656,7 @@ public class WalletUseCaseBehaviorTests
 
         var handler = new ProcessWithdrawalCommandHandler(context);
         var result = await handler.Handle(
-            new ProcessWithdrawalCommand("APPROVE")
+            new ProcessWithdrawalCommand("APPROVE", ReferenceCode: "BANK-TRANSFER-REF")
             {
                 WithdrawalId = withdrawal.Id,
                 AdminUserId = Guid.NewGuid().ToString()
@@ -666,8 +666,13 @@ public class WalletUseCaseBehaviorTests
         Assert.Equal("Approved", result.Status);
         Assert.Equal(400_000m, wallet.Balance);
         Assert.Equal(0m, wallet.LockedBalance);
-        Assert.Single(context.WalletTransactions.Where(t => t.Type == WalletTransactionType.WithdrawalDebit));
-        Assert.Single(context.AuditLogs.Where(a => a.Action == AuditAction.WithdrawalApprove));
+        Assert.Equal("BANK-TRANSFER-REF", result.ReferenceCode);
+        Assert.Equal("BANK-TRANSFER-REF", withdrawal.GatewayReferenceId);
+        var transaction = Assert.Single(context.WalletTransactions.Where(t => t.Type == WalletTransactionType.WithdrawalDebit));
+        Assert.DoesNotContain("1234567890", transaction.Note);
+        Assert.Contains("******7890", transaction.Note);
+        var audit = Assert.Single(context.AuditLogs.Where(a => a.Action == AuditAction.WithdrawalApprove));
+        Assert.Contains("BANK-TRANSFER-REF", audit.NewValues);
     }
 
     [Fact]
@@ -692,7 +697,7 @@ public class WalletUseCaseBehaviorTests
 
         var handler = new ProcessWithdrawalCommandHandler(context);
         var result = await handler.Handle(
-            new ProcessWithdrawalCommand("Reject")
+            new ProcessWithdrawalCommand("Reject", ReferenceCode: null)
             {
                 WithdrawalId = withdrawal.Id,
                 AdminUserId = Guid.NewGuid().ToString()
@@ -700,6 +705,8 @@ public class WalletUseCaseBehaviorTests
             default);
 
         Assert.Equal("Rejected", result.Status);
+        Assert.Null(result.ReferenceCode);
+        Assert.Null(withdrawal.GatewayReferenceId);
         Assert.Equal(500_000m, wallet.Balance);
         Assert.Equal(0m, wallet.LockedBalance);
         Assert.DoesNotContain(context.WalletTransactions, t => t.ReferenceId == withdrawal.Id);

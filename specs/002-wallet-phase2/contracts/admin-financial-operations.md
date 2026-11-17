@@ -24,7 +24,7 @@ This contract draft covers only the WalletService P2-03 and P2-04 work approved 
 `GET /api/v1/admin/wallets/ledger`
 
 - **Authorization**: admin only.
-- **Query parameters**: `page` (default 1), `pageSize` (default 10, maximum 100), optional `walletId`, `type`, `status`, `fromDate`, `toDate`.
+- **Query parameters**: `page` (default 1), `pageSize` (default 10, maximum 100), optional `walletId`, `type`, `status`, `fromDate`, `toDate`. Date values are ISO 8601 instants with an offset, normalized to UTC; both bounds are inclusive and `fromDate` later than `toDate` is invalid.
 - **Response**: pure `PagedData<AdminWalletLedgerEntry>` using `items` and standard pagination metadata.
 - **Ordering**: `CreatedAt DESC`, then transaction ID descending for deterministic pages.
 - **Data fields**: transaction ID, wallet ID, type, amount, currency, balance before/after, status, reference ID, timestamp.
@@ -39,6 +39,7 @@ This contract draft covers only the WalletService P2-03 and P2-04 work approved 
 - **Query parameters**: `page`, `pageSize` (same bounds as ledger), optional `walletId`.
 - **Response**: pure `PagedData<WalletReconciliationResult>`.
 - **Comparison**: current `WalletAccount.Balance` versus latest successful transaction `BalanceAfter`, ordered by `CreatedAt DESC` then transaction ID DESC.
+- **Data fields**: wallet ID and currency, current balance, latest successful transaction balance and timestamp, successful transaction count, difference (current balance minus the latest snapshot), and result.
 - **Result values**: `Balanced`, `Discrepancy`, `InsufficientHistory` (serialized as PascalCase strings). A wallet without any successful transaction snapshot is `InsufficientHistory`, even when its balance is zero.
 - **Limitations**: this endpoint reconciles stored wallet snapshots only; it is not double-entry accounting, journal balancing, or external bank reconciliation.
 - **Errors**: same authorization and pagination behavior as the ledger route.

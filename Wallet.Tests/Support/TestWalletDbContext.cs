@@ -22,6 +22,11 @@ public sealed class TestWalletDbContext : IWalletDbContext, IDisposable
     }
 
     public DbSet<WalletAccount> Wallets => _inner.Wallets;
+    public DbSet<AuctionHold> AuctionHolds => _inner.AuctionHolds;
+    public DbSet<AuctionHoldOperation> AuctionHoldOperations => _inner.AuctionHoldOperations;
+    public DbSet<AuctionHoldCapture> AuctionHoldCaptures => _inner.AuctionHoldCaptures;
+    public DbSet<AuctionCaptureTransfer> AuctionCaptureTransfers => _inner.AuctionCaptureTransfers;
+    public DbSet<AuctionDepositEscrow> AuctionDepositEscrows => _inner.AuctionDepositEscrows;
     public DbSet<WalletTransaction> WalletTransactions => _inner.WalletTransactions;
     public DbSet<BankAccount> BankAccounts => _inner.BankAccounts;
     public DbSet<WalletTopup> WalletTopups => _inner.WalletTopups;
@@ -39,6 +44,16 @@ public sealed class TestWalletDbContext : IWalletDbContext, IDisposable
             throw new ArgumentException("Order ID must not be empty.", nameof(orderId));
         return Task.CompletedTask;
     }
+
+    public Task LockAuctionKeyAsync(string key, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+            throw new ArgumentException("Auction lock key must not be empty.", nameof(key));
+        return Task.CompletedTask;
+    }
+
+    public Task<AuctionHold?> LockAuctionHoldAsync(Guid holdId, CancellationToken cancellationToken) =>
+        _inner.AuctionHolds.SingleOrDefaultAsync(hold => hold.Id == holdId, cancellationToken);
 
     public Task<WalletAccount?> LockWalletByUserIdAsync(Guid userId, CancellationToken cancellationToken)
         => _inner.Wallets.SingleOrDefaultAsync(w => w.UserId == userId, cancellationToken);

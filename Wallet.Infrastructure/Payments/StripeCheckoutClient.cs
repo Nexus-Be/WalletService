@@ -22,8 +22,10 @@ public sealed class StripeCheckoutClient : IStripeCheckoutClient
             throw new InvalidOperationException("A Stripe test-mode secret key is required.");
         }
 
-        _successUrl = RequireHttpsUrl(configuration["Stripe:SuccessUrl"], "Stripe success URL");
-        _cancelUrl = RequireHttpsUrl(configuration["Stripe:CancelUrl"], "Stripe cancel URL");
+        var allowLocalHttp = string.Equals(
+            configuration["ASPNETCORE_ENVIRONMENT"], "Development", StringComparison.OrdinalIgnoreCase);
+        _successUrl = RequireReturnUrl(configuration["Stripe:SuccessUrl"], "Stripe success URL", allowLocalHttp);
+        _cancelUrl = RequireReturnUrl(configuration["Stripe:CancelUrl"], "Stripe cancel URL", allowLocalHttp);
         var stripeHttp = new SystemNetHttpClient(httpClient, maxNetworkRetries: 0);
         var client = new StripeClient(key, httpClient: stripeHttp);
         _sessions = new SessionService(client);
@@ -47,8 +49,8 @@ public sealed class StripeCheckoutClient : IStripeCheckoutClient
         var options = new SessionCreateOptions
         {
             Mode = "payment",
-            SuccessUrl = _successUrl,
-            CancelUrl = _cancelUrl,
+            SuccessUrl = AddTopupContext(_successUrl, request.TopupId),
+            CancelUrl = AddTopupContext(_cancelUrl, request.TopupId),
             ClientReferenceId = request.AttemptId.ToString(),
             Metadata = metadata,
             AfterExpiration = new SessionAfterExpirationOptions
@@ -173,10 +175,33 @@ public sealed class StripeCheckoutClient : IStripeCheckoutClient
         };
     }
 
-    private static string RequireHttpsUrl(string? value, string name)
+    private static string RequireReturnUrl(string? value, string name, bool allowLocalHttp)
     {
-        if (!Uri.TryCreate(value, UriKind.Absolute, out var url) || url.Scheme != Uri.UriSchemeHttps)
-            throw new InvalidOperationException($"{name} must be an absolute HTTPS URL.");
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var url) ||
+            (url.Scheme != Uri.UriSchemeHttps &&
+             !(allowLocalHttp && url.Scheme == Uri.UriSchemeHttp &&
+               string.Equals(url.Host, "localhost", StringComparison.OrdinalIgnoreCase) &&
+               url.Port == 3000 && string.IsNullOrEmpty(url.UserInfo))))
+            throw new InvalidOperationException(
+                $"{name} must be an absolute HTTPS URL, or http://localhost:3000 in Development.");
         return url.AbsoluteUri;
+    }
+
+    private static string AddTopupContext(string returnUrl, Guid? topupId)
+    {
+        if (topupId is null) return returnUrl;
+        if (topupId == Guid.Empty) throw new ArgumentException("Topup ID must not be empty.", nameof(topupId));
+        var uri = new UriBuilder(returnUrl);
+        var parameters = uri.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries)
+            .Where(parameter =>
+            {
+                var name = Uri.UnescapeDataString(parameter.Split('=', 2)[0].Replace('+', ' '));
+                return !name.Equals("kind", StringComparison.OrdinalIgnoreCase) &&
+                       !name.Equals("transactionId", StringComparison.OrdinalIgnoreCase);
+            }).ToList();
+        parameters.Add("kind=topup");
+        parameters.Add($"transactionId={topupId:D}");
+        uri.Query = string.Join("&", parameters);
+        return uri.Uri.AbsoluteUri;
     }
 }

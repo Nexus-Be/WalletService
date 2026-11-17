@@ -1,5 +1,12 @@
 # WalletService — Production Readiness Checklist
 
+> Current branch note (2026-11-17): Stripe is the active payment provider,
+> Auction hold and top-up recovery endpoints are implemented, and the active
+> architecture has 26 handlers. Historical entries below describe the state
+> and decisions at their stated dates; they are not current API guidance.
+> Live Stripe/gateway acceptance, Commerce escrow integration and platform
+> payout remain open. See [current readiness](docs/operations/production-readiness.md).
+
 > Review date: 2026-11-09. Baseline on `dev`+this branch: `dotnet build -c Release` 0 errors, 146 tests passing, no known vulnerable NuGet packages. See also the team's higher-level [docs/operations/production-readiness.md](docs/operations/production-readiness.md).
 > Verdict: **not ready for production** — items 1–4 are launch blockers.
 > We will work through the items one by one; tick the box and note the commit when an item is done.
@@ -45,6 +52,10 @@ Legend: `[ ]` open · `[~]` in progress · `[x]` done · `[-]` won't do (accepte
   - [x] Freeze invariants updated to 15 handlers (11 Command, 4 Query) in `AGENTS.md`, `.agents/`, specs, README and `scripts/verify-wallet-architecture.sh`.
   - [x] Extra tests for transfers, admin adjustments, withdrawal processing and IPN edge cases (`WalletOperationsEdgeCaseTests`) and the status endpoint (`DirectPaymentStatusTests`).
 - Follow-ups (not done): IPN response shape/GET (item 5), no endpoint for a user to list their withdrawals, `VnpayIpnLogs` still not written (item 5).
+
+### Wallet Phase 2 financial operations — verification in progress on `feature/wallet-phase2-stripe` (2026-11-12)
+- [x] Reimplement withdrawal transfer-reference handling and add the admin ledger and wallet-reconciliation reports.
+- [x] Update the active architecture invariant to 17 handlers (11 commands, 6 queries) and 2 public controllers; historical entries above retain their original counts.
 
 ---
 

@@ -1,14 +1,14 @@
 # Implementation Plan: Wallet Service Phase 2 Financial Operations
 
-**Branch**: `002-wallet-phase2` | **Date**: 2026-11-10 | **Spec**: [spec.md](spec.md)
+**Branch**: `feature/wallet-phase2-stripe` | **Date**: 2026-11-12 | **Spec**: [spec.md](spec.md)
 
-**Input**: User-selected WalletService slice of the Phase 2 API catalog. In scope: P2-03 withdrawal completion and P2-04 admin transaction reporting/reconciliation. P2-05 purchase freeze and Auction escrow are deferred pending an approved internal-service security contract.
+**Input**: User selected P2-03 withdrawal completion and P2-04 admin transaction reporting/reconciliation. P2-05 purchase freeze and Auction escrow remain deferred pending an approved internal-service security contract. Stripe checkout/top-up flows are already migrated and are not changed by this work.
 
 ## Summary
 
 Extend the existing withdrawal flow to require and persist manual bank-transfer evidence at approval, and add read-only administrator transaction and reconciliation queries over the current wallet data. Preserve existing withdrawal routes/statuses, both public controllers, CQRS/MediatR, and the direct `IWalletDbContext` pattern. Do not introduce a double-entry accounting claim or bank-statement reconciliation.
 
-The implementation adds two CQRS queries, taking the current verified 15 handlers (11 commands and 4 queries in code/verifier) to 17 (11 commands and 6 queries). This requires explicit implementation approval and synchronized updates to active architecture governance. The constitution currently says 11 handlers; reconcile this stale count to the verified baseline before applying the feature count.
+The implementation adds two CQRS queries, taking the verified baseline of 15 handlers (11 commands and 4 queries) to 17 (11 commands and 6 queries). The user explicitly authorized this count change and approved this concrete plan before source edits. Preserve exactly two controllers, MediatR, direct `IWalletDbContext` access, and all other frozen constraints.
 
 ## Technical Context
 
@@ -24,16 +24,18 @@ The implementation adds two CQRS queries, taking the current verified 15 handler
 
 ## GitNexus Impact and Preflight
 
-Repository binding: **WalletService-Workspace** at `/Users/tringuyen/Visual Studio Code/WalletService`, branch `dev`, indexed commit `f39b15b` (index generated 2026-11-10 08:27 local time). The working tree includes documentation changes; no source files have changed.
+Repository: `/Users/tringuyen/Visual Studio Code/WalletService`; implementation branch: `feature/wallet-phase2-stripe`. GitNexus was refreshed against the current checkout before this plan. The worktree contains Phase 2 specification/planning changes only; no source files have changed.
 
 | Target | Impact result | Planning consequence |
 |---|---|---|
-| `WalletAccount` | HIGH; 4 direct dependents, 1 depth-2 dependent; one top-up execution flow affected | Do not change wallet balance methods for this read-only report. Any future balance-related edit requires focused regression testing. |
-| `WalletTransaction` | HIGH; 15 impacted symbols, lower-bound result; transfer, top-up/IPN, checkout/refund/settlement, transaction-history paths appear in the graph | Read existing records only. Avoid changing its shared entity semantics. Run all financial regression tests if implementation touches its mapping or data. |
-| `RequestWithdrawalCommandHandler` and `ProcessWithdrawalCommandHandler` | UNKNOWN; no callers resolved by the graph | Source search confirms controller dispatch and direct test usage in `WalletUseCaseBehaviorTests`, `WalletContractRegressionTests`, and `WalletOperationsEdgeCaseTests`; do not treat UNKNOWN as unused. |
-| `AdminWalletsController` and `RequestWithdrawalCommand` | UNKNOWN/ambiguous graph results | Source search confirms route/action usage and request construction. Re-run impact with exact file/symbol selectors immediately before edits. |
+| `WalletTransaction` | CRITICAL, lower-bound; 18 impacted symbols, 13 direct dependents, 5 processes. Affected flows include Stripe direct preparation, Stripe webhook processing, Stripe top-up, and settlement. | Add read-only query consumers only. Do not edit the entity or its mapping, and do not touch Stripe settlement flows. Run financial regression tests. |
+| `WalletAccount` | LOW, exact; 6 impacted symbols, 4 direct dependents; no affected processes. | Read the existing balance only. Do not change wallet balance methods. |
+| `ProcessWithdrawalCommandHandler` | UNKNOWN; no callers resolved. | Text search confirms controller dispatch and direct tests in `WalletUseCaseBehaviorTests`, `WalletContractRegressionTests`, and `WalletOperationsEdgeCaseTests`. Preserve the existing transaction, row locks, and one-time state transition. |
+| `AdminWalletsController` | UNKNOWN; no callers resolved. | Text search confirms its actions and API/test references. Keep both existing actions and routes unchanged except the additive reference contract and new report actions. |
+| `ProcessWithdrawalCommand` | UNKNOWN/ambiguous record-constructor result; no callers resolved. | Text search confirms construction in validation, behavior, regression, and edge-case tests. Preserve existing `Action` and `AdminNote` semantics. |
+| `ProcessWithdrawalResponse` | LOW impact for the record candidate; one direct relationship. | Add the reference as an additive nullable response field and update contract tests. |
 
-GitNexus identifies shared financial flows around `LockFunds`, `Withdraw`, and `Deduct`, and the entity impact shows the top-up, wallet initialization, and top-up URL generation paths. The current impact report is planning evidence, not an edit authorization; rerun it against the then-current index before implementation. Do not waive HIGH or UNKNOWN risk.
+The index is current at planning time. The CRITICAL `WalletTransaction` result is a warning, not an all-clear: the report queries touch a highly shared financial record type, so the change must remain read-only and must not alter shared settlement behavior. Re-run exact impacts immediately before implementation. Treat UNKNOWN results as unresolved graph coverage and confirm call sites with source search.
 
 Baseline check run:
 
@@ -45,7 +47,7 @@ OK: Wallet CQRS architecture is intact (15 handlers, 2 controllers, MediatR wire
 ## Constitution Check
 
 - [x] Preserve the existing withdrawal routes and status values; new API fields are additive and require plan approval before implementation.
-- [ ] Preserve the frozen handler count as currently written. **Planned exception**: add two CQRS query handlers and update the handler-count invariant to 17 after explicit approval; keep two controllers and all other architecture constraints.
+- [x] Apply the user-authorized exception to the handler count: add two CQRS query handlers and update the invariant to 17 (11 commands, 6 queries); keep two controllers and all other architecture constraints. The concrete plan was approved before source edits.
 - [x] Add no feature-service facade, repository abstraction, or per-resource controller.
 - [x] Preserve balance, ownership, authorization, transaction/locking, and audit invariants.
 - [x] Follow `.agents/skills/new-feature-endpoint/SKILL.md`.
@@ -53,7 +55,7 @@ OK: Wallet CQRS architecture is intact (15 handlers, 2 controllers, MediatR wire
 - [x] Keep P2-05 and Auction internal operations deferred; no unauthenticated internal routes.
 - [x] Report only what existing transaction records can substantiate; do not call it double-entry or external bank reconciliation.
 
-**Governance inconsistency to resolve in the approved implementation**: the architecture verifier and active guidance use 15 handlers, while `.specify/memory/constitution.md` and some Spec Kit artifacts still say 11. The source tree and verifier establish the current baseline as 15. Update active normative guidance to 17 (11 commands, 6 queries) and preserve historical feature records as historical records.
+Update all active normative architecture guidance and the verifier to 17 handlers (11 commands, 6 queries). Preserve historical feature records as historical records; do not make unrelated Stripe migration or old feature-spec edits merely to replace historical handler counts.
 
 ## Repository Structure and Expected Changes
 
@@ -70,7 +72,7 @@ OK: Wallet CQRS architecture is intact (15 handlers, 2 controllers, MediatR wire
 
 - `docs/api/` — document the withdrawal reference and the two administrator read routes, including filters, response shape, authorization, errors, and the reconciliation limitations.
 - `specs/02_API_REST_CONTRACTS.md` and current architecture guidance — update the WalletService contract and accurately record the approved handler count.
-- `AGENTS.md`, `.agents/AGENTS.md`, `.agents/rules/`, `.specify/memory/constitution.md`, active Spec Kit templates/skills, `README.md`, and `scripts/verify-wallet-architecture.sh` — synchronize current architecture invariants to 17 handlers and 2 public controllers. Do not rewrite historical feature plans solely to change their original baseline statements.
+- `AGENTS.md`, `.agents/AGENTS.md`, `.specify/memory/constitution.md`, `.agents/skills/controller-conventions/SKILL.md`, `.agents/skills/pr-review-audit/SKILL.md`, `.specify/templates/overrides/plan-template.md`, `.specify/templates/overrides/tasks-template.md`, `README.md`, `PRODUCTION_READINESS.md`, `specs/00_AGENT_MISSION_GUARDRAILS.md`, `specs/02_API_REST_CONTRACTS.md`, `specs/05_DEV_VERIFICATION_CHECKLIST.md`, and `scripts/verify-wallet-architecture.sh` — synchronize active architecture invariants to 17 handlers and 2 public controllers. Do not rewrite historical feature plans solely to change their original baseline statements.
 
 ### Persistence
 
@@ -92,6 +94,7 @@ OK: Wallet CQRS architecture is intact (15 handlers, 2 controllers, MediatR wire
 
 - `GET /api/v1/admin/wallets/ledger`
 - Admin-only; filters: `page`, `pageSize`, `walletId`, transaction `type`, `status`, `fromDate`, and `toDate`.
+- `fromDate` and `toDate` are inclusive ISO 8601 instants with offsets, normalized to UTC; reject ranges where `fromDate` is later than `toDate`.
 - Returns `PagedData<T>` using the established pagination metadata, database `CountAsync`, and stable `CreatedAt`/ID ordering.
 - Return only fields needed for finance review: transaction ID, wallet ID, type, amount, currency, balance before/after, status, reference ID, and timestamp. Exclude bank account values and free-text notes.
 
@@ -109,9 +112,8 @@ Do not implement purchase freeze/unfreeze/status or Auction deposit/refund/deduc
 ## Implementation Sequence
 
 1. **Approval and baseline**
-   - Obtain approval for this plan and for the coordinated 15-to-17 handler governance update.
-   - Reconcile the constitution's stale handler count with the verified 15-handler baseline.
-   - Re-run the architecture verifier, Release build, tests, and exact GitNexus impacts against the implementation checkout.
+   - Plan approval and user authorization for the 15-to-17 handler governance update are recorded.
+   - Re-run the architecture verifier, Release build, tests, and exact GitNexus impacts on this branch before source changes.
 2. **Withdrawal evidence**
    - Extend the existing approval command, validation, handler, DTO, and audit record with the bank transfer reference.
    - Mask account-number data in the withdrawal transaction note.
@@ -136,7 +138,7 @@ Do not implement purchase freeze/unfreeze/status or Auction deposit/refund/deduc
 |---|---|---|
 | Increase CQRS handlers from 15 to 17 | Two independent administrator read use cases are required and the frozen CQRS convention requires one handler per use case. | Folding unrelated report and reconciliation behavior into existing mutation handlers would violate CQRS and blur authorization/query semantics. |
 | Add report endpoints to `AdminWalletsController` | Existing architecture requires keeping exactly the two controllers. | New per-resource controllers are explicitly forbidden. |
-| Reconcile active architecture guidance from 11/15 to 17 | The verifier and source establish 15 as the current baseline; the constitution's 11 count is inconsistent. | Leaving different counts would make future verification and approvals unreliable. |
+| Synchronize active architecture guidance from 15 to 17 | The verifier and source establish 15 as the current baseline; the two approved queries raise it to 17. | Leaving different counts would make future verification and approvals unreliable. |
 
 ## Verification
 
@@ -160,7 +162,7 @@ Also inspect `/swagger/v1/swagger.json` for the two new admin routes and authori
 
 ## Bounded contract addition: balance adjustment by user ID
 
-The user approved adding this bounded requirement to this feature's scope; this does not authorize implementation of the broader Phase 2 plan.
+This bounded user-ID adjustment was implemented under separate approval before the current Phase 2 scope was selected. It is included as existing feature history, not as new source work in this plan.
 
 - Change only the admin balance-adjustment target from `walletId` to the owning `userId`. Keep the route shape `POST /api/v1/admin/wallets/{userId:guid}/adjustments`, renaming only the route parameter.
 - Resolve and lock the wallet through the existing `IWalletDbContext.LockWalletByUserIdAsync` operation.
@@ -178,4 +180,4 @@ GitNexus impact recorded during planning:
 
 ## Approval Gate
 
-This gate applies to the broader Phase 2 plan above: do not edit source, routes, migrations, or architecture rules for withdrawal/report work until that work and its architecture-count update are separately approved. The bounded user-ID adjustment addendum has its own approval recorded in `.agents/plan/PLAN-20261112-0827-ADMIN-ADJUSTMENT-USER-ID.md`.
+The user selected P2-03/P2-04, explicitly approved the 15-to-17 handler-count amendment, and approved this plan. Source implementation is authorized within this scope. The bounded user-ID adjustment addendum was separately implemented and is not part of this branch's source scope.

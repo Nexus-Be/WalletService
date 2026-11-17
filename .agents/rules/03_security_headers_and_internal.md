@@ -2,7 +2,7 @@
 
 ## 1. Public Controllers And Temporary Internal Disable
 * All controllers live under `Wallet.Api/Controllers/Public/`. There is no `Controllers/Internal/` folder.
-* Internal API security is temporarily disabled. `InternalServiceAuthMiddleware` registration is commented; no route requires `X-Internal-Service-Key`.
+* The legacy `InternalServiceAuthMiddleware` registration remains disabled. Auction hold service actions explicitly require `X-Internal-Service-Key` through `RequireAuctionServiceKey`; configure `InternalSecurity:AuctionServiceKey` from the environment, not source.
 * Inter-service calls use plain REST routes: `POST /api/v1/notifications/email/otp`, `POST /api/v1/wallets/checkout/direct`, `POST /api/v1/inventories/initialize`, `POST /api/v1/logs/batch`.
 * Re-enabling the old model requires explicit approval and restoring middleware, handler, Gateway blocking, and docs together.
 

@@ -13,5 +13,9 @@ public enum AuditAction
     BalanceAdjustment = 8,
     DirectPaymentRequest = 9,
     DirectPaymentSuccess = 10,
-    DirectPaymentFail = 11
+    DirectPaymentFail = 11,
+    AuctionHoldCreate = 12,
+    AuctionHoldRelease = 13,
+    AuctionHoldCapture = 14,
+    AuctionHoldRefund = 15
 }

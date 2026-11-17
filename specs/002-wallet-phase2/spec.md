@@ -4,9 +4,16 @@
 
 **Created**: 2026-11-10
 
-**Status**: Draft — broader P2 work pending approval; bounded User Story 3 implementation approved
+**Status**: Approved for implementation — P2-03 and P2-04; concrete plan and architecture-governance change approved 2026-11-12
 
 **Input**: User requested a plan for the second-sprint requirements and selected the WalletService slice of the supplied Phase 2 API catalog.
+
+## Clarifications
+
+### Session 2026-11-12
+
+- Q: Which Phase 2 work should I reimplement on a new branch? → A: Implement P2-03 withdrawal completion and P2-04 admin ledger/reconciliation; leave deferred P2-05/Auction work and Stripe checkout flows unchanged.
+- Q: Do you explicitly authorize adding the two separate admin CQRS query handlers and updating the frozen architecture count from 15 to 17? → A: Yes; retain the two controllers and all other architecture constraints, and synchronize the verifier and governing documentation.
 
 ## User Scenarios & Testing
 
@@ -63,16 +70,16 @@ The broader Phase 2 plan covers these WalletService operations:
 - P2-03 withdrawal creation and staff processing.
 - P2-04 administrator reporting and reconciliation over existing wallet transaction records.
 
-For the currently approved implementation slice, only the bounded balance-adjustment request below is authorized. P2-03 and P2-04 remain planning items and require separate implementation approval.
+For this task, the user selected P2-03 withdrawal completion and P2-04 administrator reporting/reconciliation for implementation. The concrete plan and required architecture-governance amendment were approved on 2026-11-12. The bounded balance-adjustment request below was separately implemented and remains part of the feature history.
 
 The existing service already exposes `POST /api/v1/wallets/withdrawals` and `PATCH /api/v1/admin/wallets/withdrawals/{id}`.
 
-- **Decision — architecture and API compatibility**: Plan a coordinated, explicitly approved amendment where needed. Retain the two controllers, CQRS/MediatR, and no-facade constraints. Reconcile the current handler count and governing documents, and update the verifier and API documentation together before implementation. This planning decision is not implementation authorization.
+- **Decision — architecture and API compatibility**: The user explicitly authorized two separate admin query handlers and a 15-to-17 handler-count amendment (11 commands, 6 queries), retaining two controllers, CQRS/MediatR, and no-facade constraints. The concrete plan was approved; synchronize the verifier and active governing documentation with implementation.
 
 - **Decision — service-to-service security**: Defer P2-05 purchase-freeze and Auction escrow endpoints from this sprint until a separate internal-authentication and API-contract decision is approved. Do not expose unauthenticated internal routes.
 - **Decision — ledger semantics**: Implement an administrator report and reconciliation view over existing `WalletTransaction` records only. Do not represent it as a double-entry general ledger or bank-statement reconciliation.
 
-Use the existing withdrawal routes and status values. Add the transfer reference to the existing approval request/response contract and only record approval after staff confirms the manual bank transfer. Add `GET /api/v1/admin/wallets/ledger` and `GET /api/v1/admin/wallets/reconciliation`; the latter compares each wallet's recorded balance with its latest successful transaction snapshot and reports insufficient history separately. Neither endpoint represents external bank reconciliation or double-entry accounting. Return pure DTOs, use English sentence-case messages and SCREAMING_SNAKE_CASE error codes, serialize enums as PascalCase, and paginate list/read endpoints at the database.
+Use the existing withdrawal routes and status values. Add the transfer reference to the existing approval request/response contract and only record approval after staff confirms the manual bank transfer. Add `GET /api/v1/admin/wallets/ledger` and `GET /api/v1/admin/wallets/reconciliation`; the latter compares each wallet's recorded balance with its latest successful transaction snapshot and reports insufficient history separately. Ledger `fromDate` and `toDate` filters are inclusive UTC instants; reject a range when `fromDate` is later than `toDate`. Neither endpoint represents external bank reconciliation or double-entry accounting. Return pure DTOs, use English sentence-case messages and SCREAMING_SNAKE_CASE error codes, serialize enums as PascalCase, and paginate list/read endpoints at the database.
 
 The deferred operations are `/api/v1/internal/wallets/freeze-purchase`, `/unfreeze-purchase`, `/purchase-status`, and the Auction deposit/refund/deduct/forfeit operations. They require a separate security and cross-service contract plan.
 

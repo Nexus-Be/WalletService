@@ -1,6 +1,6 @@
 # Wallet Service Production Readiness Checklist
 
-Last reviewed: 2026-11-10
+Last reviewed: 2026-11-17
 
 ## Decision
 
@@ -14,8 +14,15 @@ This checklist records the current implementation and deployment boundaries; it 
 - `GET /health` returns `Healthy` unconditionally; it does not verify database connectivity or readiness.
 - The API applies EF Core migrations at startup for relational databases. Migration/seeding exceptions are logged as warnings and startup continues.
 - User withdrawals reserve available funds. Admin approval consumes the reservation and records a debit; rejection releases the reservation. Neither path sends a bank payout. Seller verification, payout execution, retry handling, and reconciliation are outside the current implementation.
-- VNPay top-ups and direct checkout rely on signed IPN processing. Direct checkout reuses a matching pending request for the same order; this is not idempotency for transfers or top-up creation.
-- The checked-in sample configuration and Compose defaults are for local/development use (including VNPay sandbox settings). Do not use them as a production deployment configuration.
+- Stripe Checkout handles top-ups and direct checkout; signed webhooks and
+  reconciliation process provider state. Top-up creation uses an
+  owner-scoped idempotency key and direct checkout uses order identity;
+  transfers do not have equivalent retry protection.
+- Auction service routes require a dedicated service key. Deposit escrow is
+  not connected to Commerce settlement; platform credits are ledger entries
+  without a platform payout or balance API.
+- The checked-in sample configuration and Compose defaults are for
+  local/development use. Do not use them as production deployment configuration.
 
 ## P0 — Required before any production financial traffic
 
@@ -35,10 +42,17 @@ This checklist records the current implementation and deployment boundaries; it 
 
 ### Payments and retry safety
 
-- [ ] Verify production VNPay merchant credentials, payment URL, HTTPS return URL, callback routing, and provider account configuration. No sandbox credentials or URLs may be used in production.
-- [ ] Exercise valid, invalid-signature, amount/currency mismatch, duplicate, out-of-order, and concurrent IPN scenarios against PostgreSQL using provider-approved test procedures.
+- [ ] Verify Stripe credentials, HTTPS return URLs, webhook forwarding, and
+      provider account configuration in the intended environment.
+- [ ] Exercise valid, invalid-signature, amount/currency mismatch, duplicate,
+      out-of-order, and concurrent webhook scenarios against PostgreSQL using
+      provider-approved test procedures.
 - [ ] Verify callback retries cannot credit or settle a transaction more than once, and document alerting and manual reconciliation for unresolved payments.
-- [ ] Define client retry behavior and duplicate protection for every financial operation. Direct-checkout order matching does not cover repeated top-up creation or transfers.
+- [ ] Define client retry behavior and duplicate protection for every financial operation, including transfers and withdrawal requests.
+- [ ] Define and test operational reconciliation for uncertain Stripe session
+      creation with no stored session ID.
+- [ ] Agree and verify the Commerce deposit-escrow integration and platform
+      funds management before relying on them for settlement or payouts.
 
 ### Database and release operations
 
@@ -50,7 +64,7 @@ This checklist records the current implementation and deployment boundaries; it 
 ### Production configuration and secrets
 
 - [ ] Set `ASPNETCORE_ENVIRONMENT=Production` explicitly and use a production-specific deployment manifest rather than the development Compose defaults.
-- [ ] Load database credentials, VNPay secrets, and other sensitive configuration from the deployment secret manager; verify they are absent from source, images, logs, and diagnostics.
+- [ ] Load database credentials, Stripe secrets, the Auction service key, and other sensitive configuration from the deployment secret manager; verify they are absent from source, images, logs, and diagnostics.
 - [ ] Configure production database TLS and network restrictions; do not carry local `SSL Mode=Disable` settings into production.
 - [ ] Verify allowed hosts, HTTPS termination, proxy behavior, request limits, and Swagger exposure for the actual deployment topology.
 
@@ -75,7 +89,7 @@ This checklist records the current implementation and deployment boundaries; it 
 - [ ] Run `./scripts/verify-wallet-architecture.sh` and confirm `OK: Wallet CQRS architecture is intact`.
 - [ ] Run `dotnet build Wallet.sln -c Release`.
 - [ ] Run `dotnet test Wallet.sln -c Release`; retain the output for the release record rather than relying on a stale test count.
-- [ ] Run integration tests against PostgreSQL for transfer concurrency, balance invariants, withdrawal reservation/decision, VNPay callback settlement, and direct-checkout retry behavior.
+- [ ] Run integration tests against PostgreSQL for transfer concurrency, balance invariants, withdrawal reservations, Stripe settlement, auction holds and direct-checkout retry behavior.
 - [ ] Complete gateway-to-WalletService and payment-provider end-to-end tests in the production-like environment.
 
 ## Release sign-off

@@ -15,5 +15,8 @@ public enum WalletTransactionType
     DirectGatewayPayment = 10,
     TransferIn = 11,
     TransferOut = 12,
-    TopupStripe = 13
+    TopupStripe = 13,
+    AuctionHoldCapture = 14,
+    AuctionForfeitCredit = 15,
+    AuctionDepositRefund = 16
 }

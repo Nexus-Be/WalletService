@@ -75,7 +75,7 @@ host port instead.
 The local frontend currently starts over HTTP. Stripe redirect configuration
 requires an absolute HTTPS frontend origin, and the proposed result page
 needs frontend work; see the
-[frontend handover](../../docs/api/stripe/frontend-gateway-handover.md).
+[frontend handover](../../docs/api/stripe/api-handover.md).
 Do not substitute an invented URL or treat the Stripe redirect as proof of
 payment.
 

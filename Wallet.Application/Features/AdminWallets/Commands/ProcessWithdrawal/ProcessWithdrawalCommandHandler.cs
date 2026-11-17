@@ -21,6 +21,11 @@ internal sealed class ProcessWithdrawalCommandHandler
         _context = context;
     }
 
+    private static string MaskAccountNumber(string accountNumber) =>
+        accountNumber.Length <= 4
+            ? new string('*', accountNumber.Length)
+            : $"{new string('*', accountNumber.Length - 4)}{accountNumber[^4..]}";
+
     public async Task<ProcessWithdrawalResponse> Handle(
         ProcessWithdrawalCommand request,
         CancellationToken cancellationToken)
@@ -50,6 +55,7 @@ internal sealed class ProcessWithdrawalCommandHandler
 
         var oldStatus = withdrawal.Status;
         string? transactionId = null;
+        withdrawal.GatewayReferenceId = approve ? request.ReferenceCode?.Trim() : null;
         if (approve)
         {
             wallet.CompleteLockedWithdrawal(withdrawal.Amount);
@@ -66,7 +72,7 @@ internal sealed class ProcessWithdrawalCommandHandler
                 BalanceAfter = wallet.Balance,
                 ReferenceId = withdrawal.Id,
                 Status = TransactionStatus.Success,
-                Note = $"Withdrawal to {withdrawal.BankName}, {withdrawal.BankAccountNumber}; fee {withdrawal.Fee.ToString("0.00", CultureInfo.InvariantCulture)}"
+                Note = $"Withdrawal to {withdrawal.BankName}, {MaskAccountNumber(withdrawal.BankAccountNumber)}; fee {withdrawal.Fee.ToString("0.00", CultureInfo.InvariantCulture)}"
             };
             _context.WalletTransactions.Add(debit);
             transactionId = debit.Id.ToString();
@@ -88,7 +94,8 @@ internal sealed class ProcessWithdrawalCommandHandler
             {
                 Status = withdrawal.Status.ToString(),
                 withdrawal.ProcessedBy,
-                Reason = approve ? null : request.AdminNote
+                Reason = approve ? null : request.AdminNote,
+                ReferenceCode = withdrawal.GatewayReferenceId
             },
             userId: adminGuid.ToString());
 
@@ -99,7 +106,8 @@ internal sealed class ProcessWithdrawalCommandHandler
             withdrawal.Id.ToString(),
             withdrawal.Status.ToString(),
             withdrawal.ProcessedAt ?? DateTimeOffset.UtcNow,
-            transactionId
+            transactionId,
+            withdrawal.GatewayReferenceId
         );
     }
 }

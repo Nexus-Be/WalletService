@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Wallet.Api.Common;
+using Wallet.Api;
 using Wallet.Api.Extensions;
 using Wallet.Application;
 using Wallet.Infrastructure;
@@ -14,6 +15,7 @@ builder.Services.AddServiceDefaults(builder.Configuration, "wallet-service");
 // 2. Application & Infrastructure Dependency Injection
 builder.Services.AddApplicationServices();
 builder.Services.AddInfrastructureServices(builder.Configuration);
+builder.Services.AddHostedService<StripeTopupReconciliationWorker>();
 
 // 3. REST Services
 builder.Services.AddControllers()

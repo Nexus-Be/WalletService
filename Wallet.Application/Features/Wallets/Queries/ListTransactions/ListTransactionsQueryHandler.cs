@@ -48,7 +48,7 @@ internal sealed class ListTransactionsQueryHandler : IRequestHandler<ListTransac
                     WalletTransactionType.PurchaseDebit,
                     WalletTransactionType.DirectGatewayPayment
                 },
-                "REFUND" => new[] { WalletTransactionType.RefundCredit },
+                "REFUND" => new[] { WalletTransactionType.RefundCredit, WalletTransactionType.AuctionDepositRefund },
                 _ when Enum.TryParse<WalletTransactionType>(request.Type.Trim(), true, out var txType) =>
                     new[] { txType },
                 _ => throw new ArgumentException("Transaction type is invalid.", nameof(request))

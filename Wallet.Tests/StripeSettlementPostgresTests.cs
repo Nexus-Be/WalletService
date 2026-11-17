@@ -14,6 +14,7 @@ using Wallet.Infrastructure.Persistence;
 using Wallet.Tests.Support;
 using Xunit;
 
+[Collection(PostgresTestCollection.Name)]
 public sealed class StripeSettlementPostgresTests
 {
     [DisposablePostgresFact]

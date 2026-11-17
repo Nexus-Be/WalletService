@@ -22,6 +22,271 @@ namespace Wallet.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Wallet.Domain.Entities.AuctionCaptureTransfer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<Guid>("CaptureId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("RecipientType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid?>("RecipientUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("WalletTransactionId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CaptureId");
+
+                    b.HasIndex("WalletTransactionId");
+
+                    b.ToTable("AuctionCaptureTransfers", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_AuctionCaptureTransfers_Amount", "\"Amount\" > 0 AND \"Amount\" = trunc(\"Amount\")");
+
+                            t.HasCheckConstraint("CK_AuctionCaptureTransfers_Recipient", "(\"RecipientType\" = 'SELLER_WALLET' AND \"RecipientUserId\" IS NOT NULL AND \"WalletTransactionId\" IS NOT NULL) OR (\"RecipientType\" IN ('PLATFORM', 'SYSTEM_ESCROW') AND \"RecipientUserId\" IS NULL AND \"WalletTransactionId\" IS NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("Wallet.Domain.Entities.AuctionDepositEscrow", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("HoldId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("OriginalAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("RemainingAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("HoldId")
+                        .IsUnique();
+
+                    b.HasIndex("OrderId");
+
+                    b.ToTable("AuctionDepositEscrows", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_AuctionDepositEscrows_Balance", "\"OriginalAmount\" > 0 AND \"OriginalAmount\" = trunc(\"OriginalAmount\") AND \"RemainingAmount\" >= 0 AND \"RemainingAmount\" <= \"OriginalAmount\" AND \"RemainingAmount\" = trunc(\"RemainingAmount\")");
+                        });
+                });
+
+            modelBuilder.Entity("Wallet.Domain.Entities.AuctionHold", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("MetadataJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<Guid>("OwnerUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ReferenceId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("ReferenceType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset?>("ResolvedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("WalletId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("WalletId");
+
+                    b.HasIndex("OwnerUserId", "CreatedAt");
+
+                    b.HasIndex("ReferenceType", "ReferenceId")
+                        .IsUnique();
+
+                    b.ToTable("AuctionHolds", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_AuctionHolds_MetadataObject", "jsonb_typeof(\"MetadataJson\") = 'object'");
+
+                            t.HasCheckConstraint("CK_AuctionHolds_Status", "\"Status\" IN (0, 1, 2, 3)");
+
+                            t.HasCheckConstraint("CK_AuctionHolds_WholeAmount", "\"Amount\" > 0 AND \"Amount\" = trunc(\"Amount\")");
+                        });
+                });
+
+            modelBuilder.Entity("Wallet.Domain.Entities.AuctionHoldCapture", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("HoldId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid?>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("RequestFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("HoldId")
+                        .IsUnique();
+
+                    b.ToTable("AuctionHoldCaptures", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_AuctionHoldCaptures_Purpose", "(\"Purpose\" = 'FORFEIT' AND \"OrderId\" IS NULL) OR (\"Purpose\" = 'ORDER_PAYMENT' AND \"OrderId\" IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("Wallet.Domain.Entities.AuctionHoldOperation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("HoldId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("HttpStatus")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Operation")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("RequestFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("ResponseJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("HoldId");
+
+                    b.HasIndex("IdempotencyKey")
+                        .IsUnique();
+
+                    b.ToTable("AuctionHoldOperations", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_AuctionHoldOperations_HttpStatus", "\"HttpStatus\" IN (200, 201)");
+
+                            t.HasCheckConstraint("CK_AuctionHoldOperations_ResponseObject", "jsonb_typeof(\"ResponseJson\") = 'object'");
+                        });
+                });
+
             modelBuilder.Entity("Wallet.Domain.Entities.AuditLog", b =>
                 {
                     b.Property<Guid>("Id")
@@ -433,7 +698,10 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     b.HasIndex("UserId")
                         .IsUnique();
 
-                    b.ToTable("Wallets");
+                    b.ToTable("Wallets", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Wallets_LockedBalance", "\"LockedBalance\" >= 0 AND \"LockedBalance\" <= \"Balance\"");
+                        });
                 });
 
             modelBuilder.Entity("Wallet.Domain.Entities.WalletTopup", b =>
@@ -617,6 +885,56 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     b.HasIndex("WalletId");
 
                     b.ToTable("WithdrawalRequests");
+                });
+
+            modelBuilder.Entity("Wallet.Domain.Entities.AuctionCaptureTransfer", b =>
+                {
+                    b.HasOne("Wallet.Domain.Entities.AuctionHoldCapture", null)
+                        .WithMany()
+                        .HasForeignKey("CaptureId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Wallet.Domain.Entities.WalletTransaction", null)
+                        .WithMany()
+                        .HasForeignKey("WalletTransactionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("Wallet.Domain.Entities.AuctionDepositEscrow", b =>
+                {
+                    b.HasOne("Wallet.Domain.Entities.AuctionHold", null)
+                        .WithMany()
+                        .HasForeignKey("HoldId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Wallet.Domain.Entities.AuctionHold", b =>
+                {
+                    b.HasOne("Wallet.Domain.Entities.WalletAccount", null)
+                        .WithMany()
+                        .HasForeignKey("WalletId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Wallet.Domain.Entities.AuctionHoldCapture", b =>
+                {
+                    b.HasOne("Wallet.Domain.Entities.AuctionHold", null)
+                        .WithMany()
+                        .HasForeignKey("HoldId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Wallet.Domain.Entities.AuctionHoldOperation", b =>
+                {
+                    b.HasOne("Wallet.Domain.Entities.AuctionHold", null)
+                        .WithMany()
+                        .HasForeignKey("HoldId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Wallet.Domain.Entities.StripePaymentAttempt", b =>

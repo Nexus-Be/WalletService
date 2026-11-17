@@ -10,6 +10,8 @@
 |---|---|---|
 | `POST /api/v1/wallets/topups/stripe` | Authenticated wallet owner | Create/reuse Stripe Checkout top-up |
 | `GET /api/v1/wallets/topups/{id}` | Authenticated top-up owner | Read top-up status |
+| `GET /api/v1/wallets/topups` | Authenticated top-up owner | Paginated top-up history |
+| `POST /api/v1/wallets/topups/{id}/resume` | Authenticated top-up owner | Resume an open unpaid session |
 | `POST /api/v1/wallets/checkout/direct` | Authenticated wallet owner | Create/reuse direct order checkout |
 | `GET /api/v1/wallets/checkout/direct/{orderId}` | Existing owner/privileged rules | Read direct order payment status |
 | `POST /api/v1/wallets/stripe/webhooks` | Anonymous, verified Stripe signature | Process provider events |
@@ -38,7 +40,8 @@ Top-up initiation returns HTTP `201` and a pure DTO containing
 `transactionId`, `paymentUrl`, `amount`, `currency`, `status` and `createdAt`.
 `transactionId` identifies the top-up and is used as `{id}` for its status
 lookup. The status DTO contains `transactionId`, `amount`, `currency`,
-`status`, `createdAt` and `updatedAt`.
+`status`, `createdAt`, `updatedAt`, `canResume` and `sessionExpiresAt`.
+See [top-up recovery](topup-recovery.md) for history, resume and reconciliation.
 
 Direct checkout returns HTTP `200` with existing fields `transactionId`,
 `orderId`, `amount`, `paymentUrl`, `status` and `createdAt`; `transactionId`

@@ -25,14 +25,26 @@ Admin routes also require an authorized `x-user-roles` value (`admin` or `staff`
 |---|---|---|---|
 | `GET` | `/api/v1/wallets/me` | User identity required | Current wallet; creates a default wallet if absent |
 | `POST` | `/api/v1/wallets/topups/stripe` | User identity required | Creates pending Stripe top-up (`201`) |
+| `GET` | `/api/v1/wallets/topups` | Top-up owner | Paginated top-up history |
 | `GET` | `/api/v1/wallets/topups/{id}` | Top-up owner | Reads top-up status (`200`) |
+| `POST` | `/api/v1/wallets/topups/{id}/resume` | Top-up owner | Resumes the existing open unpaid Stripe session |
+| `POST` | `/api/v1/wallets/holds` | Auction service key | Reserves available wallet balance |
+| `POST` | `/api/v1/wallets/holds/{holdId}/release` | Auction service key | Releases a hold |
+| `POST` | `/api/v1/wallets/holds/{holdId}/capture` | Auction service key | Captures a hold to recipients or deposit escrow |
+| `POST` | `/api/v1/wallets/holds/{holdId}/refund-captured` | Auction service key | Refunds a captured order deposit |
+| `GET` | `/api/v1/wallets/holds/{holdId}` | Auction service key | Reads a hold by ID |
+| `GET` | `/api/v1/wallets/holds/by-reference/{referenceType}/{referenceId}` | Auction service key | Reads a hold by reference |
+| `GET` | `/api/v1/wallets/me/holds` | User identity required | Paginated owned holds |
 | `POST` | `/api/v1/wallets/transfers` | User identity required | Transfers between wallets (`200`) |
 | `GET` | `/api/v1/wallets/transactions` | User identity required | Paginated transaction history (`200`) |
 | `POST` | `/api/v1/wallets/withdrawals` | Seller role and user identity required; shared filter also permits admin/staff | Creates a pending withdrawal request and reserves available funds (`201`) |
 | `POST` | `/api/v1/wallets/stripe/webhooks` | Anonymous, signature required | Processes Stripe webhooks (`200` when acknowledged) |
 | `POST` | `/api/v1/wallets/checkout/direct` | User identity required | Starts direct checkout through Stripe (`200`) |
+| `GET` | `/api/v1/wallets/checkout/direct/{orderId}` | Order owner or privileged role | Reads direct payment status |
 | `PATCH` | `/api/v1/admin/wallets/withdrawals/{id}` | `admin` or `staff` | Processes an existing pending withdrawal |
 | `POST` | `/api/v1/admin/wallets/{userId}/adjustments` | `admin` or `staff` | Adjusts wallet balance by owner user ID |
+| `GET` | `/api/v1/admin/wallets/ledger` | `admin` only | Reads a paginated, filtered transaction report |
+| `GET` | `/api/v1/admin/wallets/reconciliation` | `admin` only | Compares wallet balances with latest successful transaction snapshots |
 | `GET` | `/health` | Anonymous | Service health response |
 
 ## User wallet routes
@@ -58,6 +70,7 @@ If the user does not yet have a wallet, the service creates a VND wallet with ze
   "balance": 0,
   "availableBalance": 0,
   "lockedBalance": 0,
+  "heldBalance": 0,
   "currency": "Vnd",
   "status": "ACTIVE",
   "updatedAt": "2026-11-02T10:00:00+00:00"
@@ -92,7 +105,9 @@ Content-Type: application/json
 }
 ```
 
-This creates a pending top-up. The balance is credited only after a verified Stripe webhook and provider-state reconciliation. Poll the owned top-up status route after redirect.
+This creates a pending top-up. A verified Stripe webhook or background
+provider-state reconciliation can settle it. Poll the owned top-up status
+route after redirect; see [top-up recovery](stripe/topup-recovery.md).
 
 ### Transfer funds
 
@@ -129,7 +144,7 @@ GET /api/v1/wallets/transactions?page=1&pageSize=10&type=DEPOSIT&fromDate=2026-1
 x-user-id: 11111111-1111-1111-1111-111111111111
 ```
 
-All query parameters are optional. `page` defaults to `1`; `pageSize` defaults to `10`. `page` must be at least `1`, and `pageSize` must be between `1` and `100`; out-of-range values return `400 VAL_INVALID_INPUT`. `fromDate` and `toDate` are optional ISO-8601 timestamps, and `fromDate` must not be later than `toDate`. `type` accepts `ALL`, `DEPOSIT`, `WITHDRAWAL`, `PAYMENT`, `REFUND`, or a defined `WalletTransactionType` name. `DEPOSIT` includes historical `TopupVnpay` and `TopupStripe` transactions. An invalid type returns a validation error.
+All query parameters are optional. `page` defaults to `1`; `pageSize` defaults to `10`. `page` must be at least `1`, and `pageSize` must be between `1` and `100`; out-of-range values return `400 VAL_INVALID_INPUT`. `fromDate` and `toDate` are optional ISO-8601 timestamps, and `fromDate` must not be later than `toDate`. `type` accepts `ALL`, `DEPOSIT`, `WITHDRAWAL`, `PAYMENT`, `REFUND`, or a defined `WalletTransactionType` name. `DEPOSIT` includes historical `TopupVnpay` and `TopupStripe` transactions; `REFUND` includes `AuctionDepositRefund`. An invalid type returns a validation error.
 
 **`200 OK`**
 
@@ -243,11 +258,32 @@ Content-Type: application/json
 
 {
   "action": "Approve",
-  "adminNote": "Reviewed"
+  "adminNote": "Reviewed",
+  "referenceCode": "BANK-TRANSFER-2026-001"
 }
 ```
 
-`action` must be `Approve` or `Reject`. The operation requires an existing pending withdrawal request; approval debits the previously locked funds and rejection releases them. This records the staff decision but does not initiate or confirm an external bank transfer.
+`action` must be `Approve` or `Reject`. For `Approve`, `referenceCode` is required, non-blank, and limited to 100 characters; it records the manual bank transfer reference in `WithdrawalRequest.GatewayReferenceId` and the audit record. It is optional for `Reject`, which releases the locked funds without storing a reference. Approval debits the previously locked funds and returns the reference in the response. This records that the staff-confirmed transfer has already occurred; it does not initiate a bank payout. The withdrawal transaction note masks the bank account number.
+
+### Read the administrator ledger
+
+```http
+GET /api/v1/admin/wallets/ledger?page=1&pageSize=10&type=WithdrawalDebit&status=Success&fromDate=2026-11-01T00:00:00Z&toDate=2026-11-12T23:59:59Z
+x-user-id: 11111111-1111-1111-1111-111111111111
+x-user-roles: admin
+```
+
+Optional filters are `walletId`, `type`, `status`, `fromDate`, and `toDate`. Pages default to 1 and page size to 10 (maximum 100). Date bounds are inclusive ISO 8601 instants with an explicit offset and are normalized to UTC. The response is a bare `PagedData<AdminWalletLedgerEntry>` with transaction ID, wallet ID, type, amount, currency, balance before/after, status, reference ID, and timestamp. Notes and bank data are excluded. Rows are ordered by creation time descending, then transaction ID descending.
+
+### Reconcile wallet balances
+
+```http
+GET /api/v1/admin/wallets/reconciliation?page=1&pageSize=10
+x-user-id: 11111111-1111-1111-1111-111111111111
+x-user-roles: admin
+```
+
+An optional `walletId` narrows the report. The response is a bare `PagedData<WalletReconciliationResult>` containing current balance, latest successful transaction balance and timestamp, successful transaction count, difference, currency, and a `Balanced`, `Discrepancy`, or `InsufficientHistory` result. A wallet without a successful transaction snapshot is always `InsufficientHistory`, including a zero balance. This is a stored-balance snapshot check, not double-entry or external bank reconciliation.
 
 ### Adjust a wallet balance
 

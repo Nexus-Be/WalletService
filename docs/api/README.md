@@ -6,7 +6,9 @@
 - [Direct checkout](checkout/direct.md) — Stripe checkout initiation, retry behavior, and payment state.
 - [Direct payment status](checkout/direct-status.md) — polling endpoint for the settled payment result.
 - [Stripe payment contracts](stripe/payments.md) — top-up, direct checkout and signed webhook contracts.
-- [Frontend and gateway handover](stripe/frontend-gateway-handover.md) — test-mode integration requirements and remaining gates.
+- [Stripe top-up recovery](stripe/topup-recovery.md) — history, resume and reconciliation.
+- [Auction deposit holds](holds/auction-deposits.md) — reserve, release, capture, refund and status.
+- [Frontend and gateway handover](stripe/api-handover.md) — test-mode integration requirements and remaining gates.
 
 ## Supporting documents
 
