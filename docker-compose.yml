@@ -21,10 +21,10 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: "${ASPNETCORE_ENVIRONMENT:-Development}"
       ConnectionStrings__DefaultConnection: "${WALLET_CONNECTION_STRING}"
-      Stripe__SecretKey: "${STRIPE_SECRET_KEY:-}"
-      Stripe__WebhookSecret: "${STRIPE_WEBHOOK_SECRET:-}"
-      Stripe__SuccessUrl: "${STRIPE_SUCCESS_URL:-}"
-      Stripe__CancelUrl: "${STRIPE_CANCEL_URL:-}"
+      STRIPE_SECRET_KEY: "${STRIPE_SECRET_KEY:-}"
+      STRIPE_WEBHOOK_SECRET: "${STRIPE_WEBHOOK_SECRET:-}"
+      STRIPE_SUCCESS_URL: "${STRIPE_SUCCESS_URL:-}"
+      STRIPE_CANCEL_URL: "${STRIPE_CANCEL_URL:-}"
       InternalSecurity__ServiceKey: "${INTERNAL_SERVICE_SECRET:?INTERNAL_SERVICE_SECRET must be set}"
       OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-http://tempo:4317}"
     restart: unless-stopped

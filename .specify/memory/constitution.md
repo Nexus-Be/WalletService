@@ -1,7 +1,7 @@
 <!--
 Sync Impact Report
-Version: 1.0.0 -> 2.0.0
-Modified principle: I. Preserve the Frozen Architecture (11 -> 17 handlers)
+Version: 2.0.0 -> 2.1.0
+Modified principle: I. Preserve the Frozen Architecture (17 -> 26 handlers)
 Added sections: none
 Removed sections: none
 Follow-up: none.
@@ -91,4 +91,4 @@ before merging. Version amendments using semantic versioning: major for
 incompatible principle changes, minor for new or materially expanded guidance,
 and patch for non-semantic corrections.
 
-**Version**: 2.0.0 | **Ratified**: 2026-11-03 | **Last Amended**: 2026-11-12
+**Version**: 2.1.0 | **Ratified**: 2026-11-03 | **Last Amended**: 2026-11-17
