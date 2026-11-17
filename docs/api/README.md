@@ -8,6 +8,7 @@
 - [Stripe payment contracts](stripe/payments.md) — top-up, direct checkout and signed webhook contracts.
 - [Stripe top-up recovery](stripe/topup-recovery.md) — history, resume and reconciliation.
 - [Auction deposit holds](holds/auction-deposits.md) — reserve, release, capture, refund and status.
+- [Auction integration request](holds/auction-integration-request.md) — questions and proposed reconciliation for Auction.
 - [Frontend and gateway handover](stripe/api-handover.md) — test-mode integration requirements and remaining gates.
 
 ## Supporting documents

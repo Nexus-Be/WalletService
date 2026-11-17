@@ -7,6 +7,18 @@
 
 This contract reflects `Wallet.Api/Controllers/Public/WalletsController.cs` and `AdminWalletsController.cs`. It documents only behavior implemented in this repository.
 
+**Initial release boundary:** Outside Development, new withdrawal requests,
+auction `ORDER_PAYMENT` capture and legacy Commerce settlement/order-refund/
+sub-order-refund are disabled by default. Requests receive `503
+FEATURE_DISABLED` after applicable authorization; invalid gate configuration
+returns `500 INTERNAL_CONFIGURATION_ERROR`. The boolean settings
+`ReleaseFeatures:WithdrawalsEnabled`, `ReleaseFeatures:AuctionOrderCaptureEnabled`
+and `ReleaseFeatures:LegacyCommerceCreditsEnabled` can explicitly enable or
+disable each group. Existing withdrawal resolution, hold release, forfeiture
+and captured-deposit refund are not disabled by these gates. Enabling legacy
+Commerce credits is unsafe without verified caller authorization and a
+funding-backed settlement/refund contract.
+
 ## Important deployment note
 
 The API host currently does not configure JWT authentication. Controllers resolve user identity from claims or the forwarded `x-user-id` header, and admin roles from claims or `x-user-roles`. The internal-service authentication middleware is disabled. Do not expose these routes directly to untrusted clients: the trusted gateway must authenticate requests, overwrite forwarded identity headers, and protect the service network.

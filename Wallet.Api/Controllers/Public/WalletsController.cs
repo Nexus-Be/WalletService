@@ -89,7 +89,9 @@ public sealed class WalletsController : ControllerBase
     /// <summary>Captures an auction deposit hold.</summary>
     [HttpPost("holds/{holdId:guid}/capture")]
     [RequireAuctionServiceKey]
+    [ReleaseFeatureAttribute(ReleaseFeature.AuctionOrderCapture)]
     [ProducesResponseType(typeof(CaptureHoldResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> CaptureHold(Guid holdId, [FromBody] CaptureHoldCommand command,
         [FromHeader(Name = "Idempotency-Key")] string? key,
         [FromHeader(Name = "X-Internal-Service-Key")] string? serviceKey, CancellationToken cancellationToken) =>
@@ -156,6 +158,8 @@ public sealed class WalletsController : ControllerBase
     /// <summary>Creates a pending withdrawal request and reserves available wallet funds.</summary>
     [HttpPost("withdrawals")]
     [RequireRole("seller")]
+    [ReleaseFeatureAttribute(ReleaseFeature.Withdrawals)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> Withdraw(
         [FromBody] RequestWithdrawalCommand command,
         CancellationToken cancellationToken)
@@ -332,7 +336,9 @@ public sealed class WalletsController : ControllerBase
     /// <summary>Credits the seller's wallet when a sub-order payout is released (called by Commerce).</summary>
     [HttpPost("sub-orders/{subOrderId:guid}/settle")]
     [ApiExplorerSettings(IgnoreApi = true)]
+    [ReleaseFeatureAttribute(ReleaseFeature.LegacyCommerceCredits)]
     [ProducesResponseType(typeof(WalletOrderTransactionResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> SettleSellerOrder(
         Guid subOrderId,
         [FromBody] SettleSellerOrderCommand command,
@@ -345,7 +351,9 @@ public sealed class WalletsController : ControllerBase
     /// <summary>Refunds an order's wallet payment back to the buyer (called by Commerce).</summary>
     [HttpPost("orders/{orderId:guid}/refund")]
     [ApiExplorerSettings(IgnoreApi = true)]
+    [ReleaseFeatureAttribute(ReleaseFeature.LegacyCommerceCredits)]
     [ProducesResponseType(typeof(WalletOrderTransactionResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> RefundOrder(
         Guid orderId,
         [FromBody] RefundOrderPaymentCommand command,
@@ -358,7 +366,9 @@ public sealed class WalletsController : ControllerBase
     /// <summary>Refunds a sub-order's wallet payment back to the buyer (called by Commerce).</summary>
     [HttpPost("sub-orders/{subOrderId:guid}/refund")]
     [ApiExplorerSettings(IgnoreApi = true)]
+    [ReleaseFeatureAttribute(ReleaseFeature.LegacyCommerceCredits)]
     [ProducesResponseType(typeof(WalletOrderTransactionResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> RefundSubOrder(
         Guid subOrderId,
         [FromBody] RefundOrderPaymentCommand command,

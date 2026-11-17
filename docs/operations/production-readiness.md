@@ -21,6 +21,22 @@ This checklist records the current implementation and deployment boundaries; it 
 - Auction service routes require a dedicated service key. Deposit escrow is
   not connected to Commerce settlement; platform credits are ledger entries
   without a platform payout or balance API.
+- The initial release excludes new withdrawals and order-payment deposit
+  capture. Outside Development, both are disabled by default; explicitly
+  configuring `ReleaseFeatures:WithdrawalsEnabled` or
+  `ReleaseFeatures:AuctionOrderCaptureEnabled` as `true` enables the
+  corresponding operation. Keep both disabled for the agreed release scope.
+  Existing withdrawal decisions and captured-deposit refunds remain available
+  for recovery. See the [API contract](../api/wallet-payments.md).
+- Legacy Commerce seller-settlement, order-refund and sub-order-refund routes
+  are also disabled by default outside Development. The actions lack
+  service-specific authorization, and sub-order refund does not check an
+  original payment. `ReleaseFeatures:LegacyCommerceCreditsEnabled` can
+  override the gate; keep it disabled until an authorized, funding-backed
+  Commerce integration is designed and verified.
+- Stripe integration accepts test-mode credentials and test Checkout sessions
+  only. A live-money rollout is blocked until live-mode support and the
+  provider account and operational procedures are approved and verified.
 - The checked-in sample configuration and Compose defaults are for
   local/development use. Do not use them as production deployment configuration.
 
@@ -35,8 +51,8 @@ This checklist records the current implementation and deployment boundaries; it 
 
 ### Product and money movement scope
 
-- [ ] Decide whether withdrawals are in scope for launch. If they are, define and test the authorized payout procedure, payout result/failure handling, and reconciliation before approving withdrawal requests as a production cash-out flow.
-- [ ] If bank payout is not part of launch, disable or clearly withhold the withdrawal capability from production clients; do not describe an approved request as a completed bank transfer.
+- [x] Exclude new withdrawal requests from the initial release; the Wallet API gate defaults to disabled outside Development.
+- [ ] Verify the actual deployment does not override the withdrawal gate; do not describe an approved request as a completed bank transfer.
 - [ ] Reconcile wallet balances against the transaction ledger and payment-provider records, and define ownership and frequency for investigating differences.
 - [ ] Verify every balance-changing flow is transactional, auditable, and protected against concurrent execution; record actor, operation/reference, and trace/correlation identifier where available.
 
@@ -44,6 +60,10 @@ This checklist records the current implementation and deployment boundaries; it 
 
 - [ ] Verify Stripe credentials, HTTPS return URLs, webhook forwarding, and
       provider account configuration in the intended environment.
+- [ ] Before enabling direct checkout for real orders, verify Commerce
+      validates the buyer, authoritative order amount and order state and
+      that clients cannot bypass that validation. Wallet's direct checkout
+      does not independently retrieve or validate Commerce order terms.
 - [ ] Exercise valid, invalid-signature, amount/currency mismatch, duplicate,
       out-of-order, and concurrent webhook scenarios against PostgreSQL using
       provider-approved test procedures.
@@ -51,8 +71,12 @@ This checklist records the current implementation and deployment boundaries; it 
 - [ ] Define client retry behavior and duplicate protection for every financial operation, including transfers and withdrawal requests.
 - [ ] Define and test operational reconciliation for uncertain Stripe session
       creation with no stored session ID.
+- [ ] Define recovery for direct-order payments when a verified webhook is
+      missing; the periodic reconciliation worker handles top-ups only.
 - [ ] Agree and verify the Commerce deposit-escrow integration and platform
       funds management before relying on them for settlement or payouts.
+- [ ] Keep order-payment deposit capture disabled for the initial release and
+      confirm Auction integration and reconciliation with the Auction team.
 
 ### Database and release operations
 

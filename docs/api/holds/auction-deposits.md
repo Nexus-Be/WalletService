@@ -3,6 +3,16 @@
 **Status:** Reserve, release, capture, refund, lookups and buyer listing
 implemented. Deposit escrow remains separate from Commerce settlement.
 
+For the initial release, `ORDER_PAYMENT` capture is disabled by default
+outside Development. An authenticated request receives `503 FEATURE_DISABLED`
+without invoking the handler. This includes retries of an earlier capture:
+use the hold lookup to check its status, and use the existing refund operation
+where eligible. Other capture purposes and existing refunds are not gated.
+`ReleaseFeatures:AuctionOrderCaptureEnabled` explicitly controls the gate;
+invalid boolean configuration returns `500 INTERNAL_CONFIGURATION_ERROR`.
+Do not enable it for real orders until Commerce settlement and refund
+ownership are agreed, implemented and verified.
+
 Auction service calls require the approved scoped service key. User calls use
 the current gateway identity. Money is whole VND; held balances include
 withdrawal reservations. Hold state transitions are `Held` to `Released` or

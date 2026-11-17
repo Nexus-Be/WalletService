@@ -7,9 +7,11 @@ The API normally listens on port `8008`; local PostgreSQL uses port `5440`.
 
 ## Branch provenance
 
-This branch was created from the `dev` worktree at commit
-`81f7d11ef0e43533511a266b1e56e25324c934a5` (`modified handover documents`).
-It also incorporates and adapts Stripe top-up recovery work from
+This release-readiness branch was created from `origin/dev` at commit
+`4ce76aa125acd094c286cffccbd84e410c923b90`, which contains the combined
+Auction holds and Stripe recovery work. That work was originally created from
+`dev` at `81f7d11ef0e43533511a266b1e56e25324c934a5` and incorporates Stripe
+top-up recovery work from
 `origin/feature/stripe-topup-resume-and-reconciliation` at
 `de7abf0eefa630df13f086db0c31dcb7192dd1f2`, as well as the approved
 uncommitted Phase 2 financial-operation work. The Stripe feature branch is
@@ -36,9 +38,14 @@ Auction holds do not expire automatically.
   not automatically distributed when an order completes. A separate Commerce
   contract is required. Auction retries hold operations; Wallet sends no
   callback.
+- New withdrawals, auction `ORDER_PAYMENT` capture and legacy Commerce
+  settlement/refunds are disabled by default outside Development for the
+  initial release. The gates are configurable; keep them disabled until the
+  corresponding payout and funding-backed Commerce integration are ready.
 - Platform forfeiture credits are recorded in the auction transfer ledger;
   no platform balance or payout API is provided.
-- Live Stripe test-mode, webhook forwarding and gateway end-to-end acceptance
+- Stripe accepts test-mode keys only; live payments are not supported.
+  Stripe test-mode, webhook forwarding and gateway end-to-end acceptance
   have not been verified. A Stripe attempt with an uncertain session creation
   and no stored session ID requires operational reconciliation.
 - User identity and roles come from claims or trusted gateway-forwarded
@@ -81,13 +88,14 @@ dotnet test Wallet.sln -c Release
 
 PostgreSQL integration tests require `WALLET_STRIPE_TEST_DATABASE` to point
 to an existing **disposable** database; without it those tests are skipped. The latest
-isolated PostgreSQL run passed 419 tests with no skips. The architecture
+isolated PostgreSQL run passed 437 tests with no skips. The architecture
 check enforces 26 handlers (17 commands, 9 queries) and two controllers.
 
 ## Documentation
 
 - [API index](docs/api/README.md) and [wallet payments](docs/api/wallet-payments.md)
 - [Auction deposit contract](docs/api/holds/auction-deposits.md)
+- [Auction integration and reconciliation request](docs/api/holds/auction-integration-request.md)
 - [Stripe top-up recovery](docs/api/stripe/topup-recovery.md) and
   [Stripe payment contracts](docs/api/stripe/payments.md)
 - [Feature specification and plan](specs/004-auction-holds-stripe/spec.md)
