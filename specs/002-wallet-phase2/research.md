@@ -22,8 +22,8 @@
 
 ## Decision: coordinate architecture governance updates
 
-- **Decision**: Keep two public controllers, MediatR CQRS, and no service/repository facades. Add two independent read handlers (admin transaction list and reconciliation), raising the verified count from 15 (11 commands, 4 queries) to 17 (11 commands, 6 queries), subject to implementation approval. Update active governance and verifier consistently.
-- **Rationale**: The source tree and architecture verifier count 15 handlers. `.specify/memory/constitution.md` and some prior artifacts incorrectly state 11, while current operational guidance states 15. The report and reconciliation are distinct queries with different result semantics.
+- **Decision**: Keep two public controllers, MediatR CQRS, and no service/repository facades. Add two independent read handlers (admin transaction list and reconciliation), raising the verified count from 15 (11 commands, 4 queries) to 17 (11 commands, 6 queries). The user authorized this architecture amendment and approved the concrete implementation plan on 2026-11-12. Update active governance and verifier consistently.
+- **Rationale**: The source tree, architecture verifier, and active constitution count 15 handlers. Historical notes and older feature artifacts may retain the prior count of 11. The report and reconciliation are distinct queries with different result semantics.
 - **Alternatives considered**: Keep the handler count at 15 by embedding report logic inside existing handlers; rejected because it violates the one-use-case-per-handler convention. Add new controllers or service facades; rejected by the frozen architecture.
 
 ## Local implementation patterns reviewed
@@ -31,7 +31,7 @@
 - Withdrawal uses PostgreSQL row locks through `IWalletDbContext`, explicit transactions, and `_context.AddAuditLog(...)`.
 - Read-only transaction history uses `AsNoTracking`, database filtering/`CountAsync`, stable ordering, and `Skip/Take`.
 - `WalletTransactionConfiguration` already indexes `(UserId, CreatedAt)` and `(ReferenceId, Type)`. An admin-wide date report may need a different index, but no migration should be added until a PostgreSQL query plan demonstrates the need.
-- `WalletTransaction` and `WalletAccount` have HIGH GitNexus impact. Existing withdrawal handlers and the admin controller return UNKNOWN impact; source search confirms references in API dispatch and tests. The impact analysis must be rerun before implementation.
+- Fresh GitNexus impact reports `WalletTransaction` as CRITICAL (lower-bound, 18 impacted symbols, 5 processes including Stripe preparation/webhook/settlement) and `WalletAccount` as LOW (exact, 6 impacted symbols). `ProcessWithdrawalCommandHandler` and `AdminWalletsController` return UNKNOWN; source search confirms references in API dispatch and tests. Keep the report paths read-only, avoid edits to shared entities and Stripe flows, and rerun exact impacts before implementation.
 
 ## Resolved unknowns
 

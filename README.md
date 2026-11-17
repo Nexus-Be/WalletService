@@ -1,64 +1,77 @@
 # Wallet Service
 
-> **Trạng thái cập nhật: 2026-11-03.** Service dùng REST/JSON trên .NET 8, CQRS với MediatR, EF Core và PostgreSQL. gRPC, MassTransit, consumer và outbox không còn trong implementation hiện tại. Bộ kiểm thử hiện có 80 test; chạy lại lệnh kiểm thử bên dưới để xác nhận trạng thái của checkout bạn đang review.
+WalletService is a .NET 8 REST/JSON service for wallet balances, payments,
+transfers, withdrawals and auction deposits. It uses PostgreSQL, EF Core and
+classic CQRS with MediatR; there are two public controllers and 26 handlers.
+The API normally listens on port `8008`; local PostgreSQL uses port `5440`.
 
-## Tổng quan
+## Branch provenance
 
-Wallet Service quản lý số dư và giao dịch ví, nạp tiền qua VNPay, chuyển tiền nội bộ, khởi tạo checkout trực tiếp qua VNPay và các thao tác quản trị. Gateway, Commerce và các service khác không nằm trong repository này; tài liệu về tích hợp nằm trong [`specs/06_SYNCHRONOUS_SERVICE_INTEGRATION.md`](specs/06_SYNCHRONOUS_SERVICE_INTEGRATION.md).
+This branch was created from the `dev` worktree at commit
+`81f7d11ef0e43533511a266b1e56e25324c934a5` (`modified handover documents`).
+It also incorporates and adapts Stripe top-up recovery work from
+`origin/feature/stripe-topup-resume-and-reconciliation` at
+`de7abf0eefa630df13f086db0c31dcb7192dd1f2`, as well as the approved
+uncommitted Phase 2 financial-operation work. The Stripe feature branch is
+an input, not a parent commit of this branch.
 
-| Thành phần | Chi tiết |
+## Implemented features
+
+| Area | Behavior |
 |---|---|
-| Runtime | .NET 8 / ASP.NET Core |
-| API | REST HTTP/JSON, mặc định `http://localhost:8008` |
-| Database | PostgreSQL, database `wallet_db`; compose local ánh xạ port `5440` |
-| Kiến trúc | Domain / Application / Infrastructure / API; 15 MediatR handlers và 2 controllers |
-| Health | `GET /health` |
-| API contract | [API đang triển khai](docs/api/wallet-payments.md) |
+| Wallet and transfers | Owned balance and paginated transaction history; atomic transfers; available balance excludes reserved funds. |
+| Stripe payments | Stripe Checkout top-up and direct order payment with signed webhooks and idempotent settlement. VNPay payment endpoints are no longer active; historical data remains. |
+| Stripe top-up recovery | Owner-scoped, paginated history and status; resume the same open unpaid Checkout session; correlated return URLs and a background reconciliation worker. |
+| Auction deposits | Reserve, inspect, release, capture and refund wallet-funded holds. Capture can distribute forfeitures to seller wallets and a platform ledger, or create order-specific deposit escrow. Operations are idempotent and transactional. |
+| Withdrawals | Reserve available balance when requested; admin approval consumes the reservation with a manual transfer reference, and rejection releases it. No bank payout is initiated. |
+| Administration | Balance adjustments, paginated wallet ledger and wallet-balance reconciliation reports. |
 
-## Cấu trúc repository
+`heldBalance` and `lockedBalance` both include auction holds **and**
+withdrawal reservations. `availableBalance = balance - lockedBalance`.
+Auction holds do not expire automatically.
 
-```text
-Wallet.Domain/          Entities, enums, business rules and domain exceptions
-Wallet.Application/     CQRS handlers, request validation and interfaces
-Wallet.Infrastructure/  EF Core, PostgreSQL, migrations and VNPay integration
-Wallet.Api/             REST controllers, middleware and service host
-Wallet.Tests/           Unit and contract regression tests
-docs/api/               WalletService API contracts and endpoint details
-docs/operations/        Deployment and production-readiness guidance
-api/B_NONE/             Ecosystem API proposals; not evidence of implementation
-specs/                  Architecture, persistence and integration guidance
-scripts/                Repository verification scripts
-```
+### Boundaries and outstanding integration
 
-`WalletAccount` is the wallet entity. Each balance-changing operation must preserve non-negative available balance and persist its related transaction and audit record within the same database transaction where applicable.
+- Deposit escrow is separate from Commerce settlement and refund flows; it is
+  not automatically distributed when an order completes. A separate Commerce
+  contract is required. Auction retries hold operations; Wallet sends no
+  callback.
+- Platform forfeiture credits are recorded in the auction transfer ledger;
+  no platform balance or payout API is provided.
+- Live Stripe test-mode, webhook forwarding and gateway end-to-end acceptance
+  have not been verified. A Stripe attempt with an uncertain session creation
+  and no stored session ID requires operational reconciliation.
+- User identity and roles come from claims or trusted gateway-forwarded
+  headers; the host does not validate JWTs itself. Protect the service network
+  and ensure the gateway overwrites client-supplied identity headers. Auction
+  service routes separately require `X-Internal-Service-Key`.
+- The service is not approved for production deployment. See
+  [production readiness](docs/operations/production-readiness.md).
 
 ## Local setup
 
-Requirements: .NET 8 SDK, Docker (for local PostgreSQL), and a PostgreSQL connection string. Docker Compose uses the shared external network `nexus-network`; create or connect that network before starting the database.
+Requirements: .NET 8 SDK, Docker and a PostgreSQL connection string. Docker
+Compose uses the external `nexus-network`.
 
 ```bash
-# Run from the repository root.
 docker network inspect nexus-network >/dev/null 2>&1 || docker network create nexus-network
 docker compose -f docker-compose.db.yml up -d postgres-wallet
 
-# Configure secrets outside source control. For example:
 dotnet user-secrets init --project Wallet.Api
 dotnet user-secrets set "ConnectionStrings:DefaultConnection" "<POSTGRES_CONNECTION_STRING>" --project Wallet.Api
-dotnet user-secrets set "VnPay:TmnCode" "<VNPAY_TMN_CODE>" --project Wallet.Api
-dotnet user-secrets set "VnPay:HashSecret" "<VNPAY_HASH_SECRET>" --project Wallet.Api
-
+dotnet user-secrets set "Stripe:SecretKey" "<STRIPE_TEST_SECRET_KEY>" --project Wallet.Api
+dotnet user-secrets set "Stripe:WebhookSecret" "<STRIPE_WEBHOOK_SECRET>" --project Wallet.Api
+dotnet user-secrets set "InternalSecurity:AuctionServiceKey" "<AUCTION_SERVICE_KEY>" --project Wallet.Api
 dotnet run --project Wallet.Api
 ```
 
-The API listens on port `8008` in the checked-in launch profile. Swagger is available at `/swagger` in Development (or when `Swagger:Enabled` is set); the health endpoint is `/health`. The application applies EF Core migrations at startup when the configured database is relational. Review the migration and back up any existing database before deploying to a shared environment.
+Configure `Stripe:SuccessUrl` and `Stripe:CancelUrl` for the frontend; use
+HTTPS outside development. Never commit credentials. Swagger is available at
+`/swagger` in Development (or when enabled), and `/health` is a liveness
+response, not a database readiness check. The host attempts migrations on
+startup; review and back up shared databases before applying schema changes.
 
-The current EF Core model and migrations use quoted PascalCase table names (for example, `"Wallets"`). PostgreSQL treats these as distinct from unquoted snake_case names such as `wallets`, so an existing database can contain both. The service uses the PascalCase tables; compare and back up any legacy tables before manually renaming or removing them.
-
-For local containers, start PostgreSQL with `docker compose -f docker-compose.db.yml up -d postgres-wallet`, then run `docker compose up -d --build`. The API connects to the `postgres-wallet` service on `nexus-network` by default. To use a remote database instead, provide `WALLET_CONNECTION_STRING` through the deployment's secret manager. Set VNPay and other required settings the same way. Do not use sample/default credentials in a shared environment or commit real credentials.
-
-## Verify before review
-
-Run from the repository root:
+## Verification
 
 ```bash
 ./scripts/verify-wallet-architecture.sh
@@ -66,41 +79,21 @@ dotnet build Wallet.sln -c Release
 dotnet test Wallet.sln -c Release
 ```
 
-The architecture script checks that MediatR remains wired, all 15 handlers remain under `Wallet.Application/Features`, and the two expected controllers remain in place.
+PostgreSQL integration tests require `WALLET_STRIPE_TEST_DATABASE` to point
+to an existing **disposable** database; without it those tests are skipped. The latest
+isolated PostgreSQL run passed 419 tests with no skips. The architecture
+check enforces 26 handlers (17 commands, 9 queries) and two controllers.
 
-## Spec-driven feature workflow
+## Documentation
 
-Spec Kit is pinned to v1.2.6 and initialized with the GitHub Copilot skills.
-Install the CLI on a development machine with `uv` and Python 3.11 or newer:
+- [API index](docs/api/README.md) and [wallet payments](docs/api/wallet-payments.md)
+- [Auction deposit contract](docs/api/holds/auction-deposits.md)
+- [Stripe top-up recovery](docs/api/stripe/topup-recovery.md) and
+  [Stripe payment contracts](docs/api/stripe/payments.md)
+- [Feature specification and plan](specs/004-auction-holds-stripe/spec.md)
+- [Persistence model](specs/04_DATA_PERSISTENCE.md)
 
-```bash
-uv tool install specify-cli --from git+https://github.com/github/spec-kit.git@v1.2.6
-```
-
-In the Copilot chat, use `/speckit-specify`, `/speckit-clarify` when needed,
-`/speckit-plan`, `/speckit-tasks`, `/speckit-analyze`,
-`/speckit-implement`, and `/speckit-converge`. Review and approve the plan
-before implementation. Keep the required session plan under `.agents/plan/`
-and link it to the feature artifacts under `specs/[###-feature-name]/`.
-Endpoint changes must still follow
-`.agents/skills/new-feature-endpoint/SKILL.md`; project-specific principles
-and template overrides are in `.specify/`.
-
-## Implemented behavior and limitations
-
-| Capability | Current behavior |
-|---|---|
-| Wallet and transaction history | Read own wallet and paginated transaction history |
-| VNPay top-up | Creates a pending top-up; balance is credited only after a valid successful IPN |
-| Internal transfer | Debits and credits the two wallets in one database transaction |
-| Direct checkout | Starts VNPay payment; signed IPN settles the order without changing wallet balance |
-| User withdrawal | Creates a pending request and reserves available funds; no bank payout is initiated |
-| Admin withdrawal | Approves a pending request by consuming reserved funds or rejects it by releasing the reservation; neither action initiates a bank transfer |
-| Admin balance adjustment | Credits/debits a wallet and records an audit log |
-| Gateway integration | Gateway/Commerce are external to this repository; routing and end-to-end integration are not verified here |
-
-### Identity and deployment boundary
-
-Controllers read identity and roles from claims or forwarded `x-user-id` / `x-user-roles` headers. The current API host does not configure JWT authentication, and the internal-service authentication middleware is disabled. Treat forwarded identity headers as trusted only when they are set by a trusted gateway that authenticates the caller and overwrites client-supplied values. Do not expose the service directly to untrusted networks until the authentication boundary is verified and enforced.
-
-See [`docs/api/README.md`](docs/api/README.md) for API references and endpoint contracts.
+The repository is organized into `Wallet.Domain`, `Wallet.Application`,
+`Wallet.Infrastructure`, `Wallet.Api`, `Wallet.Tests`, `docs`, `specs`, and
+`scripts`. API, provider and gateway integration details are documented within
+this repository.

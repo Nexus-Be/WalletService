@@ -14,6 +14,11 @@ public class WalletDbContext : DbContext, IWalletDbContext
     }
 
     public DbSet<WalletAccount> Wallets => Set<WalletAccount>();
+    public DbSet<AuctionHold> AuctionHolds => Set<AuctionHold>();
+    public DbSet<AuctionHoldOperation> AuctionHoldOperations => Set<AuctionHoldOperation>();
+    public DbSet<AuctionHoldCapture> AuctionHoldCaptures => Set<AuctionHoldCapture>();
+    public DbSet<AuctionCaptureTransfer> AuctionCaptureTransfers => Set<AuctionCaptureTransfer>();
+    public DbSet<AuctionDepositEscrow> AuctionDepositEscrows => Set<AuctionDepositEscrow>();
     public DbSet<WalletTransaction> WalletTransactions => Set<WalletTransaction>();
     public DbSet<BankAccount> BankAccounts => Set<BankAccount>();
     public DbSet<WalletTopup> WalletTopups => Set<WalletTopup>();
@@ -32,6 +37,25 @@ public class WalletDbContext : DbContext, IWalletDbContext
             throw new InvalidOperationException("Order payment lock requires a transaction.");
         return Database.ExecuteSqlInterpolatedAsync(
             $"SELECT pg_advisory_xact_lock(hashtextextended({orderId.ToString("D")}, 0))", cancellationToken);
+    }
+
+    public Task LockAuctionKeyAsync(string key, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+            throw new ArgumentException("Auction lock key must not be empty.", nameof(key));
+        if (Database.CurrentTransaction is null)
+            throw new InvalidOperationException("Auction lock requires a transaction.");
+        var namespacedKey = $"auction-hold:{key}";
+        return Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock(hashtextextended({namespacedKey}, 0))", cancellationToken);
+    }
+
+    public Task<AuctionHold?> LockAuctionHoldAsync(Guid holdId, CancellationToken cancellationToken)
+    {
+        if (Database.CurrentTransaction is null)
+            throw new InvalidOperationException("Auction hold lock requires a transaction.");
+        return AuctionHolds.FromSqlRaw(BuildLockQuery<AuctionHold>(nameof(AuctionHold.Id)), holdId)
+            .SingleOrDefaultAsync(cancellationToken);
     }
 
     public Task<WalletAccount?> LockWalletByUserIdAsync(Guid userId, CancellationToken cancellationToken)

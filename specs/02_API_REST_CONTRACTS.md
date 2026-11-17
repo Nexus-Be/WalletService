@@ -1,9 +1,9 @@
 # 02 — HỢP ĐỒNG GIAO TIẾP RESTFUL (WALLET SERVICE REST CONTRACTS)
 
-> **Trạng thái triển khai (2026-10-31):** ✅ 100% RESTFUL + CLASSIC CQRS — 15 use case (11 Command, 4 Query; `EnsureWalletCommand` do `GetMyWalletQueryHandler` gọi nội bộ). Controller chỉ inject `ISender`. Bãi bỏ hoàn toàn gRPC, Protobuf, RabbitMQ và MassTransit.
+> **Trạng thái triển khai (2026-11-17):** ✅ 100% RESTFUL + CLASSIC CQRS — 26 use case (17 Command, 9 Query; `EnsureWalletCommand` do `GetMyWalletQueryHandler` gọi nội bộ). Controller chỉ inject `ISender`. Bãi bỏ hoàn toàn gRPC, Protobuf, RabbitMQ và MassTransit.
 > **ĐÓNG BĂNG:** chạy `./scripts/verify-wallet-architecture.sh` trước khi sửa.
 > **Nguồn sự thật:** code (`Wallet.Api/Controllers/Public/`, `Wallet.Application/Features/`).
-> **Cập nhật lần cuối:** 2026-10-31.
+> **Cập nhật lần cuối:** 2026-11-17.
 
 ---
 
@@ -13,6 +13,11 @@
 * `GET /api/v1/wallets/me` → `GetMyWalletQuery` → `GetMyWalletQueryHandler` (read-only; khi chưa có ví thì gửi `EnsureWalletCommand` → `EnsureWalletCommandHandler` tạo ví 0 đồng + `AuditLog` `WalletCreate`; Swagger hiển thị `x-user-id` header parameter).
 * `POST /api/v1/wallets/topups/stripe` → `TopupStripeCommand` → `TopupStripeCommandHandler` (HTTP 201; cần `Idempotency-Key`).
 * `GET /api/v1/wallets/topups/{id:guid}` → `GetTopupStatusQuery` → `GetTopupStatusQueryHandler` (chỉ chủ ví).
+* `GET /api/v1/wallets/topups` → `ListTopupsQuery` (phân trang, chỉ chủ ví); `POST /api/v1/wallets/topups/{id:guid}/resume` → `ResumeTopupCommand` (không tạo giao dịch mới).
+* `POST /api/v1/wallets/holds` → `CreateHoldCommand`; `POST /api/v1/wallets/holds/{holdId:guid}/release` → `ReleaseHoldCommand` (service key và `Idempotency-Key`).
+* `GET /api/v1/wallets/holds/{holdId:guid}` và `GET /api/v1/wallets/holds/by-reference/{referenceType}/{referenceId}` → `GetHoldQuery` (service key).
+* `POST /api/v1/wallets/holds/{holdId:guid}/capture` → `CaptureHoldCommand`; `POST /api/v1/wallets/holds/{holdId:guid}/refund-captured` → `RefundCapturedHoldCommand` (service key và `Idempotency-Key`).
+* `GET /api/v1/wallets/me/holds` → `ListMyHoldsQuery` (phân trang, chỉ chủ ví). Chi tiết: `docs/api/holds/auction-deposits.md`.
 * `POST /api/v1/wallets/withdrawals` → `RequestWithdrawalCommand` → `RequestWithdrawalCommandHandler` (HTTP 201; tạo yêu cầu Pending và khóa số dư khả dụng; không khởi tạo chuyển khoản ngân hàng).
 * `POST /api/v1/wallets/transfers` → `TransferCommand` → `TransferCommandHandler`.
 * `GET /api/v1/wallets/transactions` → `ListTransactionsQuery` → `ListTransactionsQueryHandler`.
@@ -21,6 +26,14 @@
 ### 1.2. Quản trị (`AdminWalletsController` — `/api/v1/admin/wallets`)
 * `PATCH /api/v1/admin/wallets/withdrawals/{id:guid}` → `ProcessWithdrawalCommand` → `ProcessWithdrawalCommandHandler`.
 * `POST /api/v1/admin/wallets/{userId:guid}/adjustments` → `AdjustWalletBalanceCommand` → `AdjustWalletBalanceCommandHandler` (target identified by wallet owner's user ID).
+* `GET /api/v1/admin/wallets/ledger` → `ListWalletLedgerQuery` → `ListWalletLedgerQueryHandler` (admin only; paginated transaction report).
+* `GET /api/v1/admin/wallets/reconciliation` → `GetWalletReconciliationQuery` → `GetWalletReconciliationQueryHandler` (admin only; paginated wallet snapshot comparison).
+
+Withdrawal approval requires a non-blank `referenceCode` of at most 100 characters. Rejection does not require one. Approval records that the manual bank transfer has already occurred; it does not initiate a payout.
+
+The ledger accepts `page` (default 1), `pageSize` (default 10, maximum 100), optional `walletId`, `type`, `status`, `fromDate`, and `toDate`. Date filters are inclusive ISO 8601 instants with offsets, normalized to UTC. The response is the standard `PagedData<T>` shape and omits notes and bank details. Results are ordered by `CreatedAt DESC`, then transaction ID DESC.
+
+Reconciliation accepts `page`, `pageSize`, and optional `walletId`. It compares each current wallet balance with the latest successful transaction `BalanceAfter`, ordered by creation time and transaction ID. Results are `Balanced`, `Discrepancy`, or `InsufficientHistory`; this is not double-entry accounting or external bank reconciliation.
 
 ### 1.3. Thanh toán trực tiếp (`WalletsController` — `/api/v1/wallets/checkout/direct`)
 * `POST /api/v1/wallets/checkout/direct` → `CheckoutDirectCommand` → `CheckoutDirectCommandHandler` (idempotent theo `OrderId`). Internal API tạm khóa nên route dùng tiền tố công khai.
@@ -49,8 +62,8 @@ ValidationBehavior<TRequest,TResponse>
    ↓
 IRequestHandler<TCommand|TQuery, TResponse>
    ↓
-IWalletDbContext / IVnPayService
+IWalletDbContext / IStripeCheckoutClient
 ```
 
 * Query tuyệt đối read-only (`AsNoTracking`). Mọi thay đổi trạng thái đi qua Command handler; `GetMyWalletQueryHandler` chỉ điều phối `EnsureWalletCommand` khi ví chưa tồn tại.
-* Command đụng số dư/audit bọc `BeginTransactionAsync`; IPN và duyệt rút tiền khóa dòng bằng `LockTopupByReferenceAsync` / `LockWithdrawalRequestAsync` (PostgreSQL `FOR UPDATE`).
+* Command đụng số dư/audit bọc `BeginTransactionAsync`; Stripe settlement, hold và duyệt rút tiền dùng khóa dòng PostgreSQL `FOR UPDATE`.

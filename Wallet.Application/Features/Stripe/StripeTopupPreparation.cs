@@ -30,7 +30,7 @@ internal static class StripeTopupPreparation
             return new StripePreparedTopup(topup.Id, attempt.CheckoutUrl!, topup.Amount, topup.CreatedAt);
 
         var session = await provider.CreateSessionAsync(
-            new StripeCheckoutRequest(attempt.Id, decimal.ToInt64(amount), attempt.ProviderIdempotencyKey),
+            new StripeCheckoutRequest(attempt.Id, decimal.ToInt64(amount), attempt.ProviderIdempotencyKey, topup.Id),
             cancellationToken);
         StripeCheckoutSessionValidation.Validate(session);
 

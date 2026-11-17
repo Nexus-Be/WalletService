@@ -37,6 +37,66 @@ public sealed class StripeCheckoutClientTests
     }
 
     [Fact]
+    public async Task TopupSession_ReturnUrlsIdentifyTheExactTopup()
+    {
+        var handler = new RecordingHandler();
+        using var http = new HttpClient(handler);
+        var client = new StripeCheckoutClient(http, Configuration(
+            successUrl: "https://example.test/result?checkout=return",
+            cancelUrl: "https://example.test/result?checkout=cancel"));
+        var topupId = Guid.NewGuid();
+
+        await client.CreateSessionAsync(
+            new StripeCheckoutRequest(Guid.NewGuid(), 100000, "topup-key", topupId), default);
+
+        var body = WebUtility.UrlDecode(handler.Body);
+        Assert.Contains($"transactionId={topupId:D}", body);
+        Assert.Contains("kind=topup", body);
+        Assert.Contains("checkout=return", body);
+        Assert.Contains("checkout=cancel", body);
+    }
+
+    [Fact]
+    public async Task TopupSession_ReplacesConfiguredTransactionContext()
+    {
+        var handler = new RecordingHandler();
+        using var http = new HttpClient(handler);
+        var oldId = Guid.NewGuid();
+        var topupId = Guid.NewGuid();
+        var client = new StripeCheckoutClient(http, Configuration(
+            successUrl: $"https://example.test/result?transactionId={oldId:D}&kind=old&checkout=return",
+            cancelUrl: $"https://example.test/result?%74ransactionId={oldId:D}&KIND=old&checkout=cancel"));
+
+        await client.CreateSessionAsync(
+            new StripeCheckoutRequest(Guid.NewGuid(), 100000, "topup-key", topupId), default);
+
+        var body = WebUtility.UrlDecode(handler.Body);
+        Assert.DoesNotContain(oldId.ToString("D"), body);
+        Assert.DoesNotContain("kind=old", body);
+        Assert.Contains($"transactionId={topupId:D}", body);
+        Assert.Contains("checkout=return", body);
+        Assert.Contains("checkout=cancel", body);
+    }
+
+    [Fact]
+    public async Task DirectSession_PreservesConfiguredReturnUrls()
+    {
+        var handler = new RecordingHandler();
+        using var http = new HttpClient(handler);
+        var client = new StripeCheckoutClient(http, Configuration(
+            successUrl: "https://example.test/result?kind=order&transactionId=existing",
+            cancelUrl: "https://example.test/cancel?kind=order&transactionId=existing"));
+
+        await client.CreateSessionAsync(
+            new StripeCheckoutRequest(Guid.NewGuid(), 100000, "direct-key"), default);
+
+        var body = WebUtility.UrlDecode(handler.Body);
+        Assert.Contains("https://example.test/result?kind=order&transactionId=existing", body);
+        Assert.Contains("https://example.test/cancel?kind=order&transactionId=existing", body);
+        Assert.DoesNotContain("kind=topup", body);
+    }
+
+    [Fact]
     public void LiveCredentials_AreRejected()
     {
         using var http = new HttpClient(new RecordingHandler());
@@ -130,12 +190,45 @@ public sealed class StripeCheckoutClientTests
         Assert.Throws<InvalidOperationException>(() => new StripeCheckoutClient(http, configuration));
     }
 
-    private static IConfiguration Configuration(string key = "sk_test_not-a-real-key") =>
+    [Fact]
+    public void LocalHttpRedirect_IsAcceptedOnlyInDevelopment()
+    {
+        using var http = new HttpClient(new RecordingHandler());
+        var development = Configuration(
+            successUrl: "http://localhost:3000/buyer/payment/result?checkout=return",
+            cancelUrl: "http://localhost:3000/buyer/payment/result?checkout=cancel",
+            environment: "Development");
+        var production = Configuration(
+            successUrl: "http://localhost:3000/buyer/payment/result?checkout=return",
+            cancelUrl: "http://localhost:3000/buyer/payment/result?checkout=cancel",
+            environment: "Production");
+
+        _ = new StripeCheckoutClient(http, development);
+        Assert.Throws<InvalidOperationException>(() => new StripeCheckoutClient(http, production));
+    }
+
+    [Theory]
+    [InlineData("http://example.test/buyer/payment/result")]
+    [InlineData("http://127.0.0.1:3000/buyer/payment/result")]
+    [InlineData("/buyer/payment/result")]
+    public void Development_RejectsOtherNonHttpsRedirects(string successUrl)
+    {
+        using var http = new HttpClient(new RecordingHandler());
+        var configuration = Configuration(successUrl: successUrl, environment: "Development");
+        Assert.Throws<InvalidOperationException>(() => new StripeCheckoutClient(http, configuration));
+    }
+
+    private static IConfiguration Configuration(
+        string key = "sk_test_not-a-real-key",
+        string successUrl = "https://example.test/success",
+        string cancelUrl = "https://example.test/cancel",
+        string environment = "Production") =>
         new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["Stripe:SecretKey"] = key,
-            ["Stripe:SuccessUrl"] = "https://example.test/success",
-            ["Stripe:CancelUrl"] = "https://example.test/cancel"
+            ["Stripe:SuccessUrl"] = successUrl,
+            ["Stripe:CancelUrl"] = cancelUrl,
+            ["ASPNETCORE_ENVIRONMENT"] = environment
         }).Build();
 
     private sealed class RecordingHandler(HttpStatusCode status = HttpStatusCode.OK, string? mismatch = null) : HttpMessageHandler

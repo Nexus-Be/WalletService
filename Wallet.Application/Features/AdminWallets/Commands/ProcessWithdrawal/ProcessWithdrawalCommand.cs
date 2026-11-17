@@ -11,7 +11,8 @@ public sealed record ProcessWithdrawalCommand(
     [Required(ErrorMessage = "Action is required.")]
     [RegularExpression("^(?i:Approve|Reject)$", ErrorMessage = "Action must be either 'Approve' or 'Reject'.")]
     string Action,
-    string? AdminNote = null) : IRequest<ProcessWithdrawalResponse>, IRequestValidation
+    string? AdminNote = null,
+    string? ReferenceCode = null) : IRequest<ProcessWithdrawalResponse>, IRequestValidation
 {
     [JsonIgnore] public Guid WithdrawalId { get; init; }
 
@@ -19,6 +20,22 @@ public sealed record ProcessWithdrawalCommand(
 
     public IEnumerable<ValidationResult> ValidateRequest()
     {
+        if (string.Equals(Action, "Approve", StringComparison.OrdinalIgnoreCase))
+        {
+            if (string.IsNullOrWhiteSpace(ReferenceCode))
+            {
+                yield return new ValidationResult(
+                    "Reference code is required when approving a withdrawal.",
+                    new[] { nameof(ReferenceCode) });
+            }
+            else if (ReferenceCode.Length > 100)
+            {
+                yield return new ValidationResult(
+                    "Reference code must be 100 characters or fewer.",
+                    new[] { nameof(ReferenceCode) });
+            }
+        }
+
         var withdrawalIdError =
             RequestValidation.ValidateGuid(WithdrawalId, nameof(WithdrawalId), "Withdrawal ID");
         if (withdrawalIdError is not null)
@@ -38,4 +55,5 @@ public sealed record ProcessWithdrawalResponse(
     string WithdrawalId,
     string Status,
     DateTimeOffset ProcessedAt,
-    string? TransactionId);
+    string? TransactionId,
+    string? ReferenceCode);

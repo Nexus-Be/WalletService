@@ -16,8 +16,16 @@ using Wallet.Application.Features.Checkout.Commands.PayOrderWithWallet;
 using Wallet.Application.Features.Checkout.Commands.RefundOrderPayment;
 using Wallet.Application.Features.Checkout.Commands.SettleSellerOrder;
 using Wallet.Application.Features.Checkout.Queries.GetDirectPaymentStatus;
+using Wallet.Application.Features.Holds.Commands.CreateHold;
+using Wallet.Application.Features.Holds.Commands.CaptureHold;
+using Wallet.Application.Features.Holds.Commands.RefundCapturedHold;
+using Wallet.Application.Features.Holds.Commands.ReleaseHold;
+using Wallet.Application.Features.Holds.Queries.GetHold;
+using Wallet.Application.Features.Holds.Queries.ListMyHolds;
 using Wallet.Application.Features.Stripe.Commands.ProcessStripeWebhook;
 using Wallet.Application.Features.Topups.Commands.TopupStripe;
+using Wallet.Application.Features.Topups.Commands.ResumeTopup;
+using Wallet.Application.Features.Topups.Queries.ListTopups;
 using Wallet.Application.Features.Topups.Queries.GetTopupStatus;
 using Wallet.Application.Features.Transfers.Commands.Transfer;
 using Wallet.Application.Features.Wallets.Queries.GetMyWallet;
@@ -54,6 +62,73 @@ public sealed class WalletsController : ControllerBase
         _logger.LogInformation("Fetching wallet for user: '{UserId}'", userGuid);
         var wallet = await _sender.Send(new GetMyWalletQuery(userGuid.ToString()), cancellationToken);
         return Ok(wallet);
+    }
+
+    /// <summary>Reserves wallet funds for an auction deposit.</summary>
+    [HttpPost("holds")]
+    [RequireAuctionServiceKey]
+    [ProducesResponseType(typeof(CreateHoldResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(CreateHoldResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> CreateHold([FromBody] CreateHoldCommand command,
+        [FromHeader(Name = "Idempotency-Key")] string? key,
+        [FromHeader(Name = "X-Internal-Service-Key")] string? serviceKey, CancellationToken cancellationToken)
+    {
+        var result = await _sender.Send(command with { IdempotencyKey = key ?? string.Empty }, cancellationToken);
+        return StatusCode(result.Created ? StatusCodes.Status201Created : StatusCodes.Status200OK, result.Hold);
+    }
+
+    /// <summary>Releases an existing auction deposit hold.</summary>
+    [HttpPost("holds/{holdId:guid}/release")]
+    [RequireAuctionServiceKey]
+    [ProducesResponseType(typeof(ReleaseHoldResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ReleaseHold(Guid holdId, [FromBody] ReleaseHoldCommand command,
+        [FromHeader(Name = "Idempotency-Key")] string? key,
+        [FromHeader(Name = "X-Internal-Service-Key")] string? serviceKey, CancellationToken cancellationToken) =>
+        Ok(await _sender.Send(command with { HoldId = holdId, IdempotencyKey = key ?? string.Empty }, cancellationToken));
+
+    /// <summary>Captures an auction deposit hold.</summary>
+    [HttpPost("holds/{holdId:guid}/capture")]
+    [RequireAuctionServiceKey]
+    [ProducesResponseType(typeof(CaptureHoldResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> CaptureHold(Guid holdId, [FromBody] CaptureHoldCommand command,
+        [FromHeader(Name = "Idempotency-Key")] string? key,
+        [FromHeader(Name = "X-Internal-Service-Key")] string? serviceKey, CancellationToken cancellationToken) =>
+        Ok(await _sender.Send(command with { HoldId = holdId, IdempotencyKey = key ?? string.Empty }, cancellationToken));
+
+    /// <summary>Refunds a captured order deposit.</summary>
+    [HttpPost("holds/{holdId:guid}/refund-captured")]
+    [RequireAuctionServiceKey]
+    [ProducesResponseType(typeof(RefundCapturedHoldResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> RefundCapturedHold(Guid holdId, [FromBody] RefundCapturedHoldCommand command,
+        [FromHeader(Name = "Idempotency-Key")] string? key,
+        [FromHeader(Name = "X-Internal-Service-Key")] string? serviceKey, CancellationToken cancellationToken) =>
+        Ok(await _sender.Send(command with { HoldId = holdId, IdempotencyKey = key ?? string.Empty }, cancellationToken));
+
+    /// <summary>Gets an auction deposit hold by ID.</summary>
+    [HttpGet("holds/{holdId:guid}")]
+    [RequireAuctionServiceKey]
+    [ProducesResponseType(typeof(HoldStatusResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetHold(Guid holdId,
+        [FromHeader(Name = "X-Internal-Service-Key")] string? serviceKey, CancellationToken cancellationToken) =>
+        Ok(await _sender.Send(new GetHoldQuery(holdId, null, null), cancellationToken));
+
+    /// <summary>Gets an auction deposit hold by reference.</summary>
+    [HttpGet("holds/by-reference/{referenceType}/{referenceId}")]
+    [RequireAuctionServiceKey]
+    [ProducesResponseType(typeof(HoldStatusResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetHoldByReference(string referenceType, string referenceId,
+        [FromHeader(Name = "X-Internal-Service-Key")] string? serviceKey, CancellationToken cancellationToken) =>
+        Ok(await _sender.Send(new GetHoldQuery(null, referenceType, referenceId), cancellationToken));
+
+    /// <summary>Lists the authenticated user's auction deposit holds.</summary>
+    [HttpGet("me/holds")]
+    [RequireRole]
+    [ProducesResponseType(typeof(Wallet.Application.Common.Models.PagedData<HoldListItem>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListMyHolds([FromQuery] int page = 1, [FromQuery] int pageSize = 10,
+        [FromQuery] string? status = null, CancellationToken cancellationToken = default)
+    {
+        if (!this.TryGetUserId(out var userGuid, out var authError)) return authError;
+        return Ok(await _sender.Send(new ListMyHoldsQuery(page, pageSize, status) { UserId = userGuid }, cancellationToken));
     }
 
     /// <summary>Initiates a Stripe wallet topup.</summary>
@@ -151,6 +226,28 @@ public sealed class WalletsController : ControllerBase
         await _sender.Send(new ProcessStripeWebhookCommand(body, signature ?? string.Empty),
             cancellationToken);
         return Ok();
+    }
+
+    /// <summary>Gets the authenticated user's Stripe topup status.</summary>
+    [HttpGet("topups")]
+    [RequireRole]
+    [ProducesResponseType(typeof(Wallet.Application.Common.Models.PagedData<TopupListItem>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListTopups(
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 10,
+        CancellationToken cancellationToken = default)
+    {
+        if (!this.TryGetUserId(out var userGuid, out var authError)) return authError;
+        return Ok(await _sender.Send(new ListTopupsQuery(page, pageSize) { UserId = userGuid }, cancellationToken));
+    }
+
+    /// <summary>Returns an existing open Stripe Checkout URL for an owned topup.</summary>
+    [HttpPost("topups/{id:guid}/resume")]
+    [RequireRole]
+    [ProducesResponseType(typeof(ResumeTopupResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ResumeTopup(Guid id, CancellationToken cancellationToken)
+    {
+        if (!this.TryGetUserId(out var userGuid, out var authError)) return authError;
+        return Ok(await _sender.Send(new ResumeTopupCommand(id) { UserId = userGuid }, cancellationToken));
     }
 
     /// <summary>Gets the authenticated user's Stripe topup status.</summary>

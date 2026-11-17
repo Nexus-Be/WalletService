@@ -47,7 +47,7 @@ This project is indexed by GitNexus as **WalletService** (1845 symbols, 2983 rel
 
 # QUY CHUẨN VẬN HÀNH DÀNH CHO AI CODING AGENTS (WALLET SERVICE)
 
-> **Trạng thái triển khai (2026-10-31):** ✅ ĐÃ CHUẨN HÓA — 100% RESTful API, **classic CQRS qua MediatR** (15 use case: 11 Command, 4 Query; `EnsureWalletCommand` được query gọi nội bộ), controller chỉ inject `ISender`, cấm gRPC, bãi bỏ hoàn toàn RabbitMQ, MassTransit, Saga và Outbox/Inbox tables. WalletService là **ngoại lệ duy nhất** của lệnh cấm MediatR toàn hệ thống.
+> **Trạng thái triển khai (2026-11-17):** ✅ ĐÃ CHUẨN HÓA — 100% RESTful API, **classic CQRS qua MediatR** (26 use case: 17 Command, 9 Query; `EnsureWalletCommand` được query gọi nội bộ), controller chỉ inject `ISender`, cấm gRPC, bãi bỏ hoàn toàn RabbitMQ, MassTransit, Saga và Outbox/Inbox tables. WalletService là **ngoại lệ duy nhất** của lệnh cấm MediatR toàn hệ thống.
 > **Nguồn sự thật:** code (`Wallet.sln`, `Wallet.Api/Controllers/Public/`, `Wallet.Application/Features/`).
 > **Cập nhật lần cuối:** 2026-10-31.
 
@@ -58,7 +58,7 @@ This project is indexed by GitNexus as **WalletService** (1845 symbols, 2983 rel
 WalletService là **service duy nhất** dùng MediatR/CQRS. Cấu trúc này từng bị đảo ngược bởi agent khác, nên được đóng băng.
 
 **Bất biến:**
-* Đúng 15 use case tại `Wallet.Application/Features/{Area}/Commands|Queries/{UseCase}/`, đúng 15 file `*Handler.cs`.
+* Đúng 26 use case tại `Wallet.Application/Features/{Area}/Commands|Queries/{UseCase}/`, đúng 26 file `*Handler.cs` (17 Command, 9 Query).
 * Đúng 2 controller: `Controllers/Public/WalletsController.cs`, `Controllers/Public/AdminWalletsController.cs`. `CheckoutDirect` đã gộp vào `WalletsController`. Mỗi controller chỉ inject `ISender` và `ILogger`.
 * `MediatR 12.4.1` trong `Wallet.Application.csproj`; `AddMediatR` + `ValidationBehavior<,>` trong `DependencyInjection.cs`.
 * Handler inject trực tiếp `IWalletDbContext`.
@@ -158,7 +158,7 @@ Khi bắt đầu làm việc tại WalletService, AI Agent **BẮT BUỘC PHẢI
 8. **INTERNAL API ĐANG TẠM KHÓA (2026-10-31)**:
    - Chỉ còn `Controllers/Public/` với `WalletsController.cs` và `AdminWalletsController.cs`.
    - `CheckoutDirect` nằm tại `POST /api/v1/wallets/checkout/direct` trong `WalletsController`.
-   - `InternalServiceAuthMiddleware` và `InternalServiceAuthHandler` đã comment đăng ký; không yêu cầu `X-Internal-Service-Key`.
+   - `InternalServiceAuthMiddleware` và `InternalServiceAuthHandler` vẫn không đăng ký. Riêng các action Auction hold dành cho service yêu cầu `X-Internal-Service-Key` qua `RequireAuctionServiceKey` và cấu hình `InternalSecurity:AuctionServiceKey`.
 9. **QUY CHUẨN BẢO VỆ QUYỀN SỞ HỮU TÀI NGUYÊN (RESOURCE OWNERSHIP GOVERNANCE)**:
    - Thao tác xem số dư (`/api/v1/wallets/me`), giao dịch, nạp/rút tiền bắt buộc đọc `currentUserId` từ `HttpContext.GetUserId()`. Người dùng chỉ được thao tác trên ví của chính mình.
    - Thao tác phê duyệt hoặc từ chối yêu cầu rút tiền bắt buộc kiểm tra quyền `admin` hoặc `staff`.

@@ -21,4 +21,5 @@ public sealed record GetTopupStatusQuery(
 
 public sealed record TopupStatusResponse(
     Guid TransactionId, decimal Amount, string Currency, string Status,
-    DateTimeOffset CreatedAt, DateTimeOffset? UpdatedAt);
+    DateTimeOffset CreatedAt, DateTimeOffset? UpdatedAt,
+    bool CanResume = false, DateTimeOffset? SessionExpiresAt = null);

@@ -1,6 +1,8 @@
 namespace Wallet.Tests;
 
 using System.Reflection;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
 using Wallet.Api.Controllers;
@@ -8,6 +10,8 @@ using Wallet.Api.Filters;
 using Wallet.Application.Common.Extensions;
 using Wallet.Application.Features.AdminWallets.Commands.AdjustWalletBalance;
 using Wallet.Application.Features.AdminWallets.Commands.ProcessWithdrawal;
+using Wallet.Application.Features.AdminWallets.Queries.GetWalletReconciliation;
+using Wallet.Application.Features.AdminWallets.Queries.ListWalletLedger;
 using Wallet.Application.Features.Checkout.Commands.CheckoutDirect;
 using Wallet.Application.Features.VnPay.Commands.ProcessVnPayIpn;
 using Wallet.Application.Features.Wallets.Queries.GetMyWallet;
@@ -23,6 +27,12 @@ using CheckoutDirectCommandHandler = Wallet.Tests.Support.LegacyCheckout.Checkou
 
 public class WalletContractRegressionTests
 {
+    public class ThrowingSenderProxy : DispatchProxy
+    {
+        protected override object? Invoke(System.Reflection.MethodInfo? targetMethod, object?[]? args) =>
+            throw new InvalidOperationException("The sender should not be called for this authorization check.");
+    }
+
     private static WalletAccount AddWallet(
         TestWalletDbContext context,
         decimal balance,
@@ -96,7 +106,7 @@ public class WalletContractRegressionTests
 
         var handler = new ProcessWithdrawalCommandHandler(context);
         var result = await handler.Handle(
-            new ProcessWithdrawalCommand("approve")
+            new ProcessWithdrawalCommand("approve", ReferenceCode: "BANK-TRANSFER-REF")
             {
                 WithdrawalId = withdrawal.Id,
                 AdminUserId = Guid.NewGuid().ToString()
@@ -183,6 +193,53 @@ public class WalletContractRegressionTests
             "{userId:guid}/adjustments",
             action?.GetCustomAttribute<HttpPostAttribute>()?.Template);
         Assert.NotNull(controllerType.GetCustomAttribute<RequireRoleAttribute>());
+    }
+
+    [Fact]
+    public async Task AdminReportRoutes_UseExactPathsAndRestrictAccessToAdmins()
+    {
+        var controllerType = typeof(AdminWalletsController);
+        Assert.Equal("ledger", controllerType
+            .GetMethod(nameof(AdminWalletsController.ListLedger))?
+            .GetCustomAttribute<HttpGetAttribute>()?.Template);
+        Assert.Equal("reconciliation", controllerType
+            .GetMethod(nameof(AdminWalletsController.ReconcileWallets))?
+            .GetCustomAttribute<HttpGetAttribute>()?.Template);
+
+        var staffController = CreateReportController("staff");
+        var ledgerResult = await staffController.ListLedger(new ListWalletLedgerQuery(), default);
+        var reconciliationResult = await staffController.ReconcileWallets(
+            new GetWalletReconciliationQuery(),
+            default);
+
+        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(ledgerResult).StatusCode);
+        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(reconciliationResult).StatusCode);
+
+        var adminController = CreateReportController("admin");
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => adminController.ListLedger(new ListWalletLedgerQuery(), default));
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => adminController.ReconcileWallets(new GetWalletReconciliationQuery(), default));
+    }
+
+    private static AdminWalletsController CreateReportController(string role)
+    {
+        var controller = new AdminWalletsController(
+            DispatchProxy.Create<MediatR.ISender, ThrowingSenderProxy>(),
+            NullLogger<AdminWalletsController>.Instance)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = new ClaimsPrincipal(new ClaimsIdentity(
+                        new[] { new Claim(ClaimTypes.Role, role) },
+                        authenticationType: "test"))
+                }
+            }
+        };
+
+        return controller;
     }
 
     [Fact]

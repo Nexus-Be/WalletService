@@ -1,8 +1,8 @@
 # 05 — DANH SÁCH KIỂM CHỨNG & NGHIỆM THU (WALLET SERVICE CHECKLIST)
 
-> **Trạng thái triển khai (2026-11-03):** ✅ CLASSIC CQRS — build Release 0 error, 146 test pass, 15 use case (11 Command, 4 Query).
+> **Trạng thái triển khai (2026-11-17):** ✅ CLASSIC CQRS — 26 use case (17 Command, 9 Query), 2 public controllers.
 > **Nguồn sự thật:** code (`Wallet.sln`, `Wallet.Application/Features/`, `Wallet.Tests/`).
-> **Cập nhật lần cuối:** 2026-11-03.
+> **Cập nhật lần cuối:** 2026-11-17.
 
 ---
 
@@ -12,8 +12,8 @@
 |:---|:---|:---:|
 | Restore | `dotnet restore Wallet.sln` | ✅ |
 | Biên dịch | `dotnet build Wallet.sln -c Release` | ✅ (0 error) |
-| Kiểm thử | `dotnet test Wallet.sln -c Release` | ✅ (80/80) |
-| Bật DB | `docker compose up -d wallet-db` (PostgreSQL `5440`) | ✅ |
+| Kiểm thử | `dotnet test Wallet.sln -c Release` | ✅ (cần database disposable cho PostgreSQL tests) |
+| Bật DB | `docker compose -f docker-compose.db.yml up -d postgres-wallet` (PostgreSQL `5440`) | ✅ |
 | Chạy service | `dotnet run --project Wallet.Api` → `http://localhost:8008` | ✅ |
 | Health | `curl http://localhost:8008/health` | ⚠️ không kiểm tra DB |
 
@@ -26,7 +26,7 @@
 | 1 | Build Release 0 error | `dotnet build Wallet.sln -c Release` | ✅ |
 | 2 | Test pass 100% | `dotnet test Wallet.sln -c Release` | ✅ |
 | 3 | Không còn service facade | `grep -rn "IWalletService\|IAdminWalletService" --include=*.cs .` = 0 | ✅ |
-| 4 | Mỗi use case có Handler | `find Wallet.Application/Features -name "*Handler.cs"` = 15 | ✅ |
+| 4 | Mỗi use case có Handler | `find Wallet.Application/Features -name "*Handler.cs"` = 26 | ✅ |
 | 5 | Không dùng Repository Pattern | `grep -rn "IRepository\|UnitOfWork" --include=*.cs .` = 0 | ✅ |
 | 6 | Không rò `userId` qua body | controller dùng `TryGetUserId` / `command with { UserId = ... }` | ✅ |
 | 7 | Số dư không âm | `WalletAccount.EnsureAvailableBalance` ném `InsufficientBalanceException` | ✅ |
@@ -44,8 +44,8 @@
 # 1. Không còn feature service facade
 grep -rn "interface I.*Service\b" --include="*.cs" Wallet.Application Wallet.Api   # kỳ vọng rỗng
 
-# 2. Đủ 15 use case handler (11 Command, 4 Query)
-find Wallet.Application/Features -name "*Handler.cs" | wc -l                       # kỳ vọng 15
+# 2. Đủ 26 use case handler (17 Command, 9 Query)
+find Wallet.Application/Features -name "*Handler.cs" | wc -l                       # kỳ vọng 26
 
 # 3. MediatR + ValidationBehavior được đăng ký
 grep -n "AddMediatR\|AddOpenBehavior" Wallet.Application/DependencyInjection.cs    # kỳ vọng 2 dòng
@@ -62,5 +62,6 @@ grep -n "private readonly I" Wallet.Api/Controllers/*/*.cs
 ## 4. GHI CHÚ HIỆN TRẠNG
 
 * EF Core migrations are stored in `Wallet.Infrastructure/Persistence/Migrations/`; review migration and rollback impact before applying schema changes to a shared database.
+* `WALLET_STRIPE_TEST_DATABASE` must point to an existing disposable PostgreSQL database to run the integration tests; without it they are skipped.
 * `POST /api/v1/wallets/withdrawals` tạo yêu cầu `Pending` và khóa số dư khả dụng; payout ngân hàng, xác minh Seller và đối soát chưa được triển khai.
 * `/health` trả `Healthy` vô điều kiện, không kiểm tra kết nối DB.

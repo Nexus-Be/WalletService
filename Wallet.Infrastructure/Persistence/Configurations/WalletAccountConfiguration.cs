@@ -8,6 +8,9 @@ public class WalletAccountConfiguration : IEntityTypeConfiguration<WalletAccount
 {
     public void Configure(EntityTypeBuilder<WalletAccount> builder)
     {
+        builder.ToTable("Wallets", table =>
+            table.HasCheckConstraint("CK_Wallets_LockedBalance",
+                "\"LockedBalance\" >= 0 AND \"LockedBalance\" <= \"Balance\""));
         builder.HasKey(w => w.Id);
         builder.HasIndex(w => w.UserId).IsUnique();
         builder.Property(w => w.Balance).HasPrecision(18, 2);
