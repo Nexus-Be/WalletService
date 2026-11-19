@@ -25,6 +25,7 @@ builder.Services.AddControllers()
     });
 
 var app = builder.Build();
+Wallet.Infrastructure.Payments.StripeSettings.EnsureValid(app.Configuration, app.Logger);
 
 // 4. Default Middleware Pipeline (Exception Handler, Swagger UI)
 app.UseServiceDefaults();

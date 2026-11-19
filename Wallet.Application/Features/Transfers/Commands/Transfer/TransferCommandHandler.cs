@@ -4,6 +4,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using MediatR;
+using global::Wallet.Application.Common.Extensions;
 using global::Wallet.Application.Interfaces;
 using global::Wallet.Domain.Entities;
 using global::Wallet.Domain.Enums;
@@ -42,6 +43,9 @@ internal sealed class TransferCommandHandler : IRequestHandler<TransferCommand, 
             throw new WalletNotFoundException(request.RecipientUserId);
         if (senderWallet.Currency != recipientWallet.Currency)
             throw new BusinessRuleValidationException("Wallet currencies do not match.");
+
+        senderWallet.EnsureActive();
+        recipientWallet.EnsureActive();
 
         senderWallet.Deduct(request.Amount);
         recipientWallet.Deposit(request.Amount);

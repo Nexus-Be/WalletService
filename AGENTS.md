@@ -47,9 +47,9 @@ This project is indexed by GitNexus as **WalletService** (1845 symbols, 2983 rel
 
 # QUY CHUẨN VẬN HÀNH DÀNH CHO AI CODING AGENTS (WALLET SERVICE)
 
-> **Trạng thái triển khai (2026-11-17):** ✅ ĐÃ CHUẨN HÓA — 100% RESTful API, **classic CQRS qua MediatR** (26 use case: 17 Command, 9 Query; `EnsureWalletCommand` được query gọi nội bộ), controller chỉ inject `ISender`, cấm gRPC, bãi bỏ hoàn toàn RabbitMQ, MassTransit, Saga và Outbox/Inbox tables. WalletService là **ngoại lệ duy nhất** của lệnh cấm MediatR toàn hệ thống.
+> **Trạng thái triển khai (2026-11-19):** ✅ ĐÃ CHUẨN HÓA — 100% RESTful API, **classic CQRS qua MediatR** (46 use case: 28 Command, 18 Query; `EnsureWalletCommand` được query gọi nội bộ), controller chỉ inject `ISender`, cấm gRPC, bãi bỏ hoàn toàn RabbitMQ, MassTransit, Saga và Outbox/Inbox tables. WalletService là **ngoại lệ duy nhất** của lệnh cấm MediatR toàn hệ thống.
 > **Nguồn sự thật:** code (`Wallet.sln`, `Wallet.Api/Controllers/Public/`, `Wallet.Application/Features/`).
-> **Cập nhật lần cuối:** 2026-11-17.
+> **Cập nhật lần cuối:** 2026-11-19.
 
 ---
 
@@ -58,8 +58,8 @@ This project is indexed by GitNexus as **WalletService** (1845 symbols, 2983 rel
 WalletService là **service duy nhất** dùng MediatR/CQRS. Cấu trúc này từng bị đảo ngược bởi agent khác, nên được đóng băng.
 
 **Bất biến:**
-* Đúng 26 use case tại `Wallet.Application/Features/{Area}/Commands|Queries/{UseCase}/`, đúng 26 file `*Handler.cs` (17 Command, 9 Query).
-* Đúng 2 controller: `Controllers/Public/WalletsController.cs`, `Controllers/Public/AdminWalletsController.cs`. `CheckoutDirect` đã gộp vào `WalletsController`. Mỗi controller chỉ inject `ISender` và `ILogger`.
+* Đúng 46 use case tại `Wallet.Application/Features/{Area}/Commands|Queries/{UseCase}/`, đúng 46 file `*Handler.cs` (28 Command, 18 Query).
+* Đúng 2 controller: `Controllers/Public/WalletsController.cs`, `Controllers/Public/AdminWalletsController.cs`. `CheckoutDirect` và các route `~/api/v1/internal/wallets/...` (bảo vệ bởi `[RequireInternalServiceKey]` / `[RequireAuctionServiceKey]`) nằm trong `WalletsController`. Mỗi controller chỉ inject `ISender` và `ILogger`.
 * `MediatR 12.4.1` trong `Wallet.Application.csproj`; `AddMediatR` + `ValidationBehavior<,>` trong `DependencyInjection.cs`.
 * Handler inject trực tiếp `IWalletDbContext`.
 
@@ -155,10 +155,11 @@ Khi bắt đầu làm việc tại WalletService, AI Agent **BẮT BUỘC PHẢI
    - Toàn bộ thao tác phân trang giao dịch, biến động số dư bắt buộc thực hiện trực tiếp tại Database qua `.Skip((page - 1) * pageSize).Take(pageSize)` và `.CountAsync()`.
    - Đóng gói dữ liệu trả về theo cấu trúc phân trang chuẩn `PagedData<T>` (`items` và metadata `pagination: { pageIndex, pageSize, totalCount, totalPages, hasPreviousPage, hasNextPage }`).
    - TUYỆT ĐỐI CẤM trả về danh sách thô lớn không giới hạn để Gateway tự phân trang.
-8. **INTERNAL API ĐANG TẠM KHÓA (2026-10-31)**:
-   - Chỉ còn `Controllers/Public/` với `WalletsController.cs` và `AdminWalletsController.cs`.
-   - `CheckoutDirect` nằm tại `POST /api/v1/wallets/checkout/direct` trong `WalletsController`.
-   - `InternalServiceAuthMiddleware` và `InternalServiceAuthHandler` vẫn không đăng ký. Riêng các action Auction hold dành cho service yêu cầu `X-Internal-Service-Key` qua `RequireAuctionServiceKey` và cấu hình `InternalSecurity:AuctionServiceKey`.
+8. **BẢO MẬT INTERNAL S2S (2026-11-19)**:
+   - Chỉ giữ 2 controller dưới `Controllers/Public/`: `WalletsController.cs` và `AdminWalletsController.cs` (0 file trong `Controllers/Internal/`).
+   - Các route S2S dùng thuộc tính route tuyệt đối `~/api/v1/internal/wallets/...` ngay trên `WalletsController` với `[ApiExplorerSettings(IgnoreApi = true)]`, bảo vệ bằng `[RequireInternalServiceKey]` (hoặc `[RequireAuctionServiceKey]` cho `holds`) và Gateway không expose `/api/v1/internal/*`.
+   - 4 route Commerce cũ trên `/api/v1/wallets/...` cũng đã gắn `[RequireInternalServiceKey]` cho tới khi Commerce chuyển sang `/api/v1/internal/wallets/...`.
+   - `InternalServiceAuthMiddleware` và `InternalServiceAuthHandler` vẫn không đăng ký; các endpoint nội bộ dùng filter `[RequireInternalServiceKey]` / `[RequireAuctionServiceKey]`.
 9. **QUY CHUẨN BẢO VỆ QUYỀN SỞ HỮU TÀI NGUYÊN (RESOURCE OWNERSHIP GOVERNANCE)**:
    - Thao tác xem số dư (`/api/v1/wallets/me`), giao dịch, nạp/rút tiền bắt buộc đọc `currentUserId` từ `HttpContext.GetUserId()`. Người dùng chỉ được thao tác trên ví của chính mình.
    - Thao tác phê duyệt hoặc từ chối yêu cầu rút tiền bắt buộc kiểm tra quyền `admin` hoặc `staff`.

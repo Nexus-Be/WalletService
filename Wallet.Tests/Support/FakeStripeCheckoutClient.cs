@@ -18,4 +18,7 @@ public sealed class FakeStripeCheckoutClient : IStripeCheckoutClient
 
     public Task<StripePaymentIntentSnapshot> GetPaymentIntentAsync(string id, CancellationToken token) =>
         throw new NotSupportedException();
+
+    public Task<StripeSessionSnapshot> ExpireSessionAsync(string id, CancellationToken token) =>
+        Task.FromResult(new StripeSessionSnapshot(id, "expired", "unpaid", 100000, null, null, null, false));
 }

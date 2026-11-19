@@ -83,19 +83,20 @@ internal sealed class RefundOrderPaymentCommandHandler
         OrderEscrow? escrow = null;
         if (payment is not null)
         {
-            if (request.Amount > payment.Amount)
-            {
-                throw new BusinessRuleValidationException(
-                "REFUND_EXCEEDS_PAYMENT",
-                "Refund amount exceeds the original payment.",
-                409);
-            }
-
             var escrowState = await OrderEscrowAccounting.LoadOrReconcileAsync(
                 _context,
                 request.OrderId,
                 cancellationToken);
             escrow = escrowState.Escrow;
+
+            if (request.Amount > (escrow?.OriginalAmount ?? payment.Amount))
+            {
+                throw new BusinessRuleValidationException(
+                    "REFUND_EXCEEDS_PAYMENT",
+                    "Refund amount exceeds the original payment.",
+                    409);
+            }
+
             if (escrow is null)
             {
                 if (escrowState.HasResolvedOperation)

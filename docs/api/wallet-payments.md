@@ -21,7 +21,7 @@ funding-backed settlement/refund contract.
 
 ## Important deployment note
 
-The API host currently does not configure JWT authentication. Controllers resolve user identity from claims or the forwarded `x-user-id` header, and admin roles from claims or `x-user-roles`. The internal-service authentication middleware is disabled. Do not expose these routes directly to untrusted clients: the trusted gateway must authenticate requests, overwrite forwarded identity headers, and protect the service network.
+The API host currently does not configure JWT authentication. `UserContextMiddleware` and controller extensions resolve user identity from claims or the forwarded `x-user-id` header, and admin/staff/seller roles from claims or `x-user-roles`. While legacy `InternalServiceAuthMiddleware` remains disabled, all `~/api/v1/internal/wallets/...` routes and the four legacy Commerce order routes (`orders/{id}/payment`, `sub-orders/{id}/settle`, `orders/{id}/refund`, `sub-orders/{id}/refund`) require `[RequireInternalServiceKey]` (`X-Internal-Service-Key`), and Auction hold routes require `[RequireAuctionServiceKey]`. Do not expose WalletService directly to untrusted clients: the trusted gateway must authenticate requests, overwrite forwarded identity headers, block `/api/v1/internal/*` from public ingress, and protect port `8008`. See also [Cross-service handover](../integrations/handover-response.md).
 
 For authenticated user routes, include:
 
@@ -29,7 +29,7 @@ For authenticated user routes, include:
 x-user-id: 11111111-1111-1111-1111-111111111111
 ```
 
-Admin routes also require an authorized `x-user-roles` value (`admin` or `staff`). The API accepts forwarded headers; these examples do not imply that the service validates the caller's bearer token itself. Stripe webhooks are anonymous and require a verified signature.
+Admin routes require an authorized `x-user-roles` value (`admin` or `staff`, with high-privilege actions restricted to `admin` only as noted below). The API trusts forwarded headers; these examples do not imply that the service validates the caller's bearer token itself. Stripe webhooks are anonymous and require a verified `Stripe-Signature`.
 
 ## Route summary
 
@@ -37,31 +37,66 @@ Admin routes also require an authorized `x-user-roles` value (`admin` or `staff`
 |---|---|---|---|
 | `GET` | `/api/v1/wallets/me` | User identity required | Current wallet; creates a default wallet if absent |
 | `POST` | `/api/v1/wallets/topups/stripe` | User identity required | Creates pending Stripe top-up (`201`) |
-| `GET` | `/api/v1/wallets/topups` | Top-up owner | Paginated top-up history |
+| `GET` | `/api/v1/wallets/topups` | Top-up owner | Paginated top-up history (optional `status`) |
 | `GET` | `/api/v1/wallets/topups/{id}` | Top-up owner | Reads top-up status (`200`) |
 | `POST` | `/api/v1/wallets/topups/{id}/resume` | Top-up owner | Resumes the existing open unpaid Stripe session |
-| `POST` | `/api/v1/wallets/holds` | Auction service key | Reserves available wallet balance |
+| `POST` | `/api/v1/wallets/holds` | Auction service key | Reserves available wallet balance (`201`/`200`) |
 | `POST` | `/api/v1/wallets/holds/{holdId}/release` | Auction service key | Releases a hold |
-| `POST` | `/api/v1/wallets/holds/{holdId}/capture` | Auction service key | Captures a hold to recipients or deposit escrow |
+| `POST` | `/api/v1/wallets/holds/{holdId}/capture` | Auction service key (`AuctionOrderCapture` gate) | Captures a hold to recipients or deposit escrow |
 | `POST` | `/api/v1/wallets/holds/{holdId}/refund-captured` | Auction service key | Refunds a captured order deposit |
 | `GET` | `/api/v1/wallets/holds/{holdId}` | Auction service key | Reads a hold by ID |
 | `GET` | `/api/v1/wallets/holds/by-reference/{referenceType}/{referenceId}` | Auction service key | Reads a hold by reference |
-| `GET` | `/api/v1/wallets/me/holds` | User identity required | Paginated owned holds |
-| `POST` | `/api/v1/wallets/transfers` | User identity required | Transfers between wallets (`200`) |
+| `GET` | `/api/v1/wallets/me/holds` | User identity required | Paginated owned holds (optional `status`) |
+| `POST` | `/api/v1/wallets/transfers` | User identity required | Transfers between wallets (`200`; `WALLET_FROZEN` guarded) |
 | `GET` | `/api/v1/wallets/transactions` | User identity required | Paginated transaction history (`200`) |
-| `POST` | `/api/v1/wallets/withdrawals` | Seller role and user identity required; shared filter also permits admin/staff | Creates a pending withdrawal request and reserves available funds (`201`) |
+| `GET` | `/api/v1/wallets/transactions/{id}` | Transaction owner | Single wallet transaction details (`200`) |
+| `POST` | `/api/v1/wallets/withdrawals` | `seller` (`admin`/`staff` also permitted by `[RequireRole]`); `Withdrawals` gate | Idempotent (`Idempotency-Key`) pending withdrawal reservation (`201` create / `200` replay) |
+| `GET` | `/api/v1/wallets/withdrawals` | `seller` (and `admin`/`staff`) | Paginated owned withdrawal requests (optional `status`) |
+| `GET` | `/api/v1/wallets/withdrawals/{id}` | `seller` (and `admin`/`staff`) | Owned withdrawal request detail (`200`) |
+| `POST` | `/api/v1/wallets/withdrawals/{id}/cancel` | `seller` (and `admin`/`staff`) | Cancels an owned `Pending` withdrawal and releases funds (`200`) |
+| `GET` | `/api/v1/wallets/bank-accounts` | `seller` (and `admin`/`staff`) | Lists owned saved bank accounts (`200`) |
+| `POST` | `/api/v1/wallets/bank-accounts` | `seller` (and `admin`/`staff`) | Creates a saved bank account (`201`) |
+| `PATCH` | `/api/v1/wallets/bank-accounts/{id}/default` | `seller` (and `admin`/`staff`) | Marks a saved bank account as default (`200`) |
+| `DELETE` | `/api/v1/wallets/bank-accounts/{id}` | `seller` (and `admin`/`staff`) | Soft-deletes a saved bank account (`204`) |
 | `POST` | `/api/v1/wallets/stripe/webhooks` | Anonymous, signature required | Processes Stripe webhooks (`200` when acknowledged) |
 | `POST` | `/api/v1/wallets/checkout/direct` | User identity required | Starts direct checkout through Stripe (`200`) |
-| `GET` | `/api/v1/wallets/checkout/direct/{orderId}` | Order owner or privileged role | Reads direct payment status |
-| `POST` | `/api/v1/wallets/orders/{orderId}/payment` | Authenticated buyer; called by Commerce | Debits the buyer's Wallet and records order-payment escrow (`200`) |
-| `POST` | `/api/v1/wallets/sub-orders/{subOrderId}/settle` | Existing Commerce caller; `LegacyCommerceCredits` gate | Credits the seller from matching wallet-payment escrow when the ID matches (`200`) |
-| `POST` | `/api/v1/wallets/orders/{orderId}/refund` | Existing Commerce caller; `LegacyCommerceCredits` gate | Refunds only remaining wallet-payment escrow (`200`) |
-| `POST` | `/api/v1/wallets/sub-orders/{subOrderId}/refund` | Existing legacy child caller; `LegacyCommerceCredits` gate | Preserves legacy child-refund behavior (`200`) |
-| `PATCH` | `/api/v1/admin/wallets/withdrawals/{id}` | `admin` or `staff` | Processes an existing pending withdrawal |
-| `POST` | `/api/v1/admin/wallets/{userId}/adjustments` | `admin` or `staff` | Adjusts wallet balance by owner user ID |
+| `POST` | `/api/v1/wallets/checkout/direct/{orderId}/resume` | Order owner | Resumes existing open Stripe Checkout session (`200`) |
+| `POST` | `/api/v1/wallets/checkout/direct/{orderId}/cancel` | Order owner | Cancels an unpaid pending Stripe Checkout session (`200`) |
+| `GET` | `/api/v1/wallets/checkout/direct/{orderId}` | Order owner or `admin`/`staff` | Reads direct payment status |
+| `POST` | `/api/v1/wallets/orders/{orderId}/payment` | `X-Internal-Service-Key` + forwarded buyer identity (`IgnoreApi = true`) | Legacy route: debits buyer `AvailableBalance` (`WALLET_FROZEN` guarded) and records escrow (`200`) |
+| `POST` | `/api/v1/wallets/sub-orders/{subOrderId}/settle` | `X-Internal-Service-Key` + `LegacyCommerceCredits` gate (`IgnoreApi = true`) | Legacy route: credits seller from matching wallet-payment escrow (`200`) |
+| `POST` | `/api/v1/wallets/orders/{orderId}/refund` | `X-Internal-Service-Key` + `LegacyCommerceCredits` gate (`IgnoreApi = true`) | Legacy route: refunds remaining wallet-payment escrow (`200`) |
+| `POST` | `/api/v1/wallets/sub-orders/{subOrderId}/refund` | `X-Internal-Service-Key` + `LegacyCommerceCredits` gate (`IgnoreApi = true`) | Legacy route: child refund without original `PurchaseDebit` lookup (`200`) |
+| `GET` | `/api/v1/admin/wallets` | `admin` or `staff` | Paginated wallet list (`status`, `userId`, `search`) |
+| `GET` | `/api/v1/admin/wallets/{userId}` | `admin` or `staff` | Inspects a user's wallet (`200`) |
+| `POST` | `/api/v1/admin/wallets/{userId}/freeze` | `admin` or `staff` | Freezes a user's wallet (`200`) |
+| `POST` | `/api/v1/admin/wallets/{userId}/unfreeze` | `admin` or `staff` | Unfreezes a user's wallet (`200`) |
+| `GET` | `/api/v1/admin/wallets/withdrawals` | `admin` or `staff` | Paginated withdrawal queue (optional `status`) |
+| `GET` | `/api/v1/admin/wallets/withdrawals/{id}/history` | `admin` or `staff` | Audit history of a withdrawal request (`200`) |
+| `PATCH` | `/api/v1/admin/wallets/withdrawals/{id}` | `admin` or `staff` (`ResolveFailed` requires `admin` only) | Processes withdrawal workflow transitions |
+| `POST` | `/api/v1/admin/wallets/{userId}/adjustments` | `admin` only (`403` for `staff`) | Manually adjusts wallet balance (`200`) |
 | `GET` | `/api/v1/admin/wallets/ledger` | `admin` only | Reads a paginated, filtered transaction report |
 | `GET` | `/api/v1/admin/wallets/reconciliation` | `admin` only | Compares wallet balances with latest successful transaction snapshots |
-| `GET` | `/health` | Anonymous | Service health response |
+| `GET` | `/api/v1/admin/wallets/holds` | `admin` or `staff` | Paginated auction holds across wallets |
+| `GET` | `/api/v1/admin/wallets/{userId}/holds` | `admin` or `staff` | Paginated auction holds for a user wallet |
+| `GET` | `/api/v1/admin/wallets/stripe/reconciliation-required` | `admin` only | Lists Stripe payment attempts requiring manual reconciliation |
+| `POST` | `/api/v1/admin/wallets/stripe/attempts/{attemptId}/resolve` | `admin` only | Manually resolves a `ReconciliationRequired` Stripe attempt to `Failed` or `Expired` |
+| `POST` | `/api/v1/admin/wallets/stripe/reconcile-pending` | `admin` only | Triggers manual reconciliation of pending Stripe top-ups and direct payments |
+| `GET` | `/health` | Anonymous | Unconditional liveness response (does not check database readiness) |
+
+### Internal S2S routes (`~/api/v1/internal/wallets/*`, `IgnoreApi = true`)
+
+Hosted on `WalletsController` and excluded from Swagger and public gateway ingress (all require `X-Internal-Service-Key` via `[RequireInternalServiceKey]`, or `[RequireAuctionServiceKey]` for `holds/*`):
+
+- `GET ~/api/v1/internal/wallets/{userId}` — internal wallet balance/available/freeze lookup.
+- `POST ~/api/v1/internal/wallets/freeze-purchase` and `POST ~/api/v1/internal/wallets/unfreeze-purchase` — purchase-dispute wallet freeze/unfreeze.
+- `POST ~/api/v1/internal/wallets/orders/{orderId}/payment` — internal buyer wallet debit (`BuyerId`, `Amount` in body; does not rely on `x-user-id` header).
+- `POST ~/api/v1/internal/wallets/orders/{orderId}/adjust-payment` — idempotent (`Idempotency-Key`) post-order delta debit or refund against escrow.
+- `POST ~/api/v1/internal/wallets/checkout/direct/{orderId}/expire` — expires unpaid direct Stripe order payment on Commerce order expiry.
+- `POST ~/api/v1/internal/wallets/sub-orders/{subOrderId}/settle`, `orders/{orderId}/refund`, `sub-orders/{subOrderId}/refund` (`ReleaseFeature.LegacyCommerceCredits` gated).
+- `~/api/v1/internal/wallets/holds/*` — internal mirror routes for Auction `CreateHold`, `ReleaseHold`, `CaptureHold`, `RefundCapturedHold`, `GetHold`, and `GetHoldByReference`.
+
+Full payload and header details for Commerce, Auction, and Notification integrations are in [Cross-service handover](../integrations/handover-response.md).
 
 ## Order payment escrow
 
@@ -109,7 +144,7 @@ If the user does not yet have a wallet, the service creates a VND wallet with ze
   "lockedBalance": 0,
   "heldBalance": 0,
   "currency": "Vnd",
-  "status": "ACTIVE",
+  "status": "Active",
   "updatedAt": "2026-11-02T10:00:00+00:00"
 }
 ```
@@ -217,6 +252,8 @@ All query parameters are optional. `page` defaults to `1`; `pageSize` defaults t
 ```http
 POST /api/v1/wallets/withdrawals
 x-user-id: 11111111-1111-1111-1111-111111111111
+x-user-roles: seller
+Idempotency-Key: withdraw-2026-11-19-001
 Content-Type: application/json
 
 {
@@ -228,9 +265,9 @@ Content-Type: application/json
 }
 ```
 
-`amount` must be between VND 50,000 and VND 500,000,000 and fit the persisted `decimal(18,2)` precision. `currency` defaults to `VND` and no other currency is accepted. `bankCode`, `accountNumber`, and `accountHolderName` are required, with maximum lengths of 150, 100, and 255 characters respectively. The request reserves the amount from the wallet's available balance; it does not debit the wallet balance or initiate a bank payout. The current fee is `0`.
+`amount` must be between VND 50,000 and VND 500,000,000 and fit the persisted `decimal(18,2)` precision. `currency` defaults to `VND` and no other currency is accepted. The `Idempotency-Key` header is required (`1` to `100` ASCII letters, digits, hyphens, or underscores). Callers may provide an owned `bankAccountId`, omit both `bankAccountId` and manual bank fields to fall back to their default saved bank account, or pass all three manual fields (`bankCode`, `accountNumber`, `accountHolderName`, max lengths 150, 100, and 255). The request reserves the amount from the wallet's available balance; it does not debit the wallet balance or initiate a bank payout. The current fee is `0`.
 
-**`201 Created`**
+**`201 Created`** (new request; an identical `Idempotency-Key` replay with matching fingerprint returns **`200 OK`**)
 
 ```json
 {
@@ -242,11 +279,9 @@ Content-Type: application/json
 }
 ```
 
-The route requires the `seller` role; the shared role filter also permits `admin` and `staff`. This service does not independently verify seller verification status. A bank payout, payout failure/retry handling, and reconciliation are not implemented.
+The route requires the `seller` role; the shared role filter also permits `admin` and `staff`. This service does not independently verify seller verification status or execute external bank transfers. Owners can list/read their withdrawals (`GET /api/v1/wallets/withdrawals`, `GET /api/v1/wallets/withdrawals/{id}`) and cancel `Pending` requests (`POST /api/v1/wallets/withdrawals/{id}/cancel`), or manage saved bank accounts under `/api/v1/wallets/bank-accounts`.
 
-The route returns `400 INSUFFICIENT_BALANCE` when available funds are insufficient, `400 VAL_INVALID_INPUT` for invalid request fields, `401 UNAUTHORIZED` when user identity is missing, `403 FORBIDDEN` when the caller lacks an allowed role, and `404 WALLET_NOT_FOUND` when the user has no wallet.
-
-The route has no idempotency key. A repeated request can create another pending withdrawal and reserve additional funds; clients should not blindly retry when the result is unknown.
+The route returns `400 INSUFFICIENT_BALANCE` when available funds are insufficient, `400 VAL_INVALID_INPUT` for invalid request fields or missing `Idempotency-Key`, `401 UNAUTHORIZED` when user identity is missing, `403 FORBIDDEN` when the caller lacks an allowed role, `403 WALLET_FROZEN` when the wallet is frozen, `404 WALLET_NOT_FOUND` (or missing bank account), and `409` when `Idempotency-Key` is reused with a mismatched request payload.
 
 ## Stripe webhook and direct checkout
 
@@ -294,13 +329,22 @@ x-user-roles: admin
 Content-Type: application/json
 
 {
-  "action": "Approve",
-  "adminNote": "Reviewed",
-  "referenceCode": "BANK-TRANSFER-2026-001"
+  "action": "Complete",
+  "adminNote": "Verified manual bank transfer",
+  "transferConfirmed": true,
+  "transferReference": "BANK-TRANSFER-2026-001"
 }
 ```
 
-`action` must be `Approve` or `Reject`. For `Approve`, `referenceCode` is required, non-blank, and limited to 100 characters; it records the manual bank transfer reference in `WithdrawalRequest.GatewayReferenceId` and the audit record. It is optional for `Reject`, which releases the locked funds without storing a reference. Approval debits the previously locked funds and returns the reference in the response. This records that the staff-confirmed transfer has already occurred; it does not initiate a bank payout. The withdrawal transaction note masks the bank account number.
+`action` supports the 6-step withdrawal workflow: `Approve`, `Reject`, `StartProcessing`, `Complete`, `Fail`, and `ResolveFailed` (`ResolveFailed` requires `admin` only and returns `403` for `staff`).
+- `Approve` (`Pending -> Approved`): consumes locked funds, records `WithdrawalDebit`, and optionally saves a unique `transferReference`.
+- `Reject` (`Pending -> Rejected`): releases locked funds back to available balance.
+- `StartProcessing` (`Approved -> Processing`): marks an approved withdrawal as processing while external bank transfer handling occurs.
+- `Complete` (`Approved` or `Processing -> Completed`): requires `transferConfirmed: true` and a unique non-blank `transferReference` (max 100 characters) confirming the external bank transfer; does not initiate an automated bank payout.
+- `Fail` (`Approved -> Failed`): requires `adminNote` (3–500 characters) and credits a `WithdrawalReversal` back to `wallet.Balance`.
+- `ResolveFailed` (`Processing -> Failed`): requires `admin` role (`403` for `staff`), `bankVerifiedNotTransferred: true`, `verificationEvidence` (3–500 characters), and `adminNote` (3–500 characters) to reverse a stuck processing withdrawal (`WithdrawalReversal`) after verifying funds were not sent externally.
+
+State transitions dispatch best-effort post-commit `withdrawal-events` REST notifications via `INotificationClient`; dispatch failures are logged in audit logs (`NotificationDispatchFailed`) without rolling back the withdrawal transition. Withdrawal transaction notes mask bank account numbers.
 
 ### Read the administrator ledger
 
@@ -358,6 +402,6 @@ Validation and business-rule errors use `application/problem+json`. Invalid requ
 }
 ```
 
-Common status codes are `400` for invalid input or business rules, `401` when user identity is missing, `403` for missing admin/staff role, and `404` for missing wallets/resources. Exact business error codes and details depend on the failing operation.
+Common status codes are `400` for invalid input or business rules, `401` when user identity or `X-Internal-Service-Key` is missing/invalid, `403` for missing `admin`/`staff` role (`admin`-only on balance adjustments, `ResolveFailed`, ledger, reconciliation, and Stripe resolution) or `WALLET_FROZEN`, and `404` for missing wallets/resources. Exact business error codes and details depend on the failing operation.
 
-The service applies EF Core migrations at startup. Review database state and backups before connecting it to a shared database. Stripe test credentials and HTTPS return URLs must be configured; gateway and real Stripe integration remain to be verified.
+The service attempts EF Core migrations at startup (`Program.cs`) and logs warnings rather than failing startup. Review database state, test migration `20261119020448_HandoverWalletHardening`, and create backups before connecting it to a shared database. `StripeSettings.EnsureValid` checks test-mode Stripe credentials and HTTPS return URLs (`localhost:3000` allowed in Development) at startup; gateway, live-mode Stripe, NotificationService, Commerce, and Auction staging acceptance remain to be verified. See [Cross-service handover](../integrations/handover-response.md) and [Production readiness](../operations/production-readiness.md).

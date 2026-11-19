@@ -1,9 +1,9 @@
 # 01 — PHÂN TẦNG CLEAN ARCHITECTURE (WALLET SERVICE)
 
-> **Trạng thái triển khai (2026-10-31):** ✅ ĐÃ CHUẨN HÓA — 4 tầng Clean Architecture, **classic CQRS qua MediatR** (`Wallet.Application/Features/{Area}/Commands|Queries/{UseCase}/`). Wallet là service duy nhất được dùng MediatR trong toàn hệ thống. Giao tiếp đồng bộ 100% RESTful qua `WalletsController`, `AdminWalletsController`.
+> **Trạng thái triển khai (2026-11-19):** ✅ ĐÃ CHUẨN HÓA — 4 tầng Clean Architecture, **classic CQRS qua MediatR** (`Wallet.Application/Features/{Area}/Commands|Queries/{UseCase}/`, 46 handlers: 28 Command, 18 Query). Wallet là service duy nhất được dùng MediatR trong toàn hệ thống. Giao tiếp đồng bộ 100% RESTful qua `WalletsController`, `AdminWalletsController` (các route `~/api/v1/internal/wallets/...` nằm trên `WalletsController` và yêu cầu `[RequireInternalServiceKey]` / `[RequireAuctionServiceKey]`).
 > **ĐÓNG BĂNG:** chạy `./scripts/verify-wallet-architecture.sh` trước khi sửa. Cấm tạo `Services/{Feature}/`, cấm tách controller theo tài nguyên, cấm gỡ MediatR.
 > **Nguồn sự thật:** code (`Wallet.sln`, `Wallet.Api/Controllers/Public/WalletsController.cs`, `Wallet.Application/Features/Wallets/Queries/GetMyWallet/GetMyWalletQueryHandler.cs`).
-> **Cập nhật lần cuối:** 2026-10-31.
+> **Cập nhật lần cuối:** 2026-11-19.
 
 ---
 
@@ -50,7 +50,11 @@
 | `IX_WalletTransactions_WalletId` | `WalletTransactions` | ❌ | `WalletTransactionConfiguration.cs` |
 | `IX_WalletTopups_WalletId` | `WalletTopups` | ❌ | `WalletTopupConfiguration.cs` |
 | `IX_WalletTopups_VnpTxnRef` | `WalletTopups` | ✅ | `WalletTopupConfiguration.cs` |
-| `IX_WithdrawalRequests_WalletId` | `WithdrawalRequests` | ❌ | `WithdrawalRequestConfiguration.cs` |
+| `IX_WithdrawalRequests_WalletId_ClientIdempotencyKey` | `WithdrawalRequests` | ✅ | `WithdrawalRequestConfiguration.cs` (filtered) |
+| `IX_WithdrawalRequests_GatewayReferenceId` | `WithdrawalRequests` | ✅ | `WithdrawalRequestConfiguration.cs` (filtered) |
+| `IX_WithdrawalRequests_Status_CreatedAt` | `WithdrawalRequests` | ❌ | `WithdrawalRequestConfiguration.cs` |
+| `IX_BankAccounts_UserId_Default` | `BankAccounts` | ✅ | `BankAccountConfiguration.cs` (filtered) |
+| `IX_WalletTransactions_ReferenceId_ClientIdempotencyKey` | `WalletTransactions` | ✅ | `WalletTransactionConfiguration.cs` (filtered) |
 | `IX_DirectPaymentOrders_OrderId` | `DirectPaymentOrders` | ✅ | `DirectPaymentOrderConfiguration.cs` |
 | `IX_AuctionHolds_ReferenceType_ReferenceId` | `AuctionHolds` | ✅ | `AuctionHoldConfiguration.cs` |
 | `IX_AuctionHoldOperations_IdempotencyKey` | `AuctionHoldOperations` | ✅ | `AuctionHoldOperationConfiguration.cs` |

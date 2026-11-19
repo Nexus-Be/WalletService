@@ -78,6 +78,18 @@ public class WalletAccount : AuditableEntity<Guid>
         UpdatedAt = DateTimeOffset.UtcNow;
     }
 
+    public void Freeze()
+    {
+        Status = "FROZEN";
+        UpdatedAt = DateTimeOffset.UtcNow;
+    }
+
+    public void Unfreeze()
+    {
+        Status = "ACTIVE";
+        UpdatedAt = DateTimeOffset.UtcNow;
+    }
+
     private void EnsureAvailableBalance(decimal amount)
     {
         if (AvailableBalance < amount)

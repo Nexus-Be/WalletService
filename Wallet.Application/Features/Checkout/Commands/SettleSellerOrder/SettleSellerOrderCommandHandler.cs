@@ -31,8 +31,7 @@ internal sealed class SettleSellerOrderCommandHandler
 
         await using var dbTransaction = await _context.Database.BeginTransactionAsync(cancellationToken);
         await _context.LockOrderPaymentAsync(request.SubOrderId, cancellationToken);
-        var wallet = await _context.LockWalletByUserIdAsync(sellerId, cancellationToken)
-                     ?? throw new WalletNotFoundException(request.SellerId);
+        var wallet = await _context.LockOrEnsureWalletByUserIdAsync(sellerId, cancellationToken);
 
         var existing = await _context.WalletTransactions
             .FirstOrDefaultAsync(

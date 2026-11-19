@@ -25,4 +25,7 @@ public interface IStripeCheckoutClient
     Task<StripeSessionSnapshot> GetSessionAsync(string sessionId, CancellationToken cancellationToken);
 
     Task<StripePaymentIntentSnapshot> GetPaymentIntentAsync(string paymentIntentId, CancellationToken cancellationToken);
+
+    Task<StripeSessionSnapshot> ExpireSessionAsync(string sessionId, CancellationToken cancellationToken) =>
+        throw new NotSupportedException();
 }

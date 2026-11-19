@@ -1,6 +1,6 @@
 # 04 — WalletService data persistence
 
-Updated: 2026-11-17. The source of truth is
+Updated: 2026-11-19. The source of truth is
 `Wallet.Infrastructure/Persistence/WalletDbContext.cs`, entity configurations
 and migrations under `Wallet.Infrastructure/Persistence/Migrations/`.
 PostgreSQL uses quoted PascalCase table names, such as `"Wallets"`; these
@@ -17,14 +17,14 @@ rename legacy tables without reviewing and backing up their data.
 | `DirectPaymentOrder` / `DirectPaymentOrders` | Direct checkout identity and payment state; unique `OrderId`. |
 | `StripePaymentAttempt` / `StripePaymentAttempts` | Provider session, request identity and settlement state. |
 | `StripeWebhookEvent` / `StripeWebhookEvents` | Durable provider event and processing records. |
-| `WithdrawalRequest` / `WithdrawalRequests` | Withdrawal reservation and admin processing; no automatic bank payout. |
+| `WithdrawalRequest` / `WithdrawalRequests` | Withdrawal reservation, 6-step workflow (`Pending`, `Approved`, `Processing`, `Completed`, `Rejected`, `Failed`, `Cancelled`), idempotency key/fingerprint, and optional `BankAccountId`; no automatic bank payout. |
 | `AuctionHold` / `AuctionHolds` | Owner, reference, amount, metadata and deposit state. |
 | `AuctionHoldOperation` / `AuctionHoldOperations` | Idempotency key, fingerprint and original mutation response. |
 | `AuctionHoldCapture` / `AuctionHoldCaptures` | One capture purpose and optional order per hold. |
 | `AuctionCaptureTransfer` / `AuctionCaptureTransfers` | Captured seller, platform and deposit-escrow allocations. |
 | `AuctionDepositEscrow` / `AuctionDepositEscrows` | Deposit amount and remaining balance per hold and order. |
-| `AuditLog` / `AuditLogs` | Audit entries for sensitive operations. |
-| `BankAccount` / `BankAccounts` | Entity and persistence mapping; no linked-account API. |
+| `AuditLog` / `AuditLogs` | Audit entries for sensitive operations (including `NotificationDispatchFailed` payloads). |
+| `BankAccount` / `BankAccounts` | Seller saved bank accounts with filtered unique `IsDefault = TRUE` index per user. |
 | `VnpayIpnLog` / `VnpayIpnLogs` | Historical VNPay IPN data; VNPay payment endpoints are inactive. |
 
 Use the configurations and migrations for exact column names, indexes,
@@ -34,8 +34,8 @@ auction deposits and Stripe payments require whole VND.
 
 ## Balance and hold invariants
 
-- `0 <= LockedBalance <= Balance` is enforced by
-  `CK_Wallets_LockedBalance`. Locked balance includes withdrawal reservations
+- `0 <= LockedBalance <= Balance` and `Balance >= 0` are enforced by
+  `CK_Wallets_LockedBalance` and `CK_Wallets_BalanceLocks`. Locked balance includes withdrawal reservations
   and auction holds; available balance is the difference.
 - Holds have a globally unique `(ReferenceType, ReferenceId)`, positive
   whole-VND amount and immutable identity. Hold states are `Held`, `Captured`,

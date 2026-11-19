@@ -25,7 +25,10 @@ services:
       Stripe__WebhookSecret: "${STRIPE_WEBHOOK_SECRET:-}"
       Stripe__SuccessUrl: "${STRIPE_SUCCESS_URL:-}"
       Stripe__CancelUrl: "${STRIPE_CANCEL_URL:-}"
+      InternalSecurity__ServiceKey: "${INTERNAL_SERVICE_SECRET:?INTERNAL_SERVICE_SECRET must be set}"
       InternalSecurity__AuctionServiceKey: "${INTERNAL_SERVICE_SECRET:?INTERNAL_SERVICE_SECRET must be set}"
+      NOTIFICATION_SERVICE_URL: "${NOTIFICATION_SERVICE_URL:-http://notification-service:8007}"
+      Services__Notification__ServiceKey: "${NOTIFICATION_SERVICE_KEY:-}"
       OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-http://tempo:4317}"
     restart: unless-stopped
 

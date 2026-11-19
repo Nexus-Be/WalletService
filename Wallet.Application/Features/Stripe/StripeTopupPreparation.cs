@@ -63,8 +63,7 @@ internal static class StripeTopupPreparation
     {
         context.EnsureNoPendingChanges();
         await using var transaction = await context.Database.BeginTransactionAsync(token);
-        var wallet = await context.LockWalletByUserIdAsync(ownerId, token)
-            ?? throw new WalletNotFoundException(ownerId.ToString());
+        var wallet = await context.LockOrEnsureWalletByUserIdAsync(ownerId, token);
         await context.ReloadUnmodifiedAsync(wallet, token);
         if (wallet.UserId != ownerId || wallet.Currency != CurrencyCode.Vnd)
             throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Topup requires a VND wallet.");

@@ -122,6 +122,20 @@ public sealed class StripeTopupPreparationTests
         Assert.Equal(valid ? 1 : 0, context.StripePaymentAttempts.Count());
     }
 
+    [Fact]
+    public async Task Topup_MissingWallet_AutoCreatesWalletAndPreparesSession()
+    {
+        using var context = new TestWalletDbContext(Guid.NewGuid().ToString());
+        var ownerId = Guid.NewGuid();
+        var provider = new Provider(context);
+
+        var result = await StripeTopupPreparation.CreateAsync(context, provider, ownerId, 100000, "auto-create-1", default);
+
+        Assert.Equal("https://checkout.stripe.com/test", result.PaymentUrl);
+        Assert.Single(context.Wallets.Where(w => w.UserId == ownerId && w.Status == "ACTIVE"));
+        Assert.Equal(1, provider.Calls);
+    }
+
     private static async Task<WalletAccount> AddWallet(TestWalletDbContext context)
     {
         var wallet = new WalletAccount { Id = Guid.NewGuid(), UserId = Guid.NewGuid(), Currency = CurrencyCode.Vnd };

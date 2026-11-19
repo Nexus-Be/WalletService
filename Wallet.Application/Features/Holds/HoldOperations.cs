@@ -34,6 +34,28 @@ internal static class HoldOperations
             RequestFingerprint = fingerprint, ResponseJson = JsonSerializer.Serialize(response), HttpStatus = status
         });
 
+    internal static string? ExtractAuctionId(string? metadataJson)
+    {
+        if (string.IsNullOrWhiteSpace(metadataJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var metadata = JsonDocument.Parse(metadataJson);
+            return metadata.RootElement.ValueKind == JsonValueKind.Object &&
+                   metadata.RootElement.TryGetProperty("auctionId", out var value) &&
+                   value.ValueKind == JsonValueKind.String
+                ? value.GetString()
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     internal static string NormalizeMetadata(JsonElement? metadata)
     {
         if (metadata is null || metadata.Value.ValueKind == JsonValueKind.Null) return "{}";

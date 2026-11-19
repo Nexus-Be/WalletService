@@ -21,5 +21,17 @@ public enum AuditAction
     OrderPayment = 16,
     OrderSettlement = 17,
     OrderRefund = 18,
-    OrderEscrowReconciliation = 19
+    OrderEscrowReconciliation = 19,
+    WithdrawalStartProcessing = 20,
+    WithdrawalFail = 21,
+    WithdrawalResolveFailed = 22,
+    WalletFrozen = 23,
+    WalletUnfrozen = 24,
+    WithdrawalCancel = 25,
+    BankAccountChange = 26,
+    StripeAttemptResolve = 27,
+    DirectPaymentCancel = 28,
+    DirectPaymentExpire = 29,
+    OrderPaymentAdjustment = 30,
+    NotificationDispatchFailed = 31
 }

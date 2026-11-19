@@ -72,8 +72,7 @@ internal static class StripeDirectPreparation
                 ?? throw new InvalidOperationException("Stripe direct payment order was not found.");
             await context.ReloadUnmodifiedAsync(order, token);
         }
-        var wallet = await context.LockWalletByUserIdAsync(ownerId, token)
-            ?? throw new WalletNotFoundException(ownerId.ToString());
+        var wallet = await context.LockOrEnsureWalletByUserIdAsync(ownerId, token);
         await context.ReloadUnmodifiedAsync(wallet, token);
         if (wallet.UserId != ownerId || wallet.Currency != CurrencyCode.Vnd)
             throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Direct payment requires a VND wallet.");

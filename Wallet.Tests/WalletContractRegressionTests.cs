@@ -73,7 +73,7 @@ public class WalletContractRegressionTests
     }
 
     [Fact]
-    public void OrderRoutes_KeepTheirExistingMethodsAndPaths()
+    public void OrderRoutes_KeepTheirExistingMethodsAndPathsAndRequireServiceKey()
     {
         var controllerType = typeof(WalletsController);
         Assert.Equal("api/v1/wallets", controllerType.GetCustomAttribute<RouteAttribute>()?.Template);
@@ -93,6 +93,15 @@ public class WalletContractRegressionTests
             "sub-orders/{subOrderId:guid}/refund",
             controllerType.GetMethod(nameof(WalletsController.RefundSubOrder))?
                 .GetCustomAttribute<HttpPostAttribute>()?.Template);
+
+        Assert.NotNull(controllerType.GetMethod(nameof(WalletsController.PayOrder))!
+            .GetCustomAttribute<RequireInternalServiceKeyAttribute>());
+        Assert.NotNull(controllerType.GetMethod(nameof(WalletsController.SettleSellerOrder))!
+            .GetCustomAttribute<RequireInternalServiceKeyAttribute>());
+        Assert.NotNull(controllerType.GetMethod(nameof(WalletsController.RefundOrder))!
+            .GetCustomAttribute<RequireInternalServiceKeyAttribute>());
+        Assert.NotNull(controllerType.GetMethod(nameof(WalletsController.RefundSubOrder))!
+            .GetCustomAttribute<RequireInternalServiceKeyAttribute>());
     }
 
     [Theory]
@@ -129,7 +138,7 @@ public class WalletContractRegressionTests
 
         var handler = new ProcessWithdrawalCommandHandler(context);
         var result = await handler.Handle(
-            new ProcessWithdrawalCommand("approve", ReferenceCode: "BANK-TRANSFER-REF")
+            new ProcessWithdrawalCommand("approve", TransferReference: "BANK-TRANSFER-REF")
             {
                 WithdrawalId = withdrawal.Id,
                 AdminUserId = Guid.NewGuid().ToString()
@@ -206,7 +215,7 @@ public class WalletContractRegressionTests
     }
 
     [Fact]
-    public void AdminBalanceAdjustment_UsesUserIdRouteParameterAndAdminAuthorization()
+    public async Task AdminBalanceAdjustment_UsesUserIdRouteParameterAndRestrictsStaff()
     {
         var controllerType = typeof(AdminWalletsController);
         var action = controllerType.GetMethod(nameof(AdminWalletsController.AdjustBalance));
@@ -216,6 +225,13 @@ public class WalletContractRegressionTests
             "{userId:guid}/adjustments",
             action?.GetCustomAttribute<HttpPostAttribute>()?.Template);
         Assert.NotNull(controllerType.GetCustomAttribute<RequireRoleAttribute>());
+
+        var staffController = CreateReportController("staff");
+        var staffResult = await staffController.AdjustBalance(
+            Guid.NewGuid(),
+            new AdjustWalletBalanceCommand(10_000m, "Credit", "Staff attempt"),
+            default);
+        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(staffResult).StatusCode);
     }
 
     [Fact]

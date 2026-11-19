@@ -1,8 +1,8 @@
 # 00 — NHIỆM VỤ CỐT LÕI & RÀO CHẮN CHỐNG ẢO GIÁC (WALLET SERVICE)
 
-> **Trạng thái triển khai (2026-11-17):** ✅ CLASSIC CQRS — 26 use case (17 Command, 9 Query) trong `Wallet.Application/Features/`, 2 thin controller inject `ISender`. Không còn gRPC, MassTransit, consumer, Outbox/Inbox.
+> **Trạng thái triển khai (2026-11-19):** ✅ CLASSIC CQRS — 46 use case (28 Command, 18 Query) trong `Wallet.Application/Features/`, 2 thin controller inject `ISender`. Không còn gRPC, MassTransit, consumer, Outbox/Inbox.
 > **Nguồn sự thật:** code (`Wallet.Api/Controllers/Public/WalletsController.cs`, `Wallet.Application/Features/`, `Wallet.Infrastructure/Persistence/WalletDbContext.cs`).
-> **Cập nhật lần cuối:** 2026-11-17.
+> **Cập nhật lần cuối:** 2026-11-19.
 > **ĐÓNG BĂNG:** chạy `./scripts/verify-wallet-architecture.sh` trước khi sửa.
 
 ---
@@ -20,9 +20,9 @@
 | 5 | Chuyển tiền nội bộ giữa hai ví | ✅ | `Features/Transfers/Commands/Transfer/TransferCommandHandler.cs` |
 | 6 | Thanh toán trực tiếp cho đơn hàng (idempotent theo `OrderId`) | ✅ | `Features/Checkout/Commands/CheckoutDirect/CheckoutDirectCommandHandler.cs` |
 | 7 | Duyệt / từ chối yêu cầu rút tiền, điều chỉnh số dư thủ công | ✅ | `Features/AdminWallets/Commands/` |
-| 8 | Endpoint tạo yêu cầu rút tiền và khóa số dư; chưa tự động chuyển khoản | ✅ | `Wallet.Application/Features/Withdrawals/Commands/RequestWithdrawal/RequestWithdrawalCommandHandler.cs` |
-| 9 | Quản lý tài khoản ngân hàng liên kết (`BankAccount`) | ⚠️ CHỈ CÓ ENTITY | `Wallet.Domain/Entities/BankAccount.cs`; chưa có API đọc/ghi |
-| 10 | Ghi vết kiểm toán (`AuditLog`) qua `AddAuditLog(...)` | ✅ | `Wallet.Application/Common/Extensions/AuditLogExtensions.cs` |
+| 8 | Endpoint tạo/xem/hủy yêu cầu rút tiền và workflow 6 bước cho Admin/Staff | ✅ | `Wallet.Application/Features/Withdrawals/`, `Wallet.Application/Features/AdminWallets/Commands/ProcessWithdrawal/` |
+| 9 | Quản lý tài khoản ngân hàng liên kết (`BankAccount`) & mặc định khi rút tiền | ✅ | `Wallet.Domain/Entities/BankAccount.cs`, `Wallet.Application/Features/BankAccounts/` |
+| 10 | Ghi vết kiểm toán (`AuditLog`) qua `AddAuditLog(...)` & phát REST Notification (`INotificationClient`) | ✅ | `Wallet.Application/Common/Extensions/AuditLogExtensions.cs`, `Wallet.Infrastructure/Services/Notification/NotificationClient.cs` |
 | 11 | gRPC server, MassTransit consumer, Saga, Outbox/Inbox | 🛑 ĐÃ XÓA | không còn file/thư mục tương ứng |
 | 12 | Khóa, mở khóa, capture và hoàn cọc đấu giá từ ví | ✅ | `Wallet.Application/Features/Holds/`, `docs/api/holds/auction-deposits.md` |
 

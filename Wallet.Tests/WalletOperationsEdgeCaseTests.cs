@@ -305,8 +305,9 @@ public class WalletOperationsEdgeCaseTests
         WithdrawalEntity withdrawal,
         string action,
         string? note = null,
-        string? referenceCode = "BANK-TRANSFER-REF") =>
-        new(action, note, referenceCode)
+        string? transferReference = "BANK-TRANSFER-REF",
+        bool transferConfirmed = false) =>
+        new(action, note, transferConfirmed, transferReference)
         {
             WithdrawalId = withdrawal.Id,
             AdminUserId = Guid.NewGuid().ToString()
@@ -320,11 +321,11 @@ public class WalletOperationsEdgeCaseTests
         var withdrawal = AddWithdrawal(context, wallet, 100_000m);
 
         var result = await new ProcessWithdrawalCommandHandler(context)
-            .Handle(Process(withdrawal, "reject", "bad account", referenceCode: null), default);
+            .Handle(Process(withdrawal, "reject", "bad account", transferReference: null), default);
 
         Assert.Equal("Rejected", result.Status);
         Assert.Null(result.TransactionId);
-        Assert.Null(result.ReferenceCode);
+        Assert.Null(result.TransferReference);
         Assert.Null(withdrawal.GatewayReferenceId);
         Assert.Equal(500_000m, wallet.Balance);
         Assert.Equal(0m, wallet.LockedBalance);
@@ -340,12 +341,12 @@ public class WalletOperationsEdgeCaseTests
         var withdrawal = AddWithdrawal(context, wallet, 100_000m);
 
         var result = await new ProcessWithdrawalCommandHandler(context)
-            .Handle(Process(withdrawal, "approve", referenceCode: "BANK-2026-001"), default);
+            .Handle(Process(withdrawal, "approve", transferReference: "BANK-2026-001"), default);
 
         var transaction = Assert.Single(TransactionsOf(context, wallet));
         var audit = Assert.Single(context.AuditLogs.Where(a => a.Action == AuditAction.WithdrawalApprove));
         Assert.Equal("BANK-2026-001", withdrawal.GatewayReferenceId);
-        Assert.Equal("BANK-2026-001", result.ReferenceCode);
+        Assert.Equal("BANK-2026-001", result.TransferReference);
         Assert.DoesNotContain("1234567890", transaction.Note);
         Assert.Contains("******7890", transaction.Note);
         Assert.Contains("BANK-2026-001", audit.NewValues);
@@ -367,7 +368,8 @@ public class WalletOperationsEdgeCaseTests
         var exception = await Assert.ThrowsAsync<BusinessRuleValidationException>(
             () => handler.Handle(Process(withdrawal, "Approve"), default));
 
-        Assert.Equal("Withdrawal request has already been processed.", exception.Message);
+        Assert.Equal("WITHDRAWAL_INVALID_TRANSITION", exception.ErrorCode);
+        Assert.Equal(409, exception.StatusCode);
         Assert.Equal(balance, wallet.Balance);
         Assert.Equal(locked, wallet.LockedBalance);
     }
@@ -376,7 +378,7 @@ public class WalletOperationsEdgeCaseTests
     public async Task ProcessWithdrawal_UnknownRequest_ThrowsNotFound()
     {
         using var context = new TestWalletDbContext(nameof(ProcessWithdrawal_UnknownRequest_ThrowsNotFound));
-        var command = new ProcessWithdrawalCommand("Approve", ReferenceCode: "BANK-TRANSFER-REF")
+        var command = new ProcessWithdrawalCommand("Approve", TransferReference: "BANK-TRANSFER-REF")
         {
             WithdrawalId = Guid.NewGuid(),
             AdminUserId = Guid.NewGuid().ToString()

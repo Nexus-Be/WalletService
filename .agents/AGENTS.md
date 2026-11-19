@@ -42,4 +42,4 @@ numbered service-level documents.
 - `dotnet build Wallet.sln -c Release` must succeed with 0 errors.
 - `dotnet test Wallet.sln -c Release` must pass 100%.
 
-> **Frozen:** 26 handlers (17 Commands, 9 Queries), 2 controllers, MediatR wired. Never recreate `Wallet.Application/Services/{Feature}/` or per-resource controllers.
+> **Frozen:** 46 handlers (28 Commands, 18 Queries), 2 controllers (`WalletsController` also hosts `~/api/v1/internal/wallets/...` behind `[RequireInternalServiceKey]` / `[RequireAuctionServiceKey]`), MediatR wired. Never recreate `Wallet.Application/Services/{Feature}/` or per-resource controllers.

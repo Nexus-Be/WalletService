@@ -25,8 +25,7 @@ public sealed class OrderEscrowConfiguration : IEntityTypeConfiguration<OrderEsc
         foreach (var name in new[]
                  {
                      nameof(OrderEscrow.OrderId),
-                     nameof(OrderEscrow.WalletId),
-                     nameof(OrderEscrow.OriginalAmount)
+                     nameof(OrderEscrow.WalletId)
                  })
         {
             builder.Property(name).Metadata.SetAfterSaveBehavior(PropertySaveBehavior.Throw);
