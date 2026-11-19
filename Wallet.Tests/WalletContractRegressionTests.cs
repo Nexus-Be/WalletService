@@ -72,6 +72,29 @@ public class WalletContractRegressionTests
         return withdrawal;
     }
 
+    [Fact]
+    public void OrderRoutes_KeepTheirExistingMethodsAndPaths()
+    {
+        var controllerType = typeof(WalletsController);
+        Assert.Equal("api/v1/wallets", controllerType.GetCustomAttribute<RouteAttribute>()?.Template);
+        Assert.Equal(
+            "orders/{orderId:guid}/payment",
+            controllerType.GetMethod(nameof(WalletsController.PayOrder))?
+                .GetCustomAttribute<HttpPostAttribute>()?.Template);
+        Assert.Equal(
+            "sub-orders/{subOrderId:guid}/settle",
+            controllerType.GetMethod(nameof(WalletsController.SettleSellerOrder))?
+                .GetCustomAttribute<HttpPostAttribute>()?.Template);
+        Assert.Equal(
+            "orders/{orderId:guid}/refund",
+            controllerType.GetMethod(nameof(WalletsController.RefundOrder))?
+                .GetCustomAttribute<HttpPostAttribute>()?.Template);
+        Assert.Equal(
+            "sub-orders/{subOrderId:guid}/refund",
+            controllerType.GetMethod(nameof(WalletsController.RefundSubOrder))?
+                .GetCustomAttribute<HttpPostAttribute>()?.Template);
+    }
+
     [Theory]
     [InlineData("ACTIVE", "Active")]
     [InlineData("SUSPENDED", "Suspended")]

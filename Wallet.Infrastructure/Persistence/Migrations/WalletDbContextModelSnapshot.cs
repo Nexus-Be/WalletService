@@ -451,6 +451,51 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     b.ToTable("DirectPaymentOrders");
                 });
 
+            modelBuilder.Entity("Wallet.Domain.Entities.OrderEscrow", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("OriginalAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("RemainingAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("WalletId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderId")
+                        .IsUnique();
+
+                    b.HasIndex("WalletId");
+
+                    b.ToTable("OrderEscrows", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_OrderEscrows_Balance", "\"OriginalAmount\" > 0 AND \"RemainingAmount\" >= 0 AND \"RemainingAmount\" <= \"OriginalAmount\"");
+                        });
+                });
+
             modelBuilder.Entity("Wallet.Domain.Entities.StripePaymentAttempt", b =>
                 {
                     b.Property<Guid>("Id")
@@ -933,6 +978,15 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     b.HasOne("Wallet.Domain.Entities.AuctionHold", null)
                         .WithMany()
                         .HasForeignKey("HoldId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Wallet.Domain.Entities.OrderEscrow", b =>
+                {
+                    b.HasOne("Wallet.Domain.Entities.WalletAccount", null)
+                        .WithMany()
+                        .HasForeignKey("WalletId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

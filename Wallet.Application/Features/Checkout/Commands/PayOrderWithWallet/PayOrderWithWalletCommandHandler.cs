@@ -6,6 +6,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using global::Wallet.Application.Common.Extensions;
+using global::Wallet.Application.Features.Checkout;
 using global::Wallet.Application.Interfaces;
 using global::Wallet.Domain.Entities;
 using global::Wallet.Domain.Enums;
@@ -60,6 +62,16 @@ internal sealed class PayOrderWithWalletCommandHandler
                     409);
             }
 
+            var escrowState = await OrderEscrowAccounting.LoadOrReconcileAsync(
+                _context,
+                request.OrderId,
+                cancellationToken);
+            if (escrowState.WasReconciled)
+            {
+                await _context.SaveChangesAsync(cancellationToken);
+                await dbTransaction.CommitAsync(cancellationToken);
+            }
+
             return Map(existing);
         }
 
@@ -97,6 +109,27 @@ internal sealed class PayOrderWithWalletCommandHandler
             CreatedAt = DateTimeOffset.UtcNow
         };
         _context.WalletTransactions.Add(transaction);
+        _context.OrderEscrows.Add(new OrderEscrow
+        {
+            Id = Guid.NewGuid(),
+            OrderId = request.OrderId,
+            WalletId = wallet.Id,
+            OriginalAmount = request.Amount,
+            RemainingAmount = request.Amount
+        });
+        _context.AddAuditLog(
+            AuditAction.OrderPayment,
+            nameof(OrderEscrow),
+            request.OrderId.ToString(),
+            oldValues: new { Balance = balanceBefore, EscrowRemaining = 0m },
+            newValues: new
+            {
+                Balance = wallet.Balance,
+                EscrowOriginal = request.Amount,
+                EscrowRemaining = request.Amount,
+                TransactionId = transaction.Id
+            },
+            userId: wallet.UserId.ToString());
 
         await _context.SaveChangesAsync(cancellationToken);
         await dbTransaction.CommitAsync(cancellationToken);

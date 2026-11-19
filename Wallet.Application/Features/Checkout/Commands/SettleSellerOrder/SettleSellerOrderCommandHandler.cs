@@ -5,6 +5,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using global::Wallet.Application.Common.Extensions;
+using global::Wallet.Application.Features.Checkout;
 using global::Wallet.Application.Features.Checkout.Commands.PayOrderWithWallet;
 using global::Wallet.Application.Interfaces;
 using global::Wallet.Domain.Entities;
@@ -28,6 +30,7 @@ internal sealed class SettleSellerOrderCommandHandler
         var sellerId = Guid.Parse(request.SellerId);
 
         await using var dbTransaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+        await _context.LockOrderPaymentAsync(request.SubOrderId, cancellationToken);
         var wallet = await _context.LockWalletByUserIdAsync(sellerId, cancellationToken)
                      ?? throw new WalletNotFoundException(request.SellerId);
 
@@ -49,6 +52,42 @@ internal sealed class SettleSellerOrderCommandHandler
             return Map(existing);
         }
 
+        var escrowState = await OrderEscrowAccounting.LoadOrReconcileAsync(
+            _context,
+            request.SubOrderId,
+            cancellationToken);
+        var escrow = escrowState.Escrow;
+        if (escrow is null && escrowState.HasPayment)
+        {
+            if (escrowState.HasResolvedOperation)
+            {
+                throw new BusinessRuleValidationException(
+                    "SETTLEMENT_CONFLICT",
+                    "The order payment was already resolved without recoverable escrow.",
+                    409);
+            }
+
+            throw new BusinessRuleValidationException(
+                "ORDER_ESCROW_UNAVAILABLE",
+                "The order's wallet-payment escrow cannot be safely reconstructed.",
+                409);
+        }
+
+        if (escrow is not null && escrow.RemainingAmount < request.Amount)
+        {
+            throw new BusinessRuleValidationException(
+                "ORDER_ESCROW_INSUFFICIENT",
+                "The order has insufficient remaining wallet-payment escrow for this payout.",
+                409);
+        }
+
+        var escrowBefore = escrow?.RemainingAmount;
+        if (escrow is not null)
+        {
+            escrow.RemainingAmount -= request.Amount;
+            escrow.UpdatedAt = DateTimeOffset.UtcNow;
+        }
+
         var balanceBefore = wallet.Balance;
         wallet.Deposit(request.Amount);
 
@@ -67,6 +106,20 @@ internal sealed class SettleSellerOrderCommandHandler
             CreatedAt = DateTimeOffset.UtcNow
         };
         _context.WalletTransactions.Add(transaction);
+        _context.AddAuditLog(
+            AuditAction.OrderSettlement,
+            escrow is null ? nameof(WalletTransaction) : nameof(OrderEscrow),
+            request.SubOrderId.ToString(),
+            oldValues: new { Balance = balanceBefore, EscrowRemaining = escrowBefore },
+            newValues: new
+            {
+                Balance = wallet.Balance,
+                EscrowRemaining = escrow?.RemainingAmount,
+                transaction.Amount,
+                SellerId = sellerId,
+                TransactionId = transaction.Id
+            },
+            userId: sellerId.ToString());
 
         await _context.SaveChangesAsync(cancellationToken);
         await dbTransaction.CommitAsync(cancellationToken);

@@ -1,7 +1,8 @@
 # Auction deposit holds
 
 **Status:** Reserve, release, capture, refund, lookups and buyer listing
-implemented. Deposit escrow remains separate from Commerce settlement.
+implemented. Deposit escrow remains separate from wallet-payment escrow used
+by Commerce settlement and order refunds.
 
 For the initial release, `ORDER_PAYMENT` capture is disabled by default
 outside Development. An authenticated request receives `503 FEATURE_DISABLED`
@@ -10,8 +11,8 @@ use the hold lookup to check its status, and use the existing refund operation
 where eligible. Other capture purposes and existing refunds are not gated.
 `ReleaseFeatures:AuctionOrderCaptureEnabled` explicitly controls the gate;
 invalid boolean configuration returns `500 INTERNAL_CONFIGURATION_ERROR`.
-Do not enable it for real orders until Commerce settlement and refund
-ownership are agreed, implemented and verified.
+Do not enable it for real orders until order settlement/refund behavior and the
+Commerce integration are implemented and verified.
 
 Auction service calls require the approved scoped service key. User calls use
 the current gateway identity. Money is whole VND; held balances include
@@ -33,8 +34,10 @@ each mutation atomically with the balance and audit changes.
 Existing Wallet ProblemDetails conventions apply. Amounts, caller identity,
 reference, recipients, order and transition validity must be checked before
 committing. New holds are forbidden on frozen wallets; held deposits may be
-resolved when frozen. Deposit escrow is not connected to existing Commerce
-settlement or refund operations pending a separate agreed contract.
+resolved when frozen. Commerce seller settlement and order refunds use a separate `OrderEscrow`
+funded by the buyer's Wallet payment. They never consume or change
+`AuctionDepositEscrow`; the captured deposit remains fully refundable through
+this hold operation after a seller payout.
 
 ## Requests and responses
 

@@ -2,6 +2,7 @@
 
 | Area | Purpose |
 |---|---|
+| [Business use cases and flows](business-use-cases.md) | User stories and request-to-response walkthroughs of current behavior |
 | [API reference](api/README.md) | Implemented WalletService routes, endpoint contracts, and proposals |
 | [Integration notes](integrations/README.md) | Wallet-side handoff context and integration boundaries |
 | [Operations](operations/production-readiness.md) | Production readiness, deployment boundaries, and remaining risks |

@@ -12,6 +12,7 @@ public interface IWalletDbContext
     DbSet<AuctionHoldCapture> AuctionHoldCaptures { get; }
     DbSet<AuctionCaptureTransfer> AuctionCaptureTransfers { get; }
     DbSet<AuctionDepositEscrow> AuctionDepositEscrows { get; }
+    DbSet<OrderEscrow> OrderEscrows { get; }
     DbSet<WalletTransaction> WalletTransactions { get; }
     DbSet<BankAccount> BankAccounts { get; }
     DbSet<WalletTopup> WalletTopups { get; }

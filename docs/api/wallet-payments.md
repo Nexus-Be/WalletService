@@ -53,11 +53,36 @@ Admin routes also require an authorized `x-user-roles` value (`admin` or `staff`
 | `POST` | `/api/v1/wallets/stripe/webhooks` | Anonymous, signature required | Processes Stripe webhooks (`200` when acknowledged) |
 | `POST` | `/api/v1/wallets/checkout/direct` | User identity required | Starts direct checkout through Stripe (`200`) |
 | `GET` | `/api/v1/wallets/checkout/direct/{orderId}` | Order owner or privileged role | Reads direct payment status |
+| `POST` | `/api/v1/wallets/orders/{orderId}/payment` | Authenticated buyer; called by Commerce | Debits the buyer's Wallet and records order-payment escrow (`200`) |
+| `POST` | `/api/v1/wallets/sub-orders/{subOrderId}/settle` | Existing Commerce caller; `LegacyCommerceCredits` gate | Credits the seller from matching wallet-payment escrow when the ID matches (`200`) |
+| `POST` | `/api/v1/wallets/orders/{orderId}/refund` | Existing Commerce caller; `LegacyCommerceCredits` gate | Refunds only remaining wallet-payment escrow (`200`) |
+| `POST` | `/api/v1/wallets/sub-orders/{subOrderId}/refund` | Existing legacy child caller; `LegacyCommerceCredits` gate | Preserves legacy child-refund behavior (`200`) |
 | `PATCH` | `/api/v1/admin/wallets/withdrawals/{id}` | `admin` or `staff` | Processes an existing pending withdrawal |
 | `POST` | `/api/v1/admin/wallets/{userId}/adjustments` | `admin` or `staff` | Adjusts wallet balance by owner user ID |
 | `GET` | `/api/v1/admin/wallets/ledger` | `admin` only | Reads a paginated, filtered transaction report |
 | `GET` | `/api/v1/admin/wallets/reconciliation` | `admin` only | Compares wallet balances with latest successful transaction snapshots |
 | `GET` | `/health` | Anonymous | Service health response |
+
+## Order payment escrow
+
+The existing Commerce order routes remain unchanged. The payment route debits
+the authenticated buyer's digital Wallet balance and records that amount as
+wallet-payment escrow for the order ID. Settlement credits only the
+caller-supplied amount covered by that remaining escrow; captured auction
+deposits never fund the payout. If wallet-payment escrow is insufficient, the
+operation returns `409 ORDER_ESCROW_INSUFFICIENT`.
+
+An order may have one seller payout and one refund. A partial payout may be
+followed by a refund of the unspent wallet-payment remainder. Each operation is
+limited to the then-remaining escrow, exact retries return the original
+transaction, and changed retries or overdraws do not move funds. Order refunds
+leave captured-deposit escrow untouched, so the existing hold operation can
+still refund the full captured deposit.
+
+The `sub-orders/{subOrderId}` routes retain their existing compatibility
+behavior when the child ID cannot be associated with an order-payment debit.
+These routes remain hidden from Swagger, and the existing release gates remain
+unchanged.
 
 ## User wallet routes
 

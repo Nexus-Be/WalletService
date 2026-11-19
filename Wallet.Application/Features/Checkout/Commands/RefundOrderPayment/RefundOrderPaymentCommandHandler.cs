@@ -5,6 +5,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using global::Wallet.Application.Common.Extensions;
+using global::Wallet.Application.Features.Checkout;
 using global::Wallet.Application.Features.Checkout.Commands.PayOrderWithWallet;
 using global::Wallet.Application.Interfaces;
 using global::Wallet.Domain.Entities;
@@ -26,6 +28,12 @@ internal sealed class RefundOrderPaymentCommandHandler
         CancellationToken cancellationToken)
     {
         var buyerId = Guid.Parse(request.UserId);
+
+        await using var dbTransaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+        if (!request.IsSubOrder)
+        {
+            await _context.LockOrderPaymentAsync(request.OrderId, cancellationToken);
+        }
 
         WalletTransaction? payment = null;
         if (!request.IsSubOrder)
@@ -51,7 +59,6 @@ internal sealed class RefundOrderPaymentCommandHandler
             }
         }
 
-        await using var dbTransaction = await _context.Database.BeginTransactionAsync(cancellationToken);
         var wallet = await _context.LockWalletByUserIdAsync(buyerId, cancellationToken)
                      ?? throw new WalletNotFoundException(request.UserId);
 
@@ -73,12 +80,52 @@ internal sealed class RefundOrderPaymentCommandHandler
             return Map(existing);
         }
 
-        if (payment is not null && request.Amount > payment.Amount)
+        OrderEscrow? escrow = null;
+        if (payment is not null)
         {
-            throw new BusinessRuleValidationException(
+            if (request.Amount > payment.Amount)
+            {
+                throw new BusinessRuleValidationException(
                 "REFUND_EXCEEDS_PAYMENT",
                 "Refund amount exceeds the original payment.",
                 409);
+            }
+
+            var escrowState = await OrderEscrowAccounting.LoadOrReconcileAsync(
+                _context,
+                request.OrderId,
+                cancellationToken);
+            escrow = escrowState.Escrow;
+            if (escrow is null)
+            {
+                if (escrowState.HasResolvedOperation)
+                {
+                    throw new BusinessRuleValidationException(
+                        "REFUND_CONFLICT",
+                        "The order payment was already resolved without recoverable escrow.",
+                        409);
+                }
+
+                throw new BusinessRuleValidationException(
+                    "ORDER_ESCROW_UNAVAILABLE",
+                    "The order's wallet-payment escrow cannot be safely reconstructed.",
+                    409);
+            }
+
+            if (escrow.RemainingAmount < request.Amount)
+            {
+                throw new BusinessRuleValidationException(
+                    "ORDER_ESCROW_INSUFFICIENT",
+                    "The order has insufficient remaining wallet-payment escrow for this refund.",
+                    409);
+            }
+        }
+
+        var escrowBefore = escrow?.RemainingAmount;
+        if (escrow is not null)
+        {
+            escrow.RemainingAmount -= request.Amount;
+            escrow.UpdatedAt = DateTimeOffset.UtcNow;
         }
 
         var balanceBefore = wallet.Balance;
@@ -99,6 +146,20 @@ internal sealed class RefundOrderPaymentCommandHandler
             CreatedAt = DateTimeOffset.UtcNow
         };
         _context.WalletTransactions.Add(transaction);
+        _context.AddAuditLog(
+            AuditAction.OrderRefund,
+            escrow is null ? nameof(WalletTransaction) : nameof(OrderEscrow),
+            request.OrderId.ToString(),
+            oldValues: new { Balance = balanceBefore, EscrowRemaining = escrowBefore },
+            newValues: new
+            {
+                Balance = wallet.Balance,
+                EscrowRemaining = escrow?.RemainingAmount,
+                transaction.Amount,
+                request.Reason,
+                TransactionId = transaction.Id
+            },
+            userId: buyerId.ToString());
 
         await _context.SaveChangesAsync(cancellationToken);
         await dbTransaction.CommitAsync(cancellationToken);

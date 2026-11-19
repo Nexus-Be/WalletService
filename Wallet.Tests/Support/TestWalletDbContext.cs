@@ -27,6 +27,7 @@ public sealed class TestWalletDbContext : IWalletDbContext, IDisposable
     public DbSet<AuctionHoldCapture> AuctionHoldCaptures => _inner.AuctionHoldCaptures;
     public DbSet<AuctionCaptureTransfer> AuctionCaptureTransfers => _inner.AuctionCaptureTransfers;
     public DbSet<AuctionDepositEscrow> AuctionDepositEscrows => _inner.AuctionDepositEscrows;
+    public DbSet<OrderEscrow> OrderEscrows => _inner.OrderEscrows;
     public DbSet<WalletTransaction> WalletTransactions => _inner.WalletTransactions;
     public DbSet<BankAccount> BankAccounts => _inner.BankAccounts;
     public DbSet<WalletTopup> WalletTopups => _inner.WalletTopups;

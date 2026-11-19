@@ -19,6 +19,7 @@ public class WalletDbContext : DbContext, IWalletDbContext
     public DbSet<AuctionHoldCapture> AuctionHoldCaptures => Set<AuctionHoldCapture>();
     public DbSet<AuctionCaptureTransfer> AuctionCaptureTransfers => Set<AuctionCaptureTransfer>();
     public DbSet<AuctionDepositEscrow> AuctionDepositEscrows => Set<AuctionDepositEscrow>();
+    public DbSet<OrderEscrow> OrderEscrows => Set<OrderEscrow>();
     public DbSet<WalletTransaction> WalletTransactions => Set<WalletTransaction>();
     public DbSet<BankAccount> BankAccounts => Set<BankAccount>();
     public DbSet<WalletTopup> WalletTopups => Set<WalletTopup>();

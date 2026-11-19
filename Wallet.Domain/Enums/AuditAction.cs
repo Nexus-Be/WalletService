@@ -17,5 +17,9 @@ public enum AuditAction
     AuctionHoldCreate = 12,
     AuctionHoldRelease = 13,
     AuctionHoldCapture = 14,
-    AuctionHoldRefund = 15
+    AuctionHoldRefund = 15,
+    OrderPayment = 16,
+    OrderSettlement = 17,
+    OrderRefund = 18,
+    OrderEscrowReconciliation = 19
 }
