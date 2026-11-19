@@ -28,20 +28,19 @@ internal sealed class RefundOrderPaymentCommandHandler
         CancellationToken cancellationToken)
     {
         var buyerId = Guid.Parse(request.UserId);
+        var escrowOrderId = request.ParentOrderId ?? request.OrderId;
+        var enforceEscrow = !request.IsSubOrder || request.ParentOrderId.HasValue;
 
         await using var dbTransaction = await _context.Database.BeginTransactionAsync(cancellationToken);
-        if (!request.IsSubOrder)
-        {
-            await _context.LockOrderPaymentAsync(request.OrderId, cancellationToken);
-        }
+        await LockOrderAndChildAsync(escrowOrderId, request.OrderId, cancellationToken);
 
         WalletTransaction? payment = null;
-        if (!request.IsSubOrder)
+        if (enforceEscrow)
         {
             payment = await _context.WalletTransactions
                 .AsNoTracking()
                 .FirstOrDefaultAsync(
-                    t => t.ReferenceId == request.OrderId &&
+                    t => t.ReferenceId == escrowOrderId &&
                          t.Type == WalletTransactionType.PurchaseDebit &&
                          t.Status == TransactionStatus.Success,
                     cancellationToken)
@@ -50,7 +49,7 @@ internal sealed class RefundOrderPaymentCommandHandler
                     "No completed wallet payment was found for the order.",
                     404);
 
-            if (payment.UserId != request.UserId)
+            if (!Guid.TryParse(payment.UserId, out var payerId) || payerId != buyerId)
             {
                 throw new BusinessRuleValidationException(
                     "REFUND_CONFLICT",
@@ -69,7 +68,7 @@ internal sealed class RefundOrderPaymentCommandHandler
 
         if (existing is not null)
         {
-            if (existing.Amount != request.Amount)
+            if (existing.WalletId != wallet.Id || existing.Amount != request.Amount)
             {
                 throw new BusinessRuleValidationException(
                     "REFUND_CONFLICT",
@@ -83,19 +82,20 @@ internal sealed class RefundOrderPaymentCommandHandler
         OrderEscrow? escrow = null;
         if (payment is not null)
         {
-            if (request.Amount > payment.Amount)
-            {
-                throw new BusinessRuleValidationException(
-                "REFUND_EXCEEDS_PAYMENT",
-                "Refund amount exceeds the original payment.",
-                409);
-            }
-
             var escrowState = await OrderEscrowAccounting.LoadOrReconcileAsync(
                 _context,
-                request.OrderId,
+                escrowOrderId,
                 cancellationToken);
             escrow = escrowState.Escrow;
+
+            if (request.Amount > (escrow?.OriginalAmount ?? payment.Amount))
+            {
+                throw new BusinessRuleValidationException(
+                    "REFUND_EXCEEDS_PAYMENT",
+                    "Refund amount exceeds the original payment.",
+                    409);
+            }
+
             if (escrow is null)
             {
                 if (escrowState.HasResolvedOperation)
@@ -112,6 +112,14 @@ internal sealed class RefundOrderPaymentCommandHandler
                     409);
             }
 
+            if (escrow.Status == OrderEscrowStatus.Cancelled)
+            {
+                throw new BusinessRuleValidationException(
+                    "ORDER_ESCROW_CANCELLED",
+                    "The order escrow was already cancelled and cannot be refunded.",
+                    409);
+            }
+
             if (escrow.RemainingAmount < request.Amount)
             {
                 throw new BusinessRuleValidationException(
@@ -125,6 +133,10 @@ internal sealed class RefundOrderPaymentCommandHandler
         if (escrow is not null)
         {
             escrow.RemainingAmount -= request.Amount;
+            if (escrow.RemainingAmount == 0m)
+            {
+                escrow.Status = OrderEscrowStatus.Refunded;
+            }
             escrow.UpdatedAt = DateTimeOffset.UtcNow;
         }
 
@@ -149,7 +161,7 @@ internal sealed class RefundOrderPaymentCommandHandler
         _context.AddAuditLog(
             AuditAction.OrderRefund,
             escrow is null ? nameof(WalletTransaction) : nameof(OrderEscrow),
-            request.OrderId.ToString(),
+            escrow is null ? request.OrderId.ToString() : escrowOrderId.ToString(),
             oldValues: new { Balance = balanceBefore, EscrowRemaining = escrowBefore },
             newValues: new
             {
@@ -157,13 +169,32 @@ internal sealed class RefundOrderPaymentCommandHandler
                 EscrowRemaining = escrow?.RemainingAmount,
                 transaction.Amount,
                 request.Reason,
-                TransactionId = transaction.Id
+                TransactionId = transaction.Id,
+                SubOrderId = request.IsSubOrder ? request.OrderId : (Guid?)null,
+                request.ParentOrderId
             },
             userId: buyerId.ToString());
 
         await _context.SaveChangesAsync(cancellationToken);
         await dbTransaction.CommitAsync(cancellationToken);
         return Map(transaction);
+    }
+
+    private async Task LockOrderAndChildAsync(
+        Guid escrowOrderId,
+        Guid orderId,
+        CancellationToken cancellationToken)
+    {
+        if (escrowOrderId == orderId)
+        {
+            await _context.LockOrderPaymentAsync(orderId, cancellationToken);
+            return;
+        }
+
+        var first = escrowOrderId.CompareTo(orderId) < 0 ? escrowOrderId : orderId;
+        var second = first == escrowOrderId ? orderId : escrowOrderId;
+        await _context.LockOrderPaymentAsync(first, cancellationToken);
+        await _context.LockOrderPaymentAsync(second, cancellationToken);
     }
 
     private static WalletOrderTransactionResponse Map(WalletTransaction t) => new(

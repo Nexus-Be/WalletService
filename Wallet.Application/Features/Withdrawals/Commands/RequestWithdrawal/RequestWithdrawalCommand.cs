@@ -14,17 +14,17 @@ public sealed record RequestWithdrawalCommand(
     [Required(ErrorMessage = "Currency is required.")]
     [RegularExpression("^(?i:VND)$", ErrorMessage = "Currency must be VND.")]
     string? Currency = "VND",
-    [Required(ErrorMessage = "Bank code is required.")]
     [StringLength(150, ErrorMessage = "Bank code cannot exceed 150 characters.")]
-    string BankCode = "",
-    [Required(ErrorMessage = "Account number is required.")]
+    string? BankCode = null,
     [StringLength(100, ErrorMessage = "Account number cannot exceed 100 characters.")]
-    string AccountNumber = "",
-    [Required(ErrorMessage = "Account holder name is required.")]
+    string? AccountNumber = null,
     [StringLength(255, ErrorMessage = "Account holder name cannot exceed 255 characters.")]
-    string AccountHolderName = "") : IRequest<WithdrawalResponse>, IRequestValidation
+    string? AccountHolderName = null,
+    Guid? BankAccountId = null) : IRequest<WithdrawalResponse>, IRequestValidation
 {
     [JsonIgnore] public string UserId { get; init; } = string.Empty;
+
+    [JsonIgnore] public string IdempotencyKey { get; init; } = string.Empty;
 
     public IEnumerable<ValidationResult> ValidateRequest()
     {
@@ -32,6 +32,51 @@ public sealed record RequestWithdrawalCommand(
         if (userIdError is not null)
         {
             yield return userIdError;
+        }
+
+        if (!WithdrawalWorkflow.IsValidIdempotencyKey(IdempotencyKey))
+        {
+            yield return new ValidationResult(
+                "Idempotency-Key header is required and must be 1 to 100 ASCII letters, digits, hyphens, or underscores.",
+                new[] { nameof(IdempotencyKey) });
+        }
+
+        if (BankAccountId.HasValue && BankAccountId.Value == Guid.Empty)
+        {
+            yield return new ValidationResult(
+                "Bank account ID must be a valid UUID.",
+                new[] { nameof(BankAccountId) });
+        }
+
+        if (BankAccountId is null)
+        {
+            var hasAnyManual = !string.IsNullOrWhiteSpace(BankCode)
+                || !string.IsNullOrWhiteSpace(AccountNumber)
+                || !string.IsNullOrWhiteSpace(AccountHolderName);
+
+            if (hasAnyManual)
+            {
+                if (string.IsNullOrWhiteSpace(BankCode))
+                {
+                    yield return new ValidationResult(
+                        "Bank code is required.",
+                        new[] { nameof(BankCode) });
+                }
+
+                if (string.IsNullOrWhiteSpace(AccountNumber))
+                {
+                    yield return new ValidationResult(
+                        "Account number is required.",
+                        new[] { nameof(AccountNumber) });
+                }
+
+                if (string.IsNullOrWhiteSpace(AccountHolderName))
+                {
+                    yield return new ValidationResult(
+                        "Account holder name is required.",
+                        new[] { nameof(AccountHolderName) });
+                }
+            }
         }
     }
 }
@@ -41,4 +86,7 @@ public sealed record WithdrawalResponse(
     decimal Amount,
     decimal Fee,
     string Status,
-    DateTimeOffset RequestedAt);
+    DateTimeOffset RequestedAt)
+{
+    [JsonIgnore] public bool IsReplay { get; init; }
+}

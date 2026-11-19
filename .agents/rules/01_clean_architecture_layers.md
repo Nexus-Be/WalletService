@@ -20,8 +20,8 @@
 * Mọi Command/Query đi qua `ValidationBehavior` (DataAnnotations); lỗi trả `VAL_INVALID_INPUT`.
 
 ## 4. Thin Controller Pairing
-* `WalletsController.cs` -> injects `ISender` (8 actions: me, topups, withdrawals, transfers, transactions, vnpay/ipn, vnpay/return, checkout/direct).
-* `AdminWalletsController.cs` -> injects `ISender` (2 actions: process withdrawal, adjust balance).
+* `WalletsController.cs` -> injects `ISender` and `ILogger` (buyer/seller public routes + `~/api/v1/internal/wallets/...` S2S routes behind `[RequireInternalServiceKey]` / `[RequireAuctionServiceKey]`).
+* `AdminWalletsController.cs` -> injects `ISender` and `ILogger` (admin/staff operations; sensitive adjustments, ledger, reconciliation, and Stripe manual resolution enforce `EnsureAdmin`).
 
 ## 5. Absolute Invariant: Non-Negative Balance
 * 🛑 **NEVER ALLOW NEGATIVE BALANCE**: Any withdrawal, transfer, or checkout deduction must verify `Balance >= Amount`. Throw `InsufficientBalanceException` if balance is insufficient.

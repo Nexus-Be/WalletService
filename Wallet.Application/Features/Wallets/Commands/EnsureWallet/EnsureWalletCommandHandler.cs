@@ -32,22 +32,7 @@ internal sealed class EnsureWalletCommandHandler : IRequestHandler<EnsureWalletC
 
         if (wallet is null)
         {
-            wallet = new WalletAccount
-            {
-                Id = Guid.NewGuid(),
-                UserId = request.UserId,
-                Currency = CurrencyCode.Vnd,
-                Status = "ACTIVE",
-                Balance = 0m,
-                LockedBalance = 0m
-            };
-            _context.Wallets.Add(wallet);
-            _context.AddAuditLog(
-                action: AuditAction.WalletCreate,
-                entityName: nameof(WalletAccount),
-                entityId: wallet.Id.ToString(),
-                newValues: new { wallet.UserId, wallet.Balance, wallet.LockedBalance, wallet.Currency },
-                userId: request.UserId.ToString());
+            wallet = _context.StageDefaultWallet(request.UserId);
 
             try
             {

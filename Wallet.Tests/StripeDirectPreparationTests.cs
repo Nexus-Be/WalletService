@@ -124,6 +124,22 @@ public sealed class StripeDirectPreparationTests
         }
     }
 
+    [Fact]
+    public async Task DirectCheckout_MissingWallet_AutoCreatesWalletAndPreparesSession()
+    {
+        using var context = new TestWalletDbContext(Guid.NewGuid().ToString());
+        var ownerId = Guid.NewGuid();
+        var orderId = Guid.NewGuid();
+        var provider = new Provider();
+
+        var result = await StripeDirectPreparation.CreateAsync(context, provider, ownerId, orderId, 100000, default);
+
+        Assert.Equal(orderId, result.OrderId);
+        Assert.Equal("https://checkout.stripe.com/test", result.PaymentUrl);
+        Assert.Single(context.Wallets.Where(w => w.UserId == ownerId && w.Status == "ACTIVE"));
+        Assert.Equal(1, provider.Calls);
+    }
+
     private static async Task<WalletAccount> AddWallet(TestWalletDbContext context)
     {
         var wallet = new WalletAccount

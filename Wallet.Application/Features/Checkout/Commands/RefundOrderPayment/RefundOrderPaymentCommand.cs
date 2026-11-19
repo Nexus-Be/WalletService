@@ -16,7 +16,8 @@ public sealed record RefundOrderPaymentCommand(
     [MoneyPrecision]
     decimal Amount,
     [MaxLength(500, ErrorMessage = "Reason must not exceed 500 characters.")]
-    string? Reason = null) : IRequest<WalletOrderTransactionResponse>, IRequestValidation
+    string? Reason = null,
+    Guid? ParentOrderId = null) : IRequest<WalletOrderTransactionResponse>, IRequestValidation
 {
     // Order ID or sub-order ID, depending on the route that was called.
     [JsonIgnore] public Guid OrderId { get; init; }
@@ -29,6 +30,11 @@ public sealed record RefundOrderPaymentCommand(
         if (error is not null)
         {
             yield return error;
+        }
+
+        if (ParentOrderId.HasValue && ParentOrderId.Value == Guid.Empty)
+        {
+            yield return new ValidationResult("Parent order ID must be a valid UUID.", new[] { nameof(ParentOrderId) });
         }
     }
 }

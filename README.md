@@ -1,59 +1,37 @@
 # Wallet Service
 
-WalletService is a .NET 8 REST/JSON service for wallet balances, payments,
-transfers, withdrawals and auction deposits. It uses PostgreSQL, EF Core and
-classic CQRS with MediatR; there are two public controllers and 26 handlers.
+WalletService is a .NET 8 REST/JSON service (see [production readiness](docs/operations/production-readiness.md) regarding .NET 8 EOL on **2026-11-10**) for wallet balances, payments, transfers, withdrawals, seller bank accounts, and auction deposits. It uses PostgreSQL, EF Core, and classic CQRS with MediatR; there are **two public controllers** (`WalletsController` and `AdminWalletsController`, with internal `~/api/v1/internal/wallets/...` routes hosted on `WalletsController`) and **47 handlers** (`29` commands, `18` queries).
 The API normally listens on port `8008`; local PostgreSQL uses port `5440`.
 
 ## Branch provenance
 
-This release-readiness branch was created from `origin/dev` at commit
-`4ce76aa125acd094c286cffccbd84e410c923b90`, which contains the combined
-Auction holds and Stripe recovery work. That work was originally created from
-`dev` at `81f7d11ef0e43533511a266b1e56e25324c934a5` and incorporates Stripe
-top-up recovery work from
-`origin/feature/stripe-topup-resume-and-reconciliation` at
-`de7abf0eefa630df13f086db0c31dcb7192dd1f2`, as well as the approved
-uncommitted Phase 2 financial-operation work. The Stripe feature branch is
-an input, not a parent commit of this branch.
+`feature/handover-wallet-hardening` was branched from `dev` (`5dde562`) on top of the `wallet-release-readiness` baseline (`origin/dev` `4ce76aa`, combining Auction holds and Stripe recovery) to implement `WalletService.md` (Phases 0–3 hardening, lifecycle, bank accounts, freeze guards, and admin tooling) and `WALLET_NOTIFICATION_HANDOFF.md` (`INotificationClient` post-commit REST dispatch and `[RequireInternalServiceKey]` enforcement).
 
 ## Implemented features
 
 | Area | Behavior |
 |---|---|
-| Wallet and transfers | Owned balance and paginated transaction history; atomic transfers; available balance excludes reserved funds. |
-| Stripe payments | Stripe Checkout top-up and direct order payment with signed webhooks and idempotent settlement. VNPay payment endpoints are no longer active; historical data remains. |
-| Stripe top-up recovery | Owner-scoped, paginated history and status; resume the same open unpaid Checkout session; correlated return URLs and a background reconciliation worker. |
-| Auction deposits | Reserve, inspect, release, capture and refund wallet-funded holds. Capture can distribute forfeitures to seller wallets and a platform ledger, or create order-specific deposit escrow. Operations are idempotent and transactional. |
-| Withdrawals | Reserve available balance when requested; admin approval consumes the reservation with a manual transfer reference, and rejection releases it. No bank payout is initiated. |
-| Administration | Balance adjustments, paginated wallet ledger and wallet-balance reconciliation reports. |
+| Wallet and transfers | Owned balance (`availableBalance = balance - lockedBalance`), wallet freeze/unfreeze (`WALLET_FROZEN` guards), paginated transaction history, single-transaction detail lookup, and atomic transfers. |
+| Stripe payments | Stripe Checkout top-up and direct order payment with signed webhooks, startup credential/URL validation (`StripeSettings.EnsureValid`), idempotent settlement, `AvailableBalance` enforcement on wallet order pay, and internal `AdjustOrderPayment` escrow deltas. VNPay payment endpoints are retired. |
+| Stripe recovery & lifecycle | Owner-scoped paginated top-up history (optional `status`) and status; `resume` unpaid top-up or direct Checkout sessions; buyer `cancel` and internal `expire` for unpaid direct payments; 1-minute `StripeTopupReconciliationWorker` reconciling both `Topup` and `DirectOrder`; admin `ReconciliationRequired` list and manual resolve endpoints. |
+| Auction deposits | Reserve, inspect, release, capture, and refund wallet-funded holds behind `[RequireAuctionServiceKey]`; supports `BUYER_WITHDRAWN`, live status on replay, and post-commit `auction-deposits` notifications. |
+| Withdrawals & bank accounts | Saved seller `BankAccounts` CRUD/default selection, idempotent `RequestWithdrawal` (`Idempotency-Key` + SHA-256 fingerprint), paginated history/detail, seller cancellation, 6-step admin/staff workflow (`Approve`, `Reject`, `StartProcessing`, `Complete` with unique `TransferReference`, `Fail`, `admin`-only `ResolveFailed`), and post-commit `withdrawal-events` notifications. No external bank payout is initiated. |
+| Administration & internal S2S | `admin`-only balance adjustments, ledger, snapshot reconciliation, and Stripe attempt resolution; admin/staff wallet listing/detail, freeze/unfreeze, withdrawal history, and hold inspection; `~/api/v1/internal/wallets/...` routes guarded by `[RequireInternalServiceKey]`. |
 
 `heldBalance` and `lockedBalance` both include auction holds **and**
-withdrawal reservations. `availableBalance = balance - lockedBalance`.
-Auction holds do not expire automatically.
+withdrawal reservations. `availableBalance = balance - lockedBalance`, enforced
+in PostgreSQL by `CK_Wallets_BalanceLocks`. Auction holds do not expire
+automatically.
 
 ### Boundaries and outstanding integration
 
-- Deposit escrow is separate from Commerce settlement and refund flows; it is
-  not automatically distributed when an order completes. A separate Commerce
-  contract is required. Auction retries hold operations; Wallet sends no
-  callback.
-- New withdrawals, auction `ORDER_PAYMENT` capture and legacy Commerce
-  settlement/refunds are disabled by default outside Development for the
-  initial release. The gates are configurable; keep them disabled until the
-  corresponding payout and funding-backed Commerce integration are ready.
-- Platform forfeiture credits are recorded in the auction transfer ledger;
-  no platform balance or payout API is provided.
-- Stripe accepts test-mode keys only; live payments are not supported.
-  Stripe test-mode, webhook forwarding and gateway end-to-end acceptance
-  have not been verified. A Stripe attempt with an uncertain session creation
-  and no stored session ID requires operational reconciliation.
-- User identity and roles come from claims or trusted gateway-forwarded
-  headers; the host does not validate JWTs itself. Protect the service network
-  and ensure the gateway overwrites client-supplied identity headers. Auction
-  service routes separately require `X-Internal-Service-Key`.
-- The service is not approved for production deployment. See
-  [production readiness](docs/operations/production-readiness.md).
+- **Not approved for production or live-money deployment.** Suitable for development and controlled staging/integration testing only. See [production readiness](docs/operations/production-readiness.md) and [root checklist](PRODUCTION_READINESS.md).
+- `.NET 8.0` LTS reached end-of-support on **2026-11-10**; upgrade to `.NET 10 LTS` is required before production.
+- Deposit escrow is separate from Commerce settlement and refund flows, and `sub-orders/{subOrderId}/refund` (`IsSubOrder = true`) retains compatibility without original `PurchaseDebit` validation. CommerceService cutover onto `~/api/v1/internal/wallets/*` and funding-backed settlement contracts remain open.
+- New withdrawals, auction `ORDER_PAYMENT` capture, and legacy Commerce settlement/refunds are disabled by default outside Development via `ReleaseFeatures:*Enabled`.
+- Outbound `NotificationClient` (`NOTIFICATION_SERVICE_URL`) dispatches post-commit REST events without a durable outbox or automatic retry queue (`NotificationDispatchFailed` audit logs record failures); NotificationService end-to-end staging delivery remains to be verified.
+- Stripe accepts test-mode keys (`sk_test_`) and `livemode == false` webhooks only; `POST /api/v1/wallets/transfers` lacks `Idempotency-Key` retry protection; `CreationPending` Stripe attempts without a stored session ID cannot be resolved via `ResolveStripeAttempt`.
+- User identity and roles come from claims or trusted gateway-forwarded headers (`UserContextMiddleware`); the host does not validate JWTs. Protect port `8008` behind the gateway, block `/api/v1/internal/*` at public ingress, and pass `X-Internal-Service-Key` for Auction and internal S2S endpoints.
 
 ## Local setup
 
@@ -68,15 +46,19 @@ dotnet user-secrets init --project Wallet.Api
 dotnet user-secrets set "ConnectionStrings:DefaultConnection" "<POSTGRES_CONNECTION_STRING>" --project Wallet.Api
 dotnet user-secrets set "Stripe:SecretKey" "<STRIPE_TEST_SECRET_KEY>" --project Wallet.Api
 dotnet user-secrets set "Stripe:WebhookSecret" "<STRIPE_WEBHOOK_SECRET>" --project Wallet.Api
+dotnet user-secrets set "InternalSecurity:ServiceKey" "<INTERNAL_SERVICE_SECRET>" --project Wallet.Api
 dotnet user-secrets set "InternalSecurity:AuctionServiceKey" "<AUCTION_SERVICE_KEY>" --project Wallet.Api
+dotnet user-secrets set "NOTIFICATION_SERVICE_URL" "http://localhost:8007" --project Wallet.Api
+dotnet user-secrets set "Services:Notification:ServiceKey" "<NOTIFICATION_SERVICE_KEY>" --project Wallet.Api
 dotnet run --project Wallet.Api
 ```
 
 Configure `Stripe:SuccessUrl` and `Stripe:CancelUrl` for the frontend; use
 HTTPS outside development. Never commit credentials. Swagger is available at
-`/swagger` in Development (or when enabled), and `/health` is a liveness
-response, not a database readiness check. The host attempts migrations on
-startup; review and back up shared databases before applying schema changes.
+`/swagger` in Development (or when enabled), and `/health` is an unconditional
+liveness response, not a database readiness check. The host attempts migrations
+on startup (and logs warnings on failure); apply and verify migration
+`20261119020448_HandoverWalletHardening` carefully on shared databases.
 
 ## Verification
 
@@ -86,18 +68,23 @@ dotnet build Wallet.sln -c Release
 dotnet test Wallet.sln -c Release
 ```
 
-PostgreSQL integration tests require `WALLET_STRIPE_TEST_DATABASE` to point
-to an existing **disposable** database; without it those tests are skipped. The latest
-isolated PostgreSQL run passed 437 tests with no skips. The architecture
-check enforces 26 handlers (17 commands, 9 queries) and two controllers.
+PostgreSQL integration tests (`36` tests) require `WALLET_STRIPE_TEST_DATABASE`
+to point to an existing **disposable** database; without it those tests are
+skipped. Without `WALLET_STRIPE_TEST_DATABASE`, the latest unit/in-memory run
+passed **455** tests with **0** failures and **36** skipped (`491` total). The
+architecture check enforces **47 handlers** (`29` commands, `18` queries) and
+**two controllers**.
 
 ## Documentation
 
 - [API index](docs/api/README.md) and [wallet payments](docs/api/wallet-payments.md)
+- [Cross-service handover response](docs/integrations/handover-response.md)
 - [Auction deposit contract](docs/api/holds/auction-deposits.md)
 - [Auction integration and reconciliation request](docs/api/holds/auction-integration-request.md)
 - [Stripe top-up recovery](docs/api/stripe/topup-recovery.md) and
   [Stripe payment contracts](docs/api/stripe/payments.md)
+- [Production readiness checklist](docs/operations/production-readiness.md) and
+  [legacy/branch backlog](PRODUCTION_READINESS.md)
 - [Feature specification and plan](specs/004-auction-holds-stripe/spec.md)
 - [Persistence model](specs/04_DATA_PERSISTENCE.md)
 

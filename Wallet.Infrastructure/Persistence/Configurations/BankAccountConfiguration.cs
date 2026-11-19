@@ -13,6 +13,10 @@ public class BankAccountConfiguration : IEntityTypeConfiguration<BankAccount>
         builder.Property(x => x.BankName).HasMaxLength(150).IsRequired();
         builder.Property(x => x.AccountNumber).HasMaxLength(100).IsRequired();
         builder.Property(x => x.AccountHolderName).HasMaxLength(255).IsRequired();
+        builder.HasIndex(x => x.UserId)
+            .HasDatabaseName("IX_BankAccounts_UserId_Default")
+            .IsUnique()
+            .HasFilter("\"IsDefault\" = TRUE AND \"IsDeleted\" = FALSE");
         builder.HasQueryFilter(x => !x.IsDeleted);
     }
 }

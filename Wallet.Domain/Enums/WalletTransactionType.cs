@@ -18,5 +18,8 @@ public enum WalletTransactionType
     TopupStripe = 13,
     AuctionHoldCapture = 14,
     AuctionForfeitCredit = 15,
-    AuctionDepositRefund = 16
+    AuctionDepositRefund = 16,
+    OrderPaymentAdjustmentDebit = 17,
+    OrderPaymentAdjustmentRefund = 18,
+    EscrowCancellationRefund = 19
 }

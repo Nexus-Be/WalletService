@@ -67,7 +67,8 @@ public class WalletRequestValidatorTests
             AccountNumber: "1234567890",
             AccountHolderName: "Test User")
         {
-            UserId = Guid.NewGuid().ToString()
+            UserId = Guid.NewGuid().ToString(),
+            IdempotencyKey = "req-wd-1"
         };
         var results = ValidateModel(request);
         Assert.Empty(results);
@@ -76,7 +77,11 @@ public class WalletRequestValidatorTests
     [Fact]
     public void RequestWithdrawalCommand_RequiresAccountHolderName()
     {
-        var request = new RequestWithdrawalCommand(Amount: 100_000m, BankCode: "VCB", AccountNumber: "1234567890");
+        var request = new RequestWithdrawalCommand(Amount: 100_000m, BankCode: "VCB", AccountNumber: "1234567890")
+        {
+            UserId = Guid.NewGuid().ToString(),
+            IdempotencyKey = "req-wd-2"
+        };
         var results = ValidateModel(request);
         Assert.Contains(results, result => result.MemberNames.Contains(nameof(request.AccountHolderName)));
     }
@@ -90,7 +95,8 @@ public class WalletRequestValidatorTests
             AccountNumber: "1234567890",
             AccountHolderName: "Test User")
         {
-            UserId = Guid.NewGuid().ToString()
+            UserId = Guid.NewGuid().ToString(),
+            IdempotencyKey = "req-wd-3"
         };
         var results = ValidateModel(request);
         Assert.Contains(results, result => result.MemberNames.Contains(nameof(request.Amount)));
@@ -106,7 +112,8 @@ public class WalletRequestValidatorTests
             AccountNumber: "1234567890",
             AccountHolderName: "Test User")
         {
-            UserId = Guid.NewGuid().ToString()
+            UserId = Guid.NewGuid().ToString(),
+            IdempotencyKey = "req-wd-4"
         };
         var results = ValidateModel(request);
         Assert.Contains(results, result => result.MemberNames.Contains(nameof(request.Currency)));
@@ -149,9 +156,9 @@ public class WalletRequestValidatorTests
     }
 
     [Fact]
-    public void ProcessWithdrawalCommand_RequiresReferenceForApproval()
+    public void ProcessWithdrawalCommand_RequiresTransferConfirmationAndReferenceForComplete()
     {
-        var request = new ProcessWithdrawalCommand("Approve")
+        var request = new ProcessWithdrawalCommand("Complete")
         {
             WithdrawalId = Guid.NewGuid(),
             AdminUserId = Guid.NewGuid().ToString()
@@ -159,15 +166,16 @@ public class WalletRequestValidatorTests
 
         var results = ValidateModel(request);
 
-        Assert.Contains(results, result => result.MemberNames.Contains(nameof(request.ReferenceCode)));
+        Assert.Contains(results, result => result.MemberNames.Contains(nameof(request.TransferConfirmed)));
+        Assert.Contains(results, result => result.MemberNames.Contains(nameof(request.TransferReference)));
     }
 
     [Theory]
     [InlineData("")]
     [InlineData("  ")]
-    public void ProcessWithdrawalCommand_RejectsBlankApprovalReference(string referenceCode)
+    public void ProcessWithdrawalCommand_RejectsBlankCompleteReference(string transferReference)
     {
-        var request = new ProcessWithdrawalCommand("APPROVE", ReferenceCode: referenceCode)
+        var request = new ProcessWithdrawalCommand("COMPLETE", TransferConfirmed: true, TransferReference: transferReference)
         {
             WithdrawalId = Guid.NewGuid(),
             AdminUserId = Guid.NewGuid().ToString()
@@ -175,31 +183,25 @@ public class WalletRequestValidatorTests
 
         var results = ValidateModel(request);
 
-        Assert.Contains(results, result => result.MemberNames.Contains(nameof(request.ReferenceCode)));
+        Assert.Contains(results, result => result.MemberNames.Contains(nameof(request.TransferReference)));
     }
 
     [Fact]
-    public void ProcessWithdrawalCommand_AllowsRejectionWithoutReference()
+    public void ProcessWithdrawalCommand_AllowsApproveAndRejectWithoutReference()
     {
-        var request = new ProcessWithdrawalCommand("Reject")
+        var approve = new ProcessWithdrawalCommand("Approve")
+        {
+            WithdrawalId = Guid.NewGuid(),
+            AdminUserId = Guid.NewGuid().ToString()
+        };
+        var reject = new ProcessWithdrawalCommand("Reject")
         {
             WithdrawalId = Guid.NewGuid(),
             AdminUserId = Guid.NewGuid().ToString()
         };
 
-        Assert.Empty(ValidateModel(request));
-    }
-
-    [Fact]
-    public void ProcessWithdrawalCommand_DoesNotValidateUnusedRejectionReference()
-    {
-        var request = new ProcessWithdrawalCommand("Reject", ReferenceCode: new string('R', 101))
-        {
-            WithdrawalId = Guid.NewGuid(),
-            AdminUserId = Guid.NewGuid().ToString()
-        };
-
-        Assert.Empty(ValidateModel(request));
+        Assert.Empty(ValidateModel(approve));
+        Assert.Empty(ValidateModel(reject));
     }
 
     [Theory]
@@ -207,7 +209,7 @@ public class WalletRequestValidatorTests
     [InlineData(101, true)]
     public void ProcessWithdrawalCommand_EnforcesReferenceLength(int length, bool invalid)
     {
-        var request = new ProcessWithdrawalCommand("Approve", ReferenceCode: new string('R', length))
+        var request = new ProcessWithdrawalCommand("Approve", TransferReference: new string('R', length))
         {
             WithdrawalId = Guid.NewGuid(),
             AdminUserId = Guid.NewGuid().ToString()
@@ -215,7 +217,7 @@ public class WalletRequestValidatorTests
 
         var results = ValidateModel(request);
 
-        Assert.Equal(invalid, results.Any(result => result.MemberNames.Contains(nameof(request.ReferenceCode))));
+        Assert.Equal(invalid, results.Any(result => result.MemberNames.Contains(nameof(request.TransferReference))));
     }
 
     [Fact]
@@ -234,7 +236,7 @@ public class WalletRequestValidatorTests
                 UserId = Guid.NewGuid(),
                 AdminUserId = adminId
             },
-            new ProcessWithdrawalCommand("Approve", ReferenceCode: "BANK-TRANSFER-REF")
+            new ProcessWithdrawalCommand("Approve", TransferReference: "BANK-TRANSFER-REF")
             {
                 WithdrawalId = Guid.NewGuid(),
                 AdminUserId = adminId
@@ -256,7 +258,7 @@ public class WalletRequestValidatorTests
                 100_000m,
                 BankCode: "VCB",
                 AccountNumber: "1234567890",
-                AccountHolderName: "Test User") { UserId = userId }
+                AccountHolderName: "Test User") { UserId = userId, IdempotencyKey = "req-boundary-1" }
         };
 
         foreach (var request in requests)
@@ -359,5 +361,41 @@ public class WalletRequestValidatorTests
             .ToList();
 
         Assert.Empty(propertiesWithValidation);
+    }
+
+    [Fact]
+    public void AllApplicationRequests_MustNotHaveValidationMetadataOnProperties()
+    {
+        var requestTypes = typeof(Wallet.Application.DependencyInjection).Assembly
+            .GetTypes()
+            .Where(t => !t.IsAbstract && !t.IsInterface && typeof(MediatR.IBaseRequest).IsAssignableFrom(t))
+            .OrderBy(t => t.FullName, StringComparer.Ordinal)
+            .ToList();
+
+        Assert.NotEmpty(requestTypes);
+
+        foreach (var requestType in requestTypes)
+        {
+            var propertiesWithValidation = requestType
+                .GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                .Where(p => p.GetCustomAttributes<ValidationAttribute>(inherit: false).Any())
+                .Select(p => $"{requestType.Name}.{p.Name}")
+                .ToList();
+
+            Assert.Empty(propertiesWithValidation);
+        }
+    }
+
+    [Fact]
+    public void ListWalletLedgerQuery_RejectsOutOfRangePagination()
+    {
+        var query = new Wallet.Application.Features.AdminWallets.Queries.ListWalletLedger.ListWalletLedgerQuery(
+            Page: 0,
+            PageSize: 101);
+
+        var results = ValidateModel(query);
+
+        Assert.Contains(results, result => result.MemberNames.Contains(nameof(query.Page)));
+        Assert.Contains(results, result => result.MemberNames.Contains(nameof(query.PageSize)));
     }
 }

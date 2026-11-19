@@ -1,6 +1,7 @@
 namespace Wallet.Tests;
 
 using Microsoft.EntityFrameworkCore;
+using Wallet.Application.Features.Checkout.Commands.CancelOrderEscrow;
 using Wallet.Application.Features.Checkout.Commands.PayOrderWithWallet;
 using Wallet.Application.Features.Checkout.Commands.RefundOrderPayment;
 using Wallet.Application.Features.Checkout.Commands.SettleSellerOrder;
@@ -339,6 +340,144 @@ public sealed class AuctionOrderEscrowPostgresTests
             .CountAsync(item => item.OrderId == orderId));
     }
 
+    [DisposablePostgresFact]
+    public async Task ConcurrentCancelAndSettlement_OnlyOneSucceeds_AndConservesEscrow()
+    {
+        var (options, buyerId, sellerId) = await Setup();
+        var orderId = Guid.NewGuid();
+        await using (var context = new WalletDbContext(options))
+        {
+            await new PayOrderWithWalletCommandHandler(context)
+                .Handle(Payment(buyerId, orderId, 100m), default);
+        }
+
+        await using var cancelContext = new WalletDbContext(options);
+        await using var settleContext = new WalletDbContext(options);
+        var cancelTask = Attempt(() => new CancelOrderEscrowCommandHandler(cancelContext)
+            .Handle(new CancelOrderEscrowCommand("Concurrent cancel")
+            {
+                OrderId = orderId,
+                IdempotencyKey = $"pg-cancel-{orderId:N}"
+            }, default));
+        var settleTask = Attempt(() => new SettleSellerOrderCommandHandler(settleContext)
+            .Handle(Settlement(sellerId, orderId, 100m), default));
+
+        var results = await Task.WhenAll(cancelTask, settleTask);
+        var cancelOutcome = results[0];
+        var settleOutcome = results[1];
+
+        Assert.NotEqual(cancelOutcome.Succeeded, settleOutcome.Succeeded);
+
+        await using var verify = new WalletDbContext(options);
+        var buyer = await verify.Wallets.SingleAsync(wallet => wallet.UserId == buyerId);
+        var seller = await verify.Wallets.SingleAsync(wallet => wallet.UserId == sellerId);
+        var escrow = await verify.OrderEscrows.SingleAsync(item => item.OrderId == orderId);
+
+        Assert.Equal(0m, escrow.RemainingAmount);
+        if (cancelOutcome.Succeeded)
+        {
+            Assert.Contains(settleOutcome.ErrorCode, new[] { "ORDER_ESCROW_CANCELLED", "ORDER_ESCROW_INSUFFICIENT" });
+            Assert.Equal(OrderEscrowStatus.Cancelled, escrow.Status);
+            Assert.Equal(1000m, buyer.Balance);
+            Assert.Equal(0m, seller.Balance);
+        }
+        else
+        {
+            Assert.Equal("ORDER_ESCROW_ALREADY_RESOLVED", cancelOutcome.ErrorCode);
+            Assert.Equal(OrderEscrowStatus.Settled, escrow.Status);
+            Assert.Equal(900m, buyer.Balance);
+            Assert.Equal(100m, seller.Balance);
+        }
+    }
+
+    [DisposablePostgresFact]
+    public async Task CancelOrderEscrow_LeavesAuctionDepositEscrowUntouched()
+    {
+        var (options, buyerId, _) = await Setup();
+        var orderId = Guid.NewGuid();
+        await using (var context = new WalletDbContext(options))
+        {
+            await new PayOrderWithWalletCommandHandler(context)
+                .Handle(Payment(buyerId, orderId, 100m), default);
+        }
+
+        var holdId = await CaptureDeposit(options, buyerId, orderId, 50m);
+        await using (var context = new WalletDbContext(options))
+        {
+            var cancelled = await new CancelOrderEscrowCommandHandler(context).Handle(
+                new CancelOrderEscrowCommand("Order cancelled after deposit capture")
+                {
+                    OrderId = orderId,
+                    IdempotencyKey = $"cancel-with-deposit-{orderId:N}"
+                },
+                default);
+            Assert.Equal(100m, cancelled.ReturnedAmount);
+            Assert.Equal(950m, cancelled.BalanceAfter);
+        }
+
+        await using var verify = new WalletDbContext(options);
+        Assert.Equal(950m, (await verify.Wallets.SingleAsync(wallet => wallet.UserId == buyerId)).Balance);
+        Assert.Equal(OrderEscrowStatus.Cancelled, (await verify.OrderEscrows.SingleAsync(item => item.OrderId == orderId)).Status);
+        Assert.Equal(50m, (await verify.AuctionDepositEscrows.SingleAsync(item => item.HoldId == holdId)).RemainingAmount);
+    }
+
+    [DisposablePostgresFact]
+    public async Task FailedCancelInsert_RollsBackBalanceEscrowTransactionAndAudit()
+    {
+        var (options, buyerId, _) = await Setup(buyerBalance: 900m);
+        var orderId = Guid.NewGuid();
+        await using (var setup = new WalletDbContext(options))
+        {
+            var wallet = await setup.Wallets.SingleAsync(item => item.UserId == buyerId);
+            setup.WalletTransactions.Add(new WalletTransaction
+            {
+                Id = Guid.NewGuid(),
+                WalletId = wallet.Id,
+                UserId = buyerId.ToString(),
+                Type = WalletTransactionType.PurchaseDebit,
+                Amount = 100m,
+                Currency = wallet.Currency.ToString(),
+                BalanceBefore = 1000m,
+                BalanceAfter = 900m,
+                Status = TransactionStatus.Success,
+                ReferenceId = orderId
+            });
+            setup.OrderEscrows.Add(new OrderEscrow
+            {
+                Id = Guid.NewGuid(),
+                OrderId = orderId,
+                WalletId = wallet.Id,
+                OriginalAmount = 100m,
+                RemainingAmount = 100m,
+                IsDeleted = true
+            });
+            await setup.SaveChangesAsync();
+        }
+
+        await using (var context = new WalletDbContext(options))
+        {
+            await Assert.ThrowsAsync<DbUpdateException>(
+                () => new CancelOrderEscrowCommandHandler(context).Handle(
+                    new CancelOrderEscrowCommand("Rollback test")
+                    {
+                        OrderId = orderId,
+                        IdempotencyKey = $"rollback-cancel-{orderId:N}"
+                    },
+                    default));
+        }
+
+        await using var verify = new WalletDbContext(options);
+        Assert.Equal(900m, (await verify.Wallets.SingleAsync(item => item.UserId == buyerId)).Balance);
+        Assert.Equal(0, await verify.WalletTransactions.CountAsync(item =>
+            item.ReferenceId == orderId && item.Type == WalletTransactionType.EscrowCancellationRefund));
+        Assert.Equal(0, await verify.AuditLogs.CountAsync(item =>
+            item.Action == AuditAction.OrderEscrowCancel && item.EntityId == orderId.ToString()));
+        Assert.Equal(0, await verify.AuditLogs.CountAsync(item =>
+            item.Action == AuditAction.OrderEscrowReconciliation));
+        Assert.Equal(1, await verify.OrderEscrows.IgnoreQueryFilters()
+            .CountAsync(item => item.OrderId == orderId));
+    }
+
     private static async Task<(DbContextOptions<WalletDbContext> Options, Guid BuyerId, Guid SellerId)> Setup(
         decimal buyerBalance = 1000m)
     {
@@ -407,7 +546,7 @@ public sealed class AuctionOrderEscrowPostgresTests
     private static RefundOrderPaymentCommand Refund(Guid buyerId, Guid orderId, decimal amount) =>
         new(buyerId.ToString(), amount) { OrderId = orderId };
 
-    private static async Task<AttemptResult> Attempt(Func<Task<WalletOrderTransactionResponse>> operation)
+    private static async Task<AttemptResult> Attempt<T>(Func<Task<T>> operation)
     {
         try
         {

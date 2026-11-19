@@ -153,7 +153,7 @@ internal static class StripeSettlement
             await context.ReloadUnmodifiedAsync(ledger, token);
             if (ledger.ReferenceId != order.OrderId || ledger.Type != WalletTransactionType.DirectGatewayPayment ||
                 ledger.Amount != attempt.Amount || ledger.UserId != attempt.OwnerId.ToString() ||
-                ledger.Status is not (TransactionStatus.Pending or TransactionStatus.Failed))
+                ledger.Status is not (TransactionStatus.Pending or TransactionStatus.Failed or TransactionStatus.Cancelled))
                 return StripeSettlementOutcome.ReconciliationRequired;
             var wallet = await context.LockWalletByIdAsync(ledger.WalletId, token);
             if (wallet is null)
@@ -260,7 +260,7 @@ internal static class StripeSettlement
                 ? StripeSettlementOutcome.AlreadySettled
                 : StripeSettlementOutcome.ReconciliationRequired;
         if (order.Status is not (TopupStatus.Pending or TopupStatus.Failed or TopupStatus.Expired) ||
-            ledger.Status is not (TransactionStatus.Pending or TransactionStatus.Failed))
+            ledger.Status is not (TransactionStatus.Pending or TransactionStatus.Failed or TransactionStatus.Cancelled))
             return StripeSettlementOutcome.ReconciliationRequired;
         if (attempt.Status == StripePaymentAttemptStatus.Successful || ledger.Status == TransactionStatus.Success)
             return StripeSettlementOutcome.ReconciliationRequired;

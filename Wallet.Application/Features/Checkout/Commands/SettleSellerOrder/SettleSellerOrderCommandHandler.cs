@@ -28,11 +28,11 @@ internal sealed class SettleSellerOrderCommandHandler
         CancellationToken cancellationToken)
     {
         var sellerId = Guid.Parse(request.SellerId);
+        var escrowOrderId = request.ParentOrderId ?? request.SubOrderId;
 
         await using var dbTransaction = await _context.Database.BeginTransactionAsync(cancellationToken);
-        await _context.LockOrderPaymentAsync(request.SubOrderId, cancellationToken);
-        var wallet = await _context.LockWalletByUserIdAsync(sellerId, cancellationToken)
-                     ?? throw new WalletNotFoundException(request.SellerId);
+        await LockOrderAndSubOrderAsync(escrowOrderId, request.SubOrderId, cancellationToken);
+        var wallet = await _context.LockOrEnsureWalletByUserIdAsync(sellerId, cancellationToken);
 
         var existing = await _context.WalletTransactions
             .FirstOrDefaultAsync(
@@ -54,9 +54,17 @@ internal sealed class SettleSellerOrderCommandHandler
 
         var escrowState = await OrderEscrowAccounting.LoadOrReconcileAsync(
             _context,
-            request.SubOrderId,
+            escrowOrderId,
             cancellationToken);
         var escrow = escrowState.Escrow;
+        if (request.ParentOrderId.HasValue && escrow is null && !escrowState.HasPayment)
+        {
+            throw new BusinessRuleValidationException(
+                "PAYMENT_NOT_FOUND",
+                "No completed wallet payment was found for the parent order.",
+                404);
+        }
+
         if (escrow is null && escrowState.HasPayment)
         {
             if (escrowState.HasResolvedOperation)
@@ -73,6 +81,14 @@ internal sealed class SettleSellerOrderCommandHandler
                 409);
         }
 
+        if (escrow is not null && escrow.Status == OrderEscrowStatus.Cancelled)
+        {
+            throw new BusinessRuleValidationException(
+                "ORDER_ESCROW_CANCELLED",
+                "The order escrow was already cancelled and cannot be settled.",
+                409);
+        }
+
         if (escrow is not null && escrow.RemainingAmount < request.Amount)
         {
             throw new BusinessRuleValidationException(
@@ -85,6 +101,10 @@ internal sealed class SettleSellerOrderCommandHandler
         if (escrow is not null)
         {
             escrow.RemainingAmount -= request.Amount;
+            if (escrow.RemainingAmount == 0m)
+            {
+                escrow.Status = OrderEscrowStatus.Settled;
+            }
             escrow.UpdatedAt = DateTimeOffset.UtcNow;
         }
 
@@ -109,7 +129,7 @@ internal sealed class SettleSellerOrderCommandHandler
         _context.AddAuditLog(
             AuditAction.OrderSettlement,
             escrow is null ? nameof(WalletTransaction) : nameof(OrderEscrow),
-            request.SubOrderId.ToString(),
+            escrow is null ? request.SubOrderId.ToString() : escrowOrderId.ToString(),
             oldValues: new { Balance = balanceBefore, EscrowRemaining = escrowBefore },
             newValues: new
             {
@@ -117,7 +137,9 @@ internal sealed class SettleSellerOrderCommandHandler
                 EscrowRemaining = escrow?.RemainingAmount,
                 transaction.Amount,
                 SellerId = sellerId,
-                TransactionId = transaction.Id
+                TransactionId = transaction.Id,
+                SubOrderId = request.SubOrderId,
+                request.ParentOrderId
             },
             userId: sellerId.ToString());
 
@@ -135,6 +157,23 @@ internal sealed class SettleSellerOrderCommandHandler
             transaction.Status.ToString(),
             transaction.Note,
             transaction.CreatedAt);
+    }
+
+    private async Task LockOrderAndSubOrderAsync(
+        Guid escrowOrderId,
+        Guid subOrderId,
+        CancellationToken cancellationToken)
+    {
+        if (escrowOrderId == subOrderId)
+        {
+            await _context.LockOrderPaymentAsync(escrowOrderId, cancellationToken);
+            return;
+        }
+
+        var first = escrowOrderId.CompareTo(subOrderId) < 0 ? escrowOrderId : subOrderId;
+        var second = first == escrowOrderId ? subOrderId : escrowOrderId;
+        await _context.LockOrderPaymentAsync(first, cancellationToken);
+        await _context.LockOrderPaymentAsync(second, cancellationToken);
     }
 
     private static WalletOrderTransactionResponse Map(WalletTransaction t) => new(

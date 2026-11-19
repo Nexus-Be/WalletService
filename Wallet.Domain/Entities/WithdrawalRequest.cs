@@ -16,6 +16,11 @@ public class WithdrawalRequest : BaseEntity<Guid>
     public Guid? ProcessedBy { get; set; }
     public string? GatewayReferenceId { get; set; }
     public DateTimeOffset? ProcessedAt { get; set; }
+    public Guid? BankAccountId { get; set; }
+    public DateTimeOffset? CompletedAt { get; set; }
+    public string? StatusReason { get; set; }
+    public string? ClientIdempotencyKey { get; set; }
+    public string? RequestFingerprint { get; set; }
 
     // Navigation
     public WalletAccount? Wallet { get; set; }

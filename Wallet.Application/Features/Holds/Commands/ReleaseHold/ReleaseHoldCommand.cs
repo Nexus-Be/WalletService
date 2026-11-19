@@ -14,7 +14,7 @@ public sealed record ReleaseHoldCommand(string Reason) : IRequest<ReleaseHoldRes
     public IEnumerable<ValidationResult> ValidateRequest()
     {
         if (HoldId == Guid.Empty || !CreateHoldCommand.ValidKey(IdempotencyKey) ||
-            Reason is not ("AUCTION_ENDED_NOT_WINNER" or "AUCTION_CANCELLED" or "AUCTION_FAILED" or "ADMIN_FORCE_CANCEL"))
+            Reason is not ("AUCTION_ENDED_NOT_WINNER" or "AUCTION_CANCELLED" or "AUCTION_FAILED" or "ADMIN_FORCE_CANCEL" or "BUYER_WITHDRAWN"))
             yield return new ValidationResult("The auction hold release request is invalid.");
     }
 }

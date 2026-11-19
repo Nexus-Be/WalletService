@@ -75,6 +75,8 @@ internal sealed class PayOrderWithWalletCommandHandler
             return Map(existing);
         }
 
+        wallet.EnsureActive();
+
         if (directOrderId is Guid parentId && await _context.StripePaymentAttempts.AnyAsync(
                 attempt => attempt.DirectPaymentOrderId == parentId &&
                            (attempt.BlocksReplacement || attempt.Status == StripePaymentAttemptStatus.ReconciliationRequired),
@@ -86,9 +88,9 @@ internal sealed class PayOrderWithWalletCommandHandler
                 409);
         }
 
-        if (wallet.Balance < request.Amount)
+        if (wallet.AvailableBalance < request.Amount)
         {
-            throw new InsufficientBalanceException(wallet.Balance, request.Amount);
+            throw new InsufficientBalanceException(wallet.AvailableBalance, request.Amount);
         }
 
         var balanceBefore = wallet.Balance;

@@ -394,6 +394,11 @@ namespace Wallet.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_BankAccounts_UserId_Default")
+                        .HasFilter("\"IsDefault\" = TRUE AND \"IsDeleted\" = FALSE");
+
                     b.ToTable("BankAccounts");
                 });
 
@@ -457,6 +462,13 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("CancelReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTimeOffset?>("CancelledAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -477,6 +489,9 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -493,6 +508,8 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     b.ToTable("OrderEscrows", null, t =>
                         {
                             t.HasCheckConstraint("CK_OrderEscrows_Balance", "\"OriginalAmount\" > 0 AND \"RemainingAmount\" >= 0 AND \"RemainingAmount\" <= \"OriginalAmount\"");
+
+                            t.HasCheckConstraint("CK_OrderEscrows_Status", "(\"Status\" = 0 AND \"RemainingAmount\" > 0 AND \"CancelledAt\" IS NULL AND \"CancelReason\" IS NULL) OR (\"Status\" IN (1, 2) AND \"RemainingAmount\" = 0 AND \"CancelledAt\" IS NULL AND \"CancelReason\" IS NULL) OR (\"Status\" = 3 AND \"RemainingAmount\" = 0 AND \"CancelledAt\" IS NOT NULL AND \"CancelReason\" IS NOT NULL)");
                         });
                 });
 
@@ -745,6 +762,8 @@ namespace Wallet.Infrastructure.Persistence.Migrations
 
                     b.ToTable("Wallets", null, t =>
                         {
+                            t.HasCheckConstraint("CK_Wallets_BalanceLocks", "\"Balance\" >= 0 AND \"LockedBalance\" >= 0 AND \"LockedBalance\" <= \"Balance\"");
+
                             t.HasCheckConstraint("CK_Wallets_LockedBalance", "\"LockedBalance\" >= 0 AND \"LockedBalance\" <= \"Balance\"");
                         });
                 });
@@ -820,6 +839,10 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
+                    b.Property<string>("ClientIdempotencyKey")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -837,6 +860,10 @@ namespace Wallet.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid?>("ReferenceId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("RequestFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");
@@ -856,6 +883,10 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("WalletId");
+
+                    b.HasIndex("ReferenceId", "ClientIdempotencyKey")
+                        .IsUnique()
+                        .HasFilter("\"ClientIdempotencyKey\" IS NOT NULL AND \"IsDeleted\" = FALSE");
 
                     b.HasIndex("ReferenceId", "Type");
 
@@ -879,6 +910,9 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
+                    b.Property<Guid?>("BankAccountId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("BankAccountNumber")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -888,6 +922,13 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(150)
                         .HasColumnType("character varying(150)");
+
+                    b.Property<string>("ClientIdempotencyKey")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -916,8 +957,16 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("ProcessedBy")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("RequestFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<int>("Status")
                         .HasColumnType("integer");
+
+                    b.Property<string>("StatusReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -927,7 +976,17 @@ namespace Wallet.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("WalletId");
+                    b.HasIndex("BankAccountId");
+
+                    b.HasIndex("GatewayReferenceId")
+                        .IsUnique()
+                        .HasFilter("\"GatewayReferenceId\" IS NOT NULL AND \"IsDeleted\" = FALSE");
+
+                    b.HasIndex("Status", "CreatedAt");
+
+                    b.HasIndex("WalletId", "ClientIdempotencyKey")
+                        .IsUnique()
+                        .HasFilter("\"ClientIdempotencyKey\" IS NOT NULL AND \"IsDeleted\" = FALSE");
 
                     b.ToTable("WithdrawalRequests");
                 });

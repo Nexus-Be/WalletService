@@ -2,9 +2,11 @@ namespace Wallet.Application.Features.Topups.Queries.ListTopups;
 
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Wallet.Application.Common.Extensions;
 using Wallet.Application.Common.Models;
 using Wallet.Application.Interfaces;
 using Wallet.Domain.Enums;
+using Wallet.Domain.Exceptions;
 
 internal sealed class ListTopupsQueryHandler(IWalletDbContext context)
     : IRequestHandler<ListTopupsQuery, PagedData<TopupListItem>>
@@ -18,6 +20,16 @@ internal sealed class ListTopupsQueryHandler(IWalletDbContext context)
                               attempt.WalletTopupId == topup.Id && attempt.OwnerId == request.UserId &&
                               attempt.Purpose == StripePaymentPurpose.Topup)
                     select new { Topup = topup, wallet.Currency };
+
+        if (!string.IsNullOrWhiteSpace(request.Status))
+        {
+            if (!request.Status.TryToEnum<TopupStatus>(out var statusFilter))
+            {
+                throw new BusinessRuleValidationException("VAL_INVALID_STATUS", "Topup status filter is invalid.");
+            }
+
+            query = query.Where(item => item.Topup.Status == statusFilter);
+        }
         var total = await query.CountAsync(cancellationToken);
         var page = await query.OrderByDescending(item => item.Topup.CreatedAt)
             .ThenByDescending(item => item.Topup.Id)

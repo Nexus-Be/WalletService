@@ -656,7 +656,7 @@ public class WalletUseCaseBehaviorTests
 
         var handler = new ProcessWithdrawalCommandHandler(context);
         var result = await handler.Handle(
-            new ProcessWithdrawalCommand("APPROVE", ReferenceCode: "BANK-TRANSFER-REF")
+            new ProcessWithdrawalCommand("APPROVE", TransferReference: "BANK-TRANSFER-REF")
             {
                 WithdrawalId = withdrawal.Id,
                 AdminUserId = Guid.NewGuid().ToString()
@@ -666,7 +666,7 @@ public class WalletUseCaseBehaviorTests
         Assert.Equal("Approved", result.Status);
         Assert.Equal(400_000m, wallet.Balance);
         Assert.Equal(0m, wallet.LockedBalance);
-        Assert.Equal("BANK-TRANSFER-REF", result.ReferenceCode);
+        Assert.Equal("BANK-TRANSFER-REF", result.TransferReference);
         Assert.Equal("BANK-TRANSFER-REF", withdrawal.GatewayReferenceId);
         var transaction = Assert.Single(context.WalletTransactions.Where(t => t.Type == WalletTransactionType.WithdrawalDebit));
         Assert.DoesNotContain("1234567890", transaction.Note);
@@ -697,7 +697,7 @@ public class WalletUseCaseBehaviorTests
 
         var handler = new ProcessWithdrawalCommandHandler(context);
         var result = await handler.Handle(
-            new ProcessWithdrawalCommand("Reject", ReferenceCode: null)
+            new ProcessWithdrawalCommand("Reject", TransferReference: null)
             {
                 WithdrawalId = withdrawal.Id,
                 AdminUserId = Guid.NewGuid().ToString()
@@ -705,7 +705,7 @@ public class WalletUseCaseBehaviorTests
             default);
 
         Assert.Equal("Rejected", result.Status);
-        Assert.Null(result.ReferenceCode);
+        Assert.Null(result.TransferReference);
         Assert.Null(withdrawal.GatewayReferenceId);
         Assert.Equal(500_000m, wallet.Balance);
         Assert.Equal(0m, wallet.LockedBalance);
@@ -750,7 +750,8 @@ public class WalletUseCaseBehaviorTests
                 AccountNumber: " 1234567890 ",
                 AccountHolderName: " Test User ")
             {
-                UserId = userId.ToString()
+                UserId = userId.ToString(),
+                IdempotencyKey = "wd-reserve-1"
             },
             default);
 
@@ -788,7 +789,8 @@ public class WalletUseCaseBehaviorTests
                 AccountNumber: "1234567890",
                 AccountHolderName: "Test User")
             {
-                UserId = userId.ToString()
+                UserId = userId.ToString(),
+                IdempotencyKey = "wd-insuff-1"
             },
             default));
 
@@ -813,7 +815,8 @@ public class WalletUseCaseBehaviorTests
                 AccountNumber: "1234567890",
                 AccountHolderName: "Test User")
             {
-                UserId = Guid.NewGuid().ToString()
+                UserId = Guid.NewGuid().ToString(),
+                IdempotencyKey = "wd-missing-1"
             },
             default));
 

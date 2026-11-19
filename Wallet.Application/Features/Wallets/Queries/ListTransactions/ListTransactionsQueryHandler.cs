@@ -48,7 +48,12 @@ internal sealed class ListTransactionsQueryHandler : IRequestHandler<ListTransac
                     WalletTransactionType.PurchaseDebit,
                     WalletTransactionType.DirectGatewayPayment
                 },
-                "REFUND" => new[] { WalletTransactionType.RefundCredit, WalletTransactionType.AuctionDepositRefund },
+                "REFUND" => new[]
+                {
+                    WalletTransactionType.RefundCredit,
+                    WalletTransactionType.AuctionDepositRefund,
+                    WalletTransactionType.EscrowCancellationRefund
+                },
                 _ when Enum.TryParse<WalletTransactionType>(request.Type.Trim(), true, out var txType) =>
                     new[] { txType },
                 _ => throw new ArgumentException("Transaction type is invalid.", nameof(request))
@@ -59,9 +64,16 @@ internal sealed class ListTransactionsQueryHandler : IRequestHandler<ListTransac
         }
 
         if (request.FromDate.HasValue)
-            query = query.Where(t => t.CreatedAt >= request.FromDate.Value);
+        {
+            var fromUtc = request.FromDate.Value.ToUniversalTime();
+            query = query.Where(t => t.CreatedAt >= fromUtc);
+        }
+
         if (request.ToDate.HasValue)
-            query = query.Where(t => t.CreatedAt <= request.ToDate.Value);
+        {
+            var toUtc = request.ToDate.Value.ToUniversalTime();
+            query = query.Where(t => t.CreatedAt <= toUtc);
+        }
 
         var total = await query.CountAsync(cancellationToken);
 

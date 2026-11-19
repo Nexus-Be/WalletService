@@ -22,10 +22,9 @@ public sealed class StripeCheckoutClient : IStripeCheckoutClient
             throw new InvalidOperationException("A Stripe test-mode secret key is required.");
         }
 
-        var allowLocalHttp = string.Equals(
-            configuration["ASPNETCORE_ENVIRONMENT"], "Development", StringComparison.OrdinalIgnoreCase);
-        _successUrl = RequireReturnUrl(configuration["Stripe:SuccessUrl"], "Stripe success URL", allowLocalHttp);
-        _cancelUrl = RequireReturnUrl(configuration["Stripe:CancelUrl"], "Stripe cancel URL", allowLocalHttp);
+        var allowLocalHttp = StripeSettings.IsDevelopment(configuration);
+        _successUrl = StripeSettings.RequireReturnUrl(configuration["Stripe:SuccessUrl"], "Stripe success URL", allowLocalHttp);
+        _cancelUrl = StripeSettings.RequireReturnUrl(configuration["Stripe:CancelUrl"], "Stripe cancel URL", allowLocalHttp);
         var stripeHttp = new SystemNetHttpClient(httpClient, maxNetworkRetries: 0);
         var client = new StripeClient(key, httpClient: stripeHttp);
         _sessions = new SessionService(client);
@@ -95,6 +94,19 @@ public sealed class StripeCheckoutClient : IStripeCheckoutClient
         ValidateProviderId(sessionId, "cs_test_", nameof(sessionId));
         var session = await RequestProviderAsync(
             () => _sessions.GetAsync(sessionId, cancellationToken: cancellationToken), cancellationToken);
+        return MapSessionSnapshot(sessionId, session);
+    }
+
+    public async Task<StripeSessionSnapshot> ExpireSessionAsync(string sessionId, CancellationToken cancellationToken)
+    {
+        ValidateProviderId(sessionId, "cs_test_", nameof(sessionId));
+        var session = await RequestProviderAsync(
+            () => _sessions.ExpireAsync(sessionId, cancellationToken: cancellationToken), cancellationToken);
+        return MapSessionSnapshot(sessionId, session);
+    }
+
+    private static StripeSessionSnapshot MapSessionSnapshot(string sessionId, Session session)
+    {
         if (session.Id != sessionId || session.Livemode || session.Mode != "payment" ||
             session.Currency != "vnd" || session.AmountTotal is null or <= 0 ||
             string.IsNullOrWhiteSpace(session.Status) || string.IsNullOrWhiteSpace(session.PaymentStatus))
@@ -173,18 +185,6 @@ public sealed class StripeCheckoutClient : IStripeCheckoutClient
             JsonValueKind.False => false,
             _ => null
         };
-    }
-
-    private static string RequireReturnUrl(string? value, string name, bool allowLocalHttp)
-    {
-        if (!Uri.TryCreate(value, UriKind.Absolute, out var url) ||
-            (url.Scheme != Uri.UriSchemeHttps &&
-             !(allowLocalHttp && url.Scheme == Uri.UriSchemeHttp &&
-               string.Equals(url.Host, "localhost", StringComparison.OrdinalIgnoreCase) &&
-               url.Port == 3000 && string.IsNullOrEmpty(url.UserInfo))))
-            throw new InvalidOperationException(
-                $"{name} must be an absolute HTTPS URL, or http://localhost:3000 in Development.");
-        return url.AbsoluteUri;
     }
 
     private static string AddTopupContext(string returnUrl, Guid? topupId)

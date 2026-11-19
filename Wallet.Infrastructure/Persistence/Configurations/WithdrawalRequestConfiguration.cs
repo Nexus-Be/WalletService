@@ -16,6 +16,17 @@ public class WithdrawalRequestConfiguration : IEntityTypeConfiguration<Withdrawa
         builder.Property(x => x.BankAccountNumber).HasMaxLength(100);
         builder.Property(x => x.BankAccountHolder).HasMaxLength(255);
         builder.Property(x => x.GatewayReferenceId).HasMaxLength(100);
+        builder.Property(x => x.StatusReason).HasMaxLength(500);
+        builder.Property(x => x.ClientIdempotencyKey).HasMaxLength(100);
+        builder.Property(x => x.RequestFingerprint).HasMaxLength(64);
+        builder.HasIndex(x => x.GatewayReferenceId)
+            .IsUnique()
+            .HasFilter("\"GatewayReferenceId\" IS NOT NULL AND \"IsDeleted\" = FALSE");
+        builder.HasIndex(x => new { x.WalletId, x.ClientIdempotencyKey })
+            .IsUnique()
+            .HasFilter("\"ClientIdempotencyKey\" IS NOT NULL AND \"IsDeleted\" = FALSE");
+        builder.HasIndex(x => new { x.Status, x.CreatedAt });
+        builder.HasIndex(x => x.BankAccountId);
         builder.HasQueryFilter(x => !x.IsDeleted);
 
         builder.HasOne(r => r.Wallet)

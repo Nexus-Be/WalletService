@@ -7,6 +7,7 @@ using Npgsql;
 using Wallet.Application.Interfaces;
 using Wallet.Infrastructure.Payments;
 using Wallet.Infrastructure.Persistence;
+using Wallet.Infrastructure.Services.Notification;
 
 public static class DependencyInjection
 {
@@ -38,6 +39,17 @@ public static class DependencyInjection
         services.AddHttpClient<IStripeCheckoutClient, StripeCheckoutClient>(client =>
             client.Timeout = TimeSpan.FromSeconds(10));
         services.AddSingleton<IStripeWebhookVerifier, StripeWebhookVerifier>();
+
+        var notificationBaseUrl = Environment.GetEnvironmentVariable("NOTIFICATION_SERVICE_URL")
+            ?? configuration["NOTIFICATION_SERVICE_URL"]
+            ?? configuration["Services:Notification:BaseUrl"]
+            ?? "http://localhost:8007/";
+
+        services.AddHttpClient<INotificationClient, NotificationClient>(client =>
+        {
+            client.BaseAddress = new Uri(notificationBaseUrl.TrimEnd('/') + "/");
+            client.Timeout = TimeSpan.FromSeconds(10);
+        });
 
         // Identity propagation delegating handler for outgoing inter-service HTTP requests
         services.AddTransient<Services.Common.IdentityPropagationHandler>();

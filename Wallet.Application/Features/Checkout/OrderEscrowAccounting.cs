@@ -41,11 +41,25 @@ internal static class OrderEscrowAccounting
         }
 
         var payment = payments.SingleOrDefault();
+        var adjustmentNet = payment is null
+            ? 0m
+            : await context.WalletTransactions
+                .AsNoTracking()
+                .Where(item => item.ReferenceId == orderId &&
+                               item.Status == TransactionStatus.Success &&
+                               (item.Type == WalletTransactionType.OrderPaymentAdjustmentDebit ||
+                                item.Type == WalletTransactionType.OrderPaymentAdjustmentRefund))
+                .SumAsync(
+                    item => item.Type == WalletTransactionType.OrderPaymentAdjustmentDebit
+                        ? item.Amount
+                        : -item.Amount,
+                    cancellationToken);
+
         if (escrow is not null)
         {
             if (payment is null ||
                 escrow.WalletId != payment.WalletId ||
-                escrow.OriginalAmount != payment.Amount)
+                escrow.OriginalAmount != payment.Amount + adjustmentNet)
             {
                 throw new InvalidOperationException("Order escrow does not match its wallet payment transaction.");
             }
@@ -63,13 +77,15 @@ internal static class OrderEscrowAccounting
             return new OrderEscrowLookup(null, payment, true, true, false);
         }
 
+        var originalAmount = payment.Amount + adjustmentNet;
         escrow = new OrderEscrow
         {
             Id = Guid.NewGuid(),
             OrderId = orderId,
             WalletId = payment.WalletId,
-            OriginalAmount = payment.Amount,
-            RemainingAmount = payment.Amount
+            OriginalAmount = originalAmount,
+            RemainingAmount = originalAmount,
+            Status = OrderEscrowStatus.Active
         };
         context.OrderEscrows.Add(escrow);
         context.AddAuditLog(
@@ -96,6 +112,7 @@ internal static class OrderEscrowAccounting
             item => item.ReferenceId == orderId &&
                     item.Status == TransactionStatus.Success &&
                     (item.Type == WalletTransactionType.EscrowRelease ||
-                     item.Type == WalletTransactionType.RefundCredit),
+                     item.Type == WalletTransactionType.RefundCredit ||
+                     item.Type == WalletTransactionType.EscrowCancellationRefund),
             cancellationToken);
 }
