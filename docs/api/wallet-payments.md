@@ -92,6 +92,7 @@ Hosted on `WalletsController` and excluded from Swagger and public gateway ingre
 - `POST ~/api/v1/internal/wallets/freeze-purchase` and `POST ~/api/v1/internal/wallets/unfreeze-purchase` — purchase-dispute wallet freeze/unfreeze.
 - `POST ~/api/v1/internal/wallets/orders/{orderId}/payment` — internal buyer wallet debit (`BuyerId`, `Amount` in body; does not rely on `x-user-id` header).
 - `POST ~/api/v1/internal/wallets/orders/{orderId}/adjust-payment` — idempotent (`Idempotency-Key`) post-order delta debit or refund against escrow.
+- `POST ~/api/v1/internal/wallets/orders/{orderId}/escrow/cancel` — idempotent (`Idempotency-Key`) strict all-or-nothing cancellation of an untouched wallet-payment `OrderEscrow`, returning the full balance to `OrderEscrow.WalletId` (`EscrowCancellationRefund`) and recording an `OrderEscrowCancel` audit entry (see [cancel order escrow](checkout/cancel-order-escrow.md)).
 - `POST ~/api/v1/internal/wallets/checkout/direct/{orderId}/expire` — expires unpaid direct Stripe order payment on Commerce order expiry.
 - `POST ~/api/v1/internal/wallets/sub-orders/{subOrderId}/settle`, `orders/{orderId}/refund`, `sub-orders/{subOrderId}/refund` (`ReleaseFeature.LegacyCommerceCredits` gated).
 - `~/api/v1/internal/wallets/holds/*` — internal mirror routes for Auction `CreateHold`, `ReleaseHold`, `CaptureHold`, `RefundCapturedHold`, `GetHold`, and `GetHoldByReference`.
@@ -114,9 +115,11 @@ transaction, and changed retries or overdraws do not move funds. Order refunds
 leave captured-deposit escrow untouched, so the existing hold operation can
 still refund the full captured deposit.
 
-The `sub-orders/{subOrderId}` routes retain their existing compatibility
-behavior when the child ID cannot be associated with an order-payment debit.
-These routes remain hidden from Swagger, and the existing release gates remain
+The `sub-orders/{subOrderId}` routes accept an optional `parentOrderId` field so
+multiple sub-order settlements and sub-order refunds lock and decrement the
+parent `OrderEscrow`. When `parentOrderId` is omitted and no matching payment
+exists for `subOrderId`, the legacy compatibility fallback remains active;
+these routes remain hidden from Swagger, and the existing release gates remain
 unchanged.
 
 ## User wallet routes

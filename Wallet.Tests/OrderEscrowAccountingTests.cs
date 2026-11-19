@@ -129,6 +129,89 @@ public sealed class OrderEscrowAccountingTests
             item.ReferenceId == childOrderId && item.Type == WalletTransactionType.RefundCredit));
     }
 
+    [Fact]
+    public async Task MultiSellerSubOrderSettlements_AndSubOrderRefund_RespectParentOrderEscrow()
+    {
+        using var context = new TestWalletDbContext(
+            nameof(MultiSellerSubOrderSettlements_AndSubOrderRefund_RespectParentOrderEscrow));
+        var buyer = AddWallet(context, balance: 1000m);
+        var seller1 = AddWallet(context, balance: 0m);
+        var seller2 = AddWallet(context, balance: 0m);
+        var seller3 = AddWallet(context, balance: 0m);
+        var parentOrderId = Guid.NewGuid();
+        var sub1 = Guid.NewGuid();
+        var sub2 = Guid.NewGuid();
+        var sub3 = Guid.NewGuid();
+
+        await new PayOrderWithWalletCommandHandler(context).Handle(
+            Payment(buyer.UserId, parentOrderId, 100m),
+            default);
+
+        var settleHandler = new SettleSellerOrderCommandHandler(context);
+        var s1 = await settleHandler.Handle(
+            new SettleSellerOrderCommand(seller1.UserId.ToString(), 40m, parentOrderId) { SubOrderId = sub1 },
+            default);
+        var s2 = await settleHandler.Handle(
+            new SettleSellerOrderCommand(seller2.UserId.ToString(), 40m, parentOrderId) { SubOrderId = sub2 },
+            default);
+
+        Assert.NotEqual(s1.Id, s2.Id);
+        Assert.Equal(40m, seller1.Balance);
+        Assert.Equal(40m, seller2.Balance);
+        Assert.Equal(20m, context.OrderEscrows.Single(item => item.OrderId == parentOrderId).RemainingAmount);
+
+        var overdraw = await Assert.ThrowsAsync<BusinessRuleValidationException>(() =>
+            settleHandler.Handle(
+                new SettleSellerOrderCommand(seller3.UserId.ToString(), 30m, parentOrderId) { SubOrderId = sub3 },
+                default));
+        Assert.Equal("ORDER_ESCROW_INSUFFICIENT", overdraw.ErrorCode);
+        Assert.Equal(0m, seller3.Balance);
+
+        var subRefund = await new RefundOrderPaymentCommandHandler(context).Handle(
+            new RefundOrderPaymentCommand(buyer.UserId.ToString().ToUpperInvariant(), 20m, "Sub-order 3 cancelled", parentOrderId)
+            {
+                OrderId = sub3,
+                IsSubOrder = true
+            },
+            default);
+        Assert.Equal(920m, subRefund.BalanceAfter);
+
+        var escrow = context.OrderEscrows.Single(item => item.OrderId == parentOrderId);
+        Assert.Equal(0m, escrow.RemainingAmount);
+        Assert.Equal(OrderEscrowStatus.Refunded, escrow.Status);
+    }
+
+    [Fact]
+    public async Task SubOrderSettlementAndRefund_WithUnknownParentOrderId_Return404()
+    {
+        using var context = new TestWalletDbContext(
+            nameof(SubOrderSettlementAndRefund_WithUnknownParentOrderId_Return404));
+        var buyer = AddWallet(context, balance: 100m);
+        var seller = AddWallet(context, balance: 0m);
+        var unknownParent = Guid.NewGuid();
+
+        var settleNotFound = await Assert.ThrowsAsync<BusinessRuleValidationException>(() =>
+            new SettleSellerOrderCommandHandler(context).Handle(
+                new SettleSellerOrderCommand(seller.UserId.ToString(), 40m, unknownParent)
+                {
+                    SubOrderId = Guid.NewGuid()
+                },
+                default));
+        Assert.Equal(404, settleNotFound.StatusCode);
+        Assert.Equal("PAYMENT_NOT_FOUND", settleNotFound.ErrorCode);
+
+        var refundNotFound = await Assert.ThrowsAsync<BusinessRuleValidationException>(() =>
+            new RefundOrderPaymentCommandHandler(context).Handle(
+                new RefundOrderPaymentCommand(buyer.UserId.ToString(), 20m, "Missing parent", unknownParent)
+                {
+                    OrderId = Guid.NewGuid(),
+                    IsSubOrder = true
+                },
+                default));
+        Assert.Equal(404, refundNotFound.StatusCode);
+        Assert.Equal("PAYMENT_NOT_FOUND", refundNotFound.ErrorCode);
+    }
+
     private static WalletAccount AddWallet(TestWalletDbContext context, decimal balance)
     {
         var wallet = new WalletAccount

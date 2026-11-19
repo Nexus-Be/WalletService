@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -11,99 +11,52 @@ namespace Wallet.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropIndex(
-                name: "IX_WithdrawalRequests_WalletId",
-                table: "WithdrawalRequests");
+            migrationBuilder.Sql(
+                """
+                DROP INDEX IF EXISTS "IX_WithdrawalRequests_WalletId";
 
-            migrationBuilder.AddColumn<Guid>(
-                name: "BankAccountId",
-                table: "WithdrawalRequests",
-                type: "uuid",
-                nullable: true);
+                ALTER TABLE "WithdrawalRequests" ADD COLUMN IF NOT EXISTS "BankAccountId" uuid;
+                ALTER TABLE "WithdrawalRequests" ADD COLUMN IF NOT EXISTS "ClientIdempotencyKey" character varying(100);
+                ALTER TABLE "WithdrawalRequests" ADD COLUMN IF NOT EXISTS "CompletedAt" timestamp with time zone;
+                ALTER TABLE "WithdrawalRequests" ADD COLUMN IF NOT EXISTS "RequestFingerprint" character varying(64);
+                ALTER TABLE "WithdrawalRequests" ADD COLUMN IF NOT EXISTS "StatusReason" character varying(500);
 
-            migrationBuilder.AddColumn<string>(
-                name: "ClientIdempotencyKey",
-                table: "WithdrawalRequests",
-                type: "character varying(100)",
-                maxLength: 100,
-                nullable: true);
+                ALTER TABLE "WalletTransactions" ADD COLUMN IF NOT EXISTS "ClientIdempotencyKey" character varying(128);
+                ALTER TABLE "WalletTransactions" ADD COLUMN IF NOT EXISTS "RequestFingerprint" character varying(64);
 
-            migrationBuilder.AddColumn<DateTimeOffset>(
-                name: "CompletedAt",
-                table: "WithdrawalRequests",
-                type: "timestamp with time zone",
-                nullable: true);
+                CREATE INDEX IF NOT EXISTS "IX_WithdrawalRequests_BankAccountId"
+                    ON "WithdrawalRequests" ("BankAccountId");
 
-            migrationBuilder.AddColumn<string>(
-                name: "RequestFingerprint",
-                table: "WithdrawalRequests",
-                type: "character varying(64)",
-                maxLength: 64,
-                nullable: true);
+                DROP INDEX IF EXISTS "IX_WithdrawalRequests_GatewayReferenceId";
+                CREATE UNIQUE INDEX "IX_WithdrawalRequests_GatewayReferenceId"
+                    ON "WithdrawalRequests" ("GatewayReferenceId")
+                    WHERE "GatewayReferenceId" IS NOT NULL AND "IsDeleted" = FALSE;
 
-            migrationBuilder.AddColumn<string>(
-                name: "StatusReason",
-                table: "WithdrawalRequests",
-                type: "character varying(500)",
-                maxLength: 500,
-                nullable: true);
+                CREATE INDEX IF NOT EXISTS "IX_WithdrawalRequests_Status_CreatedAt"
+                    ON "WithdrawalRequests" ("Status", "CreatedAt");
 
-            migrationBuilder.AddColumn<string>(
-                name: "ClientIdempotencyKey",
-                table: "WalletTransactions",
-                type: "character varying(128)",
-                maxLength: 128,
-                nullable: true);
+                DROP INDEX IF EXISTS "IX_WithdrawalRequests_WalletId_ClientIdempotencyKey";
+                CREATE UNIQUE INDEX "IX_WithdrawalRequests_WalletId_ClientIdempotencyKey"
+                    ON "WithdrawalRequests" ("WalletId", "ClientIdempotencyKey")
+                    WHERE "ClientIdempotencyKey" IS NOT NULL AND "IsDeleted" = FALSE;
 
-            migrationBuilder.AddColumn<string>(
-                name: "RequestFingerprint",
-                table: "WalletTransactions",
-                type: "character varying(64)",
-                maxLength: 64,
-                nullable: true);
+                CREATE UNIQUE INDEX IF NOT EXISTS "IX_WalletTransactions_ReferenceId_ClientIdempotencyKey"
+                    ON "WalletTransactions" ("ReferenceId", "ClientIdempotencyKey")
+                    WHERE "ClientIdempotencyKey" IS NOT NULL AND "IsDeleted" = FALSE;
 
-            migrationBuilder.CreateIndex(
-                name: "IX_WithdrawalRequests_BankAccountId",
-                table: "WithdrawalRequests",
-                column: "BankAccountId");
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CK_Wallets_BalanceLocks') THEN
+                        ALTER TABLE "Wallets"
+                            ADD CONSTRAINT "CK_Wallets_BalanceLocks"
+                            CHECK ("Balance" >= 0 AND "LockedBalance" >= 0 AND "LockedBalance" <= "Balance");
+                    END IF;
+                END $$;
 
-            migrationBuilder.CreateIndex(
-                name: "IX_WithdrawalRequests_GatewayReferenceId",
-                table: "WithdrawalRequests",
-                column: "GatewayReferenceId",
-                unique: true,
-                filter: "\"GatewayReferenceId\" IS NOT NULL AND \"IsDeleted\" = FALSE");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_WithdrawalRequests_Status_CreatedAt",
-                table: "WithdrawalRequests",
-                columns: new[] { "Status", "CreatedAt" });
-
-            migrationBuilder.CreateIndex(
-                name: "IX_WithdrawalRequests_WalletId_ClientIdempotencyKey",
-                table: "WithdrawalRequests",
-                columns: new[] { "WalletId", "ClientIdempotencyKey" },
-                unique: true,
-                filter: "\"ClientIdempotencyKey\" IS NOT NULL AND \"IsDeleted\" = FALSE");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_WalletTransactions_ReferenceId_ClientIdempotencyKey",
-                table: "WalletTransactions",
-                columns: new[] { "ReferenceId", "ClientIdempotencyKey" },
-                unique: true,
-                filter: "\"ClientIdempotencyKey\" IS NOT NULL AND \"IsDeleted\" = FALSE");
-
-            migrationBuilder.AddCheckConstraint(
-                name: "CK_Wallets_BalanceLocks",
-                table: "Wallets",
-                sql: "\"Balance\" >= 0 AND \"LockedBalance\" >= 0 AND \"LockedBalance\" <= \"Balance\"");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_BankAccounts_UserId_Default",
-                table: "BankAccounts",
-                column: "UserId",
-                unique: true,
-                filter: "\"IsDefault\" = TRUE AND \"IsDeleted\" = FALSE");
+                CREATE UNIQUE INDEX IF NOT EXISTS "IX_BankAccounts_UserId_Default"
+                    ON "BankAccounts" ("UserId")
+                    WHERE "IsDefault" = TRUE AND "IsDeleted" = FALSE;
+                """);
         }
 
         /// <inheritdoc />

@@ -462,6 +462,13 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("CancelReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTimeOffset?>("CancelledAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -482,6 +489,9 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -498,6 +508,8 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     b.ToTable("OrderEscrows", null, t =>
                         {
                             t.HasCheckConstraint("CK_OrderEscrows_Balance", "\"OriginalAmount\" > 0 AND \"RemainingAmount\" >= 0 AND \"RemainingAmount\" <= \"OriginalAmount\"");
+
+                            t.HasCheckConstraint("CK_OrderEscrows_Status", "(\"Status\" = 0 AND \"RemainingAmount\" > 0 AND \"CancelledAt\" IS NULL AND \"CancelReason\" IS NULL) OR (\"Status\" IN (1, 2) AND \"RemainingAmount\" = 0 AND \"CancelledAt\" IS NULL AND \"CancelReason\" IS NULL) OR (\"Status\" = 3 AND \"RemainingAmount\" = 0 AND \"CancelledAt\" IS NOT NULL AND \"CancelReason\" IS NOT NULL)");
                         });
                 });
 

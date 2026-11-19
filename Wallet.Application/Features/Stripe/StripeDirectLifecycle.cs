@@ -93,11 +93,38 @@ internal static class StripeDirectLifecycle
             throw AlreadyCompleted();
         }
 
-        if (!string.Equals(session.SessionStatus, "expired", StringComparison.OrdinalIgnoreCase) &&
-            !(string.Equals(session.SessionStatus, "complete", StringComparison.OrdinalIgnoreCase) &&
-              string.Equals(session.PaymentStatus, "unpaid", StringComparison.OrdinalIgnoreCase)))
+        if (session.PaymentIntentId is null)
         {
-            throw PendingCancellation();
+            if (!string.Equals(session.SessionStatus, "expired", StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(session.PaymentStatus, "unpaid", StringComparison.OrdinalIgnoreCase) ||
+                session.RecoveryEnabled != false)
+            {
+                throw PendingCancellation();
+            }
+        }
+        else
+        {
+            var intent = await provider.GetPaymentIntentAsync(session.PaymentIntentId, cancellationToken);
+            if (!string.Equals(intent.PaymentIntentId, session.PaymentIntentId, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException("Stripe returned a mismatched payment intent.");
+            }
+
+            if (string.Equals(intent.Status, "succeeded", StringComparison.OrdinalIgnoreCase) ||
+                intent.AmountReceived > 0)
+            {
+                throw AlreadyCompleted();
+            }
+
+            if (!string.Equals(session.PaymentStatus, "unpaid", StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(intent.Status, "canceled", StringComparison.OrdinalIgnoreCase) ||
+                intent.AmountReceived != 0 ||
+                session.RecoveryEnabled != false ||
+                !(string.Equals(session.SessionStatus, "expired", StringComparison.OrdinalIgnoreCase) ||
+                  string.Equals(session.SessionStatus, "complete", StringComparison.OrdinalIgnoreCase)))
+            {
+                throw PendingCancellation();
+            }
         }
 
         context.EnsureNoPendingChanges();

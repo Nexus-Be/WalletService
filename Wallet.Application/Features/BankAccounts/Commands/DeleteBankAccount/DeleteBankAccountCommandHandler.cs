@@ -78,6 +78,9 @@ internal sealed class DeleteBankAccountCommandHandler(IWalletDbContext context)
                 .FirstOrDefault();
             if (next is not null)
             {
+                // Flush the deleted row's IsDefault = false before promoting the next default against IX_BankAccounts_UserId_Default.
+                await context.SaveChangesAsync(cancellationToken);
+
                 next.IsDefault = true;
                 next.UpdatedAt = now;
                 promotedId = next.Id;

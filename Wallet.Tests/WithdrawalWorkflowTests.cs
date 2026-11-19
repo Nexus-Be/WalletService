@@ -1,8 +1,10 @@
 namespace Wallet.Tests;
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Wallet.Application.Common.Extensions;
 using Wallet.Application.Features.AdminWallets.Commands.ProcessWithdrawal;
 using Wallet.Application.Features.AdminWallets.Queries.GetWithdrawalHistory;
 using Wallet.Application.Features.AdminWallets.Queries.ListAdminWithdrawals;
@@ -270,6 +272,114 @@ public sealed class WithdrawalWorkflowTests
             cancelHandler.Handle(new CancelWithdrawalCommand(secondId) { UserId = sellerId }, default));
         Assert.Equal("WITHDRAWAL_INVALID_TRANSITION", conflict.ErrorCode);
         Assert.Equal(409, conflict.StatusCode);
+    }
+
+    [Fact]
+    public async Task WithdrawalHistory_RedactsBankDetailsAndEvidence_ButKeepsWorkflowFields()
+    {
+        using var context = new TestWalletDbContext(Guid.NewGuid().ToString());
+        var sellerId = Guid.NewGuid();
+        AddWallet(context, sellerId, 500_000m);
+        var created = await new RequestWithdrawalCommandHandler(context).Handle(
+            new RequestWithdrawalCommand(100_000m, "VND", "VCB", "1234567890", "Seller")
+            { UserId = sellerId.ToString(), IdempotencyKey = "history-redact" }, default);
+        var id = Guid.Parse(created.WithdrawalId);
+
+        context.AddAuditLog(
+            AuditAction.WithdrawalApprove,
+            nameof(WithdrawalRequest),
+            id.ToString(),
+            oldValues: "{\"Status\":\"Pending\",\"BankAccountNumber\":\"1234567890\"}",
+            newValues: "{\"Status\":\"Approved\",\"Reason\":\"ok\",\"TransferReference\":\"REF-1\"," +
+                       "\"bankname\":\"VCB\",\"AccountNumber\":\"1\",\"BankAccountHolder\":\"S\"," +
+                       "\"BankCode\":\"VCB\",\"AccountHolderName\":\"S\",\"BankAccountId\":\"x\"," +
+                       "\"VerificationEvidence\":\"SECRET\"}");
+        context.AddAuditLog(AuditAction.WithdrawalFail, nameof(WithdrawalRequest), id.ToString(), newValues: "not-json");
+        await context.SaveChangesAsync();
+
+        var history = await new GetWithdrawalHistoryQueryHandler(context)
+            .Handle(new GetWithdrawalHistoryQuery(id), default);
+
+        var requestEntry = history.Single(h => h.Action == nameof(AuditAction.WithdrawalRequest));
+        Assert.DoesNotContain("BankName", requestEntry.NewValues);
+        Assert.Contains("LockedBalance", requestEntry.NewValues);
+
+        var approve = history.Single(h => h.Action == nameof(AuditAction.WithdrawalApprove));
+        Assert.DoesNotContain("BankAccountNumber", approve.OldValues);
+        Assert.Contains("Pending", approve.OldValues);
+        foreach (var redacted in new[]
+                 {
+                     "bankname", "AccountNumber", "BankAccountHolder", "BankCode",
+                     "AccountHolderName", "BankAccountId", "VerificationEvidence", "SECRET"
+                 })
+        {
+            Assert.DoesNotContain(redacted, approve.NewValues);
+        }
+
+        Assert.Contains("TransferReference", approve.NewValues);
+        Assert.Contains("REF-1", approve.NewValues);
+        Assert.Contains("Reason", approve.NewValues);
+
+        var invalidJson = history.Single(h => h.Action == nameof(AuditAction.WithdrawalFail));
+        Assert.Equal("not-json", invalidJson.NewValues);
+    }
+
+    [Fact]
+    public async Task ProcessWithdrawal_LegacyReferenceCode_WorksOnApproveAndComplete_AndEnforcesUniqueness()
+    {
+        using var context = new TestWalletDbContext(Guid.NewGuid().ToString());
+        var sellerId = Guid.NewGuid();
+        AddWallet(context, sellerId, 500_000m);
+        var request = new RequestWithdrawalCommandHandler(context);
+        Guid Create(string key) => Guid.Parse(request.Handle(
+            new RequestWithdrawalCommand(100_000m, "VND", "VCB", "1234567890", "Seller")
+            { UserId = sellerId.ToString(), IdempotencyKey = key }, default).Result.WithdrawalId);
+        var w1 = Create("legacy-1");
+        var w2 = Create("legacy-2");
+        var w3 = Create("legacy-3");
+
+        var adminId = Guid.NewGuid().ToString();
+        var proc = new ProcessWithdrawalCommandHandler(context);
+
+        var approved = await proc.Handle(
+            new ProcessWithdrawalCommand("Approve", ReferenceCode: "LEGACY-REF") { WithdrawalId = w1, AdminUserId = adminId },
+            default);
+        Assert.Equal("LEGACY-REF", approved.TransferReference);
+        Assert.Equal("LEGACY-REF", approved.ReferenceCode);
+
+        var duplicateOnApprove = await Assert.ThrowsAsync<BusinessRuleValidationException>(() =>
+            proc.Handle(
+                new ProcessWithdrawalCommand("Approve", ReferenceCode: "LEGACY-REF") { WithdrawalId = w2, AdminUserId = adminId },
+                default));
+        Assert.Equal("TRANSFER_REFERENCE_ALREADY_USED", duplicateOnApprove.ErrorCode);
+        Assert.Equal(409, duplicateOnApprove.StatusCode);
+
+        await proc.Handle(new ProcessWithdrawalCommand("Approve") { WithdrawalId = w3, AdminUserId = adminId }, default);
+        var completed = await proc.Handle(
+            new ProcessWithdrawalCommand("Complete", TransferConfirmed: true, ReferenceCode: "LEGACY-DONE")
+            { WithdrawalId = w3, AdminUserId = adminId },
+            default);
+        Assert.Equal("LEGACY-DONE", completed.TransferReference);
+        Assert.Equal("LEGACY-DONE", completed.ReferenceCode);
+
+        var matching = new ProcessWithdrawalCommand("Approve", TransferReference: "SAME", ReferenceCode: " SAME ")
+        {
+            WithdrawalId = w2,
+            AdminUserId = adminId
+        };
+        Assert.False(matching.HasConflictingReferences);
+
+        var conflicting = new ProcessWithdrawalCommand("Approve", TransferReference: "A", ReferenceCode: "B")
+        {
+            WithdrawalId = w2,
+            AdminUserId = adminId
+        };
+        Assert.True(conflicting.HasConflictingReferences);
+        var validation = new List<System.ComponentModel.DataAnnotations.ValidationResult>();
+        Assert.False(Wallet.Application.Common.Validation.RequestValidation.TryValidate(conflicting, validation));
+        var error = await Assert.ThrowsAsync<BusinessRuleValidationException>(() => proc.Handle(conflicting, default));
+        Assert.Equal("VAL_INVALID_INPUT", error.ErrorCode);
+        Assert.Equal(WithdrawalStatus.Pending, context.WithdrawalRequests.Single(r => r.Id == w2).Status);
     }
 
     private static WalletAccount AddWallet(TestWalletDbContext context, Guid userId, decimal balance)

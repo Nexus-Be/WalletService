@@ -8,8 +8,8 @@ using Wallet.Application.Common.Validation;
 using Wallet.Domain.Enums;
 
 public sealed record ListMyHoldsQuery(
-    [property: Range(1, int.MaxValue)] int Page = 1,
-    [property: Range(1, 100)] int PageSize = 10,
+    [Range(1, int.MaxValue)] int Page = 1,
+    [Range(1, 100)] int PageSize = 10,
     string? Status = null) : IRequest<PagedData<HoldListItem>>, IRequestValidation
 {
     [JsonIgnore] public Guid UserId { get; init; }

@@ -103,15 +103,23 @@ public sealed class AdminWalletsController : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> ListLedger(
-        [FromQuery] ListWalletLedgerQuery query,
-        CancellationToken cancellationToken)
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10,
+        [FromQuery] Guid? walletId = null,
+        [FromQuery] string? type = null,
+        [FromQuery] string? status = null,
+        [FromQuery] DateTimeOffset? fromDate = null,
+        [FromQuery] DateTimeOffset? toDate = null,
+        CancellationToken cancellationToken = default)
     {
         if (!this.EnsureAdmin(out var authError))
         {
             return authError;
         }
 
-        var result = await _sender.Send(query, cancellationToken);
+        var result = await _sender.Send(
+            new ListWalletLedgerQuery(page, pageSize, walletId, type, status, fromDate, toDate),
+            cancellationToken);
         return Ok(result);
     }
 
@@ -122,15 +130,19 @@ public sealed class AdminWalletsController : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> ReconcileWallets(
-        [FromQuery] GetWalletReconciliationQuery query,
-        CancellationToken cancellationToken)
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10,
+        [FromQuery] Guid? walletId = null,
+        CancellationToken cancellationToken = default)
     {
         if (!this.EnsureAdmin(out var authError))
         {
             return authError;
         }
 
-        var result = await _sender.Send(query, cancellationToken);
+        var result = await _sender.Send(
+            new GetWalletReconciliationQuery(page, pageSize, walletId),
+            cancellationToken);
         return Ok(result);
     }
 

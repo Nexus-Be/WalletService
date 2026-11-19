@@ -31,7 +31,9 @@ public sealed class NotificationClient : INotificationClient
 
         _serviceKey = !string.IsNullOrWhiteSpace(configuredKey) &&
                       !configuredKey.Contains("REPLACE_WITH", StringComparison.OrdinalIgnoreCase) &&
-                      !configuredKey.Contains("SET_VIA_ENVIRONMENT", StringComparison.OrdinalIgnoreCase)
+                      !configuredKey.Contains("SET_VIA_ENVIRONMENT", StringComparison.OrdinalIgnoreCase) &&
+                      !configuredKey.Contains("OPTIONAL_", StringComparison.OrdinalIgnoreCase) &&
+                      !(configuredKey.Trim().StartsWith('<') && configuredKey.Trim().EndsWith('>'))
             ? configuredKey.Trim()
             : null;
     }

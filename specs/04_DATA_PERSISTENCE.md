@@ -23,6 +23,7 @@ rename legacy tables without reviewing and backing up their data.
 | `AuctionHoldCapture` / `AuctionHoldCaptures` | One capture purpose and optional order per hold. |
 | `AuctionCaptureTransfer` / `AuctionCaptureTransfers` | Captured seller, platform and deposit-escrow allocations. |
 | `AuctionDepositEscrow` / `AuctionDepositEscrows` | Deposit amount and remaining balance per hold and order. |
+| `OrderEscrow` / `OrderEscrows` | Commerce wallet-payment escrow per order (`Active = 0`, `Settled = 1`, `Refunded = 2`, `Cancelled = 3`), tracking `OriginalAmount`, `RemainingAmount`, `CancelledAt`, and `CancelReason`. |
 | `AuditLog` / `AuditLogs` | Audit entries for sensitive operations (including `NotificationDispatchFailed` payloads). |
 | `BankAccount` / `BankAccounts` | Seller saved bank accounts with filtered unique `IsDefault = TRUE` index per user. |
 | `VnpayIpnLog` / `VnpayIpnLogs` | Historical VNPay IPN data; VNPay payment endpoints are inactive. |
@@ -46,6 +47,10 @@ auction deposits and Stripe payments require whole VND.
 - Capture is all-or-nothing. Seller credits are wallet transactions; platform
   credits are retained in the capture transfer ledger. Order-payment escrow
   is deposit-specific and is not connected to Commerce settlement.
+- Commerce `OrderEscrow` rows track wallet-funded order payments (`CK_OrderEscrows_Balance`
+  and `CK_OrderEscrows_Status`): `Active` (`RemainingAmount > 0`), `Settled`/`Refunded`
+  (`RemainingAmount = 0`), or `Cancelled` (`RemainingAmount = 0`, `CancelledAt` and
+  `CancelReason` populated). Cancellation is strictly all-or-nothing (`RemainingAmount == OriginalAmount`).
 - Buyer and recipient wallets are locked in ascending user ID order for
   capture. Hold and wallet row locks serialize conflicting financial updates.
 

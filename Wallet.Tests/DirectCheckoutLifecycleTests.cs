@@ -126,6 +126,115 @@ public sealed class DirectCheckoutLifecycleTests
         Assert.Single(context.AuditLogs.Where(a => a.Action == AuditAction.DirectPaymentExpire));
     }
 
+    [Fact]
+    public async Task CancelDirectPayment_AllowsRetryingCheckoutDirect_AndLateWebhookSettlesCleanly()
+    {
+        using var context = new TestWalletDbContext(Guid.NewGuid().ToString());
+        var owner = Guid.NewGuid();
+        var orderId = Guid.NewGuid();
+        AddWallet(context, owner, 500_000m);
+        var provider = new LifecycleProvider(context);
+
+        var first = await StripeDirectPreparation.CreateAsync(context, provider, owner, orderId, 100_000m, default);
+        var firstAttempt = context.StripePaymentAttempts.Single();
+        provider.BindAttempt(firstAttempt);
+
+        await new CancelDirectPaymentCommandHandler(context, provider)
+            .Handle(new CancelDirectPaymentCommand(orderId) { UserId = owner }, default);
+
+        var ledgerAfterCancel = context.WalletTransactions.Single(t =>
+            t.ReferenceId == orderId && t.Type == WalletTransactionType.DirectGatewayPayment);
+        Assert.Equal(TransactionStatus.Cancelled, ledgerAfterCancel.Status);
+
+        var lateProvider = new LifecycleProvider(context);
+        var lateSession = new StripeSessionSnapshot(
+            firstAttempt.CheckoutSessionId!,
+            "complete",
+            "paid",
+            100_000,
+            "pi_test_late_cancel",
+            firstAttempt.Id.ToString("D"),
+            firstAttempt.Id.ToString("D"),
+            false);
+        var lateIntent = new StripePaymentIntentSnapshot(
+            "pi_test_late_cancel",
+            "succeeded",
+            100_000,
+            100_000,
+            firstAttempt.Id.ToString("D"));
+
+        var lateOutcome = await StripeSettlement.ApplyAsync(
+            context, firstAttempt.Id, "evt_late_paid", "checkout.session.completed", lateSession, lateIntent, default);
+        Assert.Equal(StripeSettlementOutcome.Settled, lateOutcome);
+        Assert.Equal(TransactionStatus.Success, ledgerAfterCancel.Status);
+
+        var retryOrderId = Guid.NewGuid();
+        var retryProvider = new LifecycleProvider(context);
+        await StripeDirectPreparation.CreateAsync(context, retryProvider, owner, retryOrderId, 100_000m, default);
+        var cancelAttempt = context.StripePaymentAttempts.Single(a => a.Id != firstAttempt.Id);
+        retryProvider.BindAttempt(cancelAttempt);
+        await new CancelDirectPaymentCommandHandler(context, retryProvider)
+            .Handle(new CancelDirectPaymentCommand(retryOrderId) { UserId = owner }, default);
+
+        var replacement = await StripeDirectPreparation.CreateAsync(context, retryProvider, owner, retryOrderId, 100_000m, default);
+        Assert.NotEmpty(replacement.PaymentUrl);
+        Assert.Equal(2, retryProvider.CreateCalls);
+        Assert.Equal(2, context.StripePaymentAttempts.Count(a => a.Id != firstAttempt.Id));
+        Assert.Equal(TransactionStatus.Pending, context.WalletTransactions.Single(t =>
+            t.ReferenceId == retryOrderId && t.Type == WalletTransactionType.DirectGatewayPayment).Status);
+    }
+
+    [Fact]
+    public async Task CancelDirectPayment_CompleteUnpaidWithProcessingIntent_Throws409PendingCancellation()
+    {
+        using var context = new TestWalletDbContext(Guid.NewGuid().ToString());
+        var owner = Guid.NewGuid();
+        var orderId = Guid.NewGuid();
+        AddWallet(context, owner, 500_000m);
+        var provider = new LifecycleProvider(context);
+
+        await StripeDirectPreparation.CreateAsync(context, provider, owner, orderId, 100_000m, default);
+        var attempt = context.StripePaymentAttempts.Single();
+        provider.BindAttempt(attempt);
+        provider.SessionStatus = "complete";
+        provider.PaymentStatus = "unpaid";
+        provider.PaymentIntentId = "pi_test_processing";
+        provider.PaymentIntentStatus = "processing";
+
+        var error = await Assert.ThrowsAsync<BusinessRuleValidationException>(() =>
+            new CancelDirectPaymentCommandHandler(context, provider)
+                .Handle(new CancelDirectPaymentCommand(orderId) { UserId = owner }, default));
+
+        Assert.Equal("PAYMENT_CANCELLATION_PENDING", error.ErrorCode);
+        Assert.Equal(409, error.StatusCode);
+        Assert.True(attempt.BlocksReplacement);
+    }
+
+    [Fact]
+    public async Task CancelDirectPayment_CompleteUnpaidWithCanceledIntent_Succeeds()
+    {
+        using var context = new TestWalletDbContext(Guid.NewGuid().ToString());
+        var owner = Guid.NewGuid();
+        var orderId = Guid.NewGuid();
+        AddWallet(context, owner, 500_000m);
+        var provider = new LifecycleProvider(context);
+
+        await StripeDirectPreparation.CreateAsync(context, provider, owner, orderId, 100_000m, default);
+        var attempt = context.StripePaymentAttempts.Single();
+        provider.BindAttempt(attempt);
+        provider.SessionStatus = "complete";
+        provider.PaymentStatus = "unpaid";
+        provider.PaymentIntentId = "pi_test_canceled";
+        provider.PaymentIntentStatus = "canceled";
+
+        var cancelled = await new CancelDirectPaymentCommandHandler(context, provider)
+            .Handle(new CancelDirectPaymentCommand(orderId) { UserId = owner }, default);
+
+        Assert.Equal("Failed", cancelled.Status);
+        Assert.Equal("Expired", cancelled.AttemptStatus);
+        Assert.False(attempt.BlocksReplacement);
+    }
+
     private static WalletAccount AddWallet(TestWalletDbContext context, Guid userId, decimal balance)
     {
         var wallet = new WalletAccount
@@ -149,6 +258,8 @@ public sealed class DirectCheckoutLifecycleTests
         public int ExpireCalls { get; private set; }
         public string SessionStatus { get; set; } = "open";
         public string PaymentStatus { get; set; } = "unpaid";
+        public string? PaymentIntentId { get; set; }
+        public string PaymentIntentStatus { get; set; } = "canceled";
 
         public void BindAttempt(StripePaymentAttempt attempt) => _attempt = attempt;
 
@@ -170,7 +281,7 @@ public sealed class DirectCheckoutLifecycleTests
                 SessionStatus,
                 PaymentStatus,
                 decimal.ToInt64(attempt.Amount),
-                null,
+                PaymentIntentId,
                 attempt.Id.ToString("D"),
                 attempt.Id.ToString("D"),
                 false));
@@ -187,13 +298,21 @@ public sealed class DirectCheckoutLifecycleTests
                 SessionStatus,
                 PaymentStatus,
                 decimal.ToInt64(attempt.Amount),
-                null,
+                PaymentIntentId,
                 attempt.Id.ToString("D"),
                 attempt.Id.ToString("D"),
                 false));
         }
 
-        public Task<StripePaymentIntentSnapshot> GetPaymentIntentAsync(string paymentIntentId, CancellationToken token) =>
-            throw new NotSupportedException();
+        public Task<StripePaymentIntentSnapshot> GetPaymentIntentAsync(string paymentIntentId, CancellationToken token)
+        {
+            var attempt = _attempt ?? context.StripePaymentAttempts.First();
+            return Task.FromResult(new StripePaymentIntentSnapshot(
+                paymentIntentId,
+                PaymentIntentStatus,
+                decimal.ToInt64(attempt.Amount),
+                PaymentIntentStatus == "succeeded" ? decimal.ToInt64(attempt.Amount) : 0,
+                attempt.Id.ToString("D")));
+        }
     }
 }

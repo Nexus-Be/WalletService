@@ -205,6 +205,88 @@ public sealed class AdminOperationsTests
         Assert.Equal(380_000m, refund.BalanceAfter);
     }
 
+    [Fact]
+    public async Task ReconcilePendingTopups_PromotesStaleCreationPendingToReconciliationRequired_ForAdminResolution()
+    {
+        using var context = new TestWalletDbContext(Guid.NewGuid().ToString());
+        var owner = Guid.NewGuid();
+        var staleOrderId = Guid.NewGuid();
+        var freshOrderId = Guid.NewGuid();
+        var wallet = new WalletAccount { Id = Guid.NewGuid(), UserId = owner, Balance = 100_000m, Currency = CurrencyCode.Vnd, Status = "ACTIVE" };
+        var staleDirect = new DirectPaymentOrder { Id = Guid.NewGuid(), OrderId = staleOrderId, Amount = 60_000m, Status = TopupStatus.Pending };
+        var freshDirect = new DirectPaymentOrder { Id = Guid.NewGuid(), OrderId = freshOrderId, Amount = 60_000m, Status = TopupStatus.Pending };
+        var staleTx = new WalletTransaction
+        {
+            Id = Guid.NewGuid(),
+            WalletId = wallet.Id,
+            UserId = owner.ToString(),
+            Type = WalletTransactionType.DirectGatewayPayment,
+            Amount = 60_000m,
+            Currency = "Vnd",
+            BalanceBefore = 100_000m,
+            BalanceAfter = 100_000m,
+            ReferenceId = staleOrderId,
+            Status = TransactionStatus.Pending
+        };
+        var staleAttempt = new StripePaymentAttempt
+        {
+            Id = Guid.NewGuid(),
+            Purpose = StripePaymentPurpose.DirectOrder,
+            OwnerId = owner,
+            DirectPaymentOrderId = staleDirect.Id,
+            Amount = 60_000m,
+            RequestFingerprint = "fp-stale",
+            ProviderIdempotencyKey = "pk-stale",
+            CheckoutSessionId = null,
+            Status = StripePaymentAttemptStatus.CreationPending,
+            BlocksReplacement = true,
+            CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-15)
+        };
+        var freshAttempt = new StripePaymentAttempt
+        {
+            Id = Guid.NewGuid(),
+            Purpose = StripePaymentPurpose.DirectOrder,
+            OwnerId = owner,
+            DirectPaymentOrderId = freshDirect.Id,
+            Amount = 60_000m,
+            RequestFingerprint = "fp-fresh",
+            ProviderIdempotencyKey = "pk-fresh",
+            CheckoutSessionId = null,
+            Status = StripePaymentAttemptStatus.CreationPending,
+            BlocksReplacement = true,
+            CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-2)
+        };
+
+        context.Wallets.Add(wallet);
+        context.DirectPaymentOrders.AddRange(staleDirect, freshDirect);
+        context.WalletTransactions.Add(staleTx);
+        context.StripePaymentAttempts.AddRange(staleAttempt, freshAttempt);
+        await context.SaveChangesAsync();
+
+        var promoted = await new ReconcilePendingTopupsCommandHandler(
+                context,
+                new PaidDirectProvider(staleAttempt),
+                NullLogger<ReconcilePendingTopupsCommandHandler>.Instance)
+            .Handle(new ReconcilePendingTopupsCommand(), default);
+
+        Assert.Equal(1, promoted);
+        Assert.Equal(StripePaymentAttemptStatus.ReconciliationRequired, staleAttempt.Status);
+        Assert.Equal(StripePaymentAttemptStatus.CreationPending, freshAttempt.Status);
+
+        var resolved = await new ResolveStripeAttemptCommandHandler(context).Handle(
+            new ResolveStripeAttemptCommand("Failed", "Session creation timed out before Stripe session existed")
+            {
+                AttemptId = staleAttempt.Id,
+                AdminUserId = Guid.NewGuid().ToString()
+            },
+            default);
+
+        Assert.Equal("Failed", resolved.Status);
+        Assert.False(resolved.BlocksReplacement);
+        Assert.Equal(TopupStatus.Failed, staleDirect.Status);
+        Assert.Equal(TransactionStatus.Failed, staleTx.Status);
+    }
+
     private sealed class PaidDirectProvider(StripePaymentAttempt attempt) : IStripeCheckoutClient
     {
         public Task<StripeCheckoutSession> CreateSessionAsync(StripeCheckoutRequest request, CancellationToken token) =>

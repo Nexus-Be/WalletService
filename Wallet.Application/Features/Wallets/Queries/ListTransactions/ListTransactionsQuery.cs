@@ -10,9 +10,9 @@ using global::Wallet.Application.Common.Models;
 using global::Wallet.Domain.Enums;
 
 public sealed record ListTransactionsQuery(
-    [property: Range(1, int.MaxValue, ErrorMessage = "Page must be greater than or equal to 1.")]
+    [Range(1, int.MaxValue, ErrorMessage = "Page must be greater than or equal to 1.")]
     int Page = 1,
-    [property: Range(1, 100, ErrorMessage = "Page size must be between 1 and 100.")]
+    [Range(1, 100, ErrorMessage = "Page size must be between 1 and 100.")]
     int PageSize = 10,
     string? Type = null,
     DateTimeOffset? FromDate = null,

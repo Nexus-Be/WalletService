@@ -89,6 +89,22 @@ internal sealed class AdjustOrderPaymentCommandHandler(IWalletDbContext context)
                 409);
         }
 
+        if (escrow.Status == OrderEscrowStatus.Cancelled)
+        {
+            throw new BusinessRuleValidationException(
+                "ORDER_ESCROW_CANCELLED",
+                "The order escrow was already cancelled and cannot be adjusted.",
+                409);
+        }
+
+        if (escrow.Status != OrderEscrowStatus.Active)
+        {
+            throw new BusinessRuleValidationException(
+                "ORDER_ESCROW_ALREADY_RESOLVED",
+                "The order escrow was already settled or refunded and cannot be adjusted.",
+                409);
+        }
+
         var wallet = await context.LockWalletByUserIdAsync(buyerId, cancellationToken)
             ?? throw new WalletNotFoundException(buyerId.ToString());
 
@@ -137,6 +153,10 @@ internal sealed class AdjustOrderPaymentCommandHandler(IWalletDbContext context)
             wallet.Deposit(refundAmount);
             escrow.OriginalAmount -= refundAmount;
             escrow.RemainingAmount -= refundAmount;
+            if (escrow.RemainingAmount == 0m)
+            {
+                escrow.Status = OrderEscrowStatus.Settled;
+            }
             escrow.UpdatedAt = now;
             txType = WalletTransactionType.OrderPaymentAdjustmentRefund;
             txAmount = refundAmount;

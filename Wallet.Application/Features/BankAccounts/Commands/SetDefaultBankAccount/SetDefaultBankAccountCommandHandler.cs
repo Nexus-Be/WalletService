@@ -34,10 +34,17 @@ internal sealed class SetDefaultBankAccountCommandHandler(IWalletDbContext conte
 
         if (!target.IsDefault)
         {
-            foreach (var account in accounts.Where(item => item.Id != target.Id && item.IsDefault))
+            var previousDefaults = accounts.Where(item => item.Id != target.Id && item.IsDefault).ToList();
+            if (previousDefaults.Count > 0)
             {
-                account.IsDefault = false;
-                account.UpdatedAt = now;
+                foreach (var account in previousDefaults)
+                {
+                    account.IsDefault = false;
+                    account.UpdatedAt = now;
+                }
+
+                // Flush IsDefault = false first so UUID-ordered updates never transiently violate IX_BankAccounts_UserId_Default.
+                await context.SaveChangesAsync(cancellationToken);
             }
 
             target.IsDefault = true;

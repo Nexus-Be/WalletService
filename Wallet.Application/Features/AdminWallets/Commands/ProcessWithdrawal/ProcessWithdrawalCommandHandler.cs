@@ -52,6 +52,15 @@ internal sealed class ProcessWithdrawalCommandHandler
                 403);
         }
 
+        if (request.HasConflictingReferences)
+        {
+            throw new BusinessRuleValidationException(
+                "VAL_INVALID_INPUT",
+                "Transfer reference and reference code must match when both are provided.");
+        }
+
+        var effectiveReference = request.EffectiveTransferReference;
+
         await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
         var withdrawal = await _context.LockWithdrawalRequestAsync(request.WithdrawalId, cancellationToken)
             ?? throw new EntityNotFoundException(nameof(WithdrawalRequest), request.WithdrawalId);
@@ -75,9 +84,9 @@ internal sealed class ProcessWithdrawalCommandHandler
         switch (action)
         {
             case WithdrawalAction.Approve:
-                if (!string.IsNullOrWhiteSpace(request.TransferReference))
+                if (!string.IsNullOrWhiteSpace(effectiveReference))
                 {
-                    var approveReference = request.TransferReference.Trim();
+                    var approveReference = effectiveReference.Trim();
                     await EnsureUniqueTransferReferenceAsync(withdrawal.Id, approveReference, cancellationToken);
                     withdrawal.GatewayReferenceId = approveReference;
                 }
@@ -117,14 +126,14 @@ internal sealed class ProcessWithdrawalCommandHandler
                 break;
 
             case WithdrawalAction.Complete:
-                if (!request.TransferConfirmed || string.IsNullOrWhiteSpace(request.TransferReference))
+                if (!request.TransferConfirmed || string.IsNullOrWhiteSpace(effectiveReference))
                 {
                     throw new BusinessRuleValidationException(
                         "VAL_INVALID_INPUT",
                         "Transfer confirmation and transfer reference are required when completing a withdrawal.");
                 }
 
-                var transferReference = request.TransferReference.Trim();
+                var transferReference = effectiveReference.Trim();
                 await EnsureUniqueTransferReferenceAsync(withdrawal.Id, transferReference, cancellationToken);
                 withdrawal.GatewayReferenceId = transferReference;
                 withdrawal.Status = WithdrawalStatus.Completed;

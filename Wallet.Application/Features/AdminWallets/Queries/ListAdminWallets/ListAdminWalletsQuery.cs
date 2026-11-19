@@ -9,8 +9,8 @@ using Wallet.Application.Common.Validation;
 using Wallet.Application.Features.Wallets.Queries.GetMyWallet;
 
 public sealed record ListAdminWalletsQuery(
-    [property: Range(1, int.MaxValue)] int Page = 1,
-    [property: Range(1, 100)] int PageSize = 20,
+    [Range(1, int.MaxValue)] int Page = 1,
+    [Range(1, 100)] int PageSize = 20,
     string? Status = null,
     Guid? UserId = null,
     string? Search = null) : IRequest<PagedData<WalletResponse>>, IRequestValidation

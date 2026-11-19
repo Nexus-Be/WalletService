@@ -20,5 +20,6 @@ public enum WalletTransactionType
     AuctionForfeitCredit = 15,
     AuctionDepositRefund = 16,
     OrderPaymentAdjustmentDebit = 17,
-    OrderPaymentAdjustmentRefund = 18
+    OrderPaymentAdjustmentRefund = 18,
+    EscrowCancellationRefund = 19
 }

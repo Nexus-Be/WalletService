@@ -179,6 +179,7 @@ public sealed class WalletFreezeAndSecurityTests
     [InlineData(nameof(WalletsController.RefundSubOrderInternal), "~/api/v1/internal/wallets/sub-orders/{subOrderId:guid}/refund")]
     [InlineData(nameof(WalletsController.ExpireDirectPaymentInternal), "~/api/v1/internal/wallets/checkout/direct/{orderId:guid}/expire")]
     [InlineData(nameof(WalletsController.AdjustOrderPaymentInternal), "~/api/v1/internal/wallets/orders/{orderId:guid}/adjust-payment")]
+    [InlineData(nameof(WalletsController.CancelOrderEscrowInternal), "~/api/v1/internal/wallets/orders/{orderId:guid}/escrow/cancel")]
     public void InternalRoutes_RequireInternalServiceKeyAndHideFromPublicSwagger(string actionName, string expectedRoute)
     {
         var method = typeof(WalletsController).GetMethod(actionName)!;

@@ -246,19 +246,17 @@ public class WalletContractRegressionTests
             .GetCustomAttribute<HttpGetAttribute>()?.Template);
 
         var staffController = CreateReportController("staff");
-        var ledgerResult = await staffController.ListLedger(new ListWalletLedgerQuery(), default);
-        var reconciliationResult = await staffController.ReconcileWallets(
-            new GetWalletReconciliationQuery(),
-            default);
+        var ledgerResult = await staffController.ListLedger(cancellationToken: default);
+        var reconciliationResult = await staffController.ReconcileWallets(cancellationToken: default);
 
         Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(ledgerResult).StatusCode);
         Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(reconciliationResult).StatusCode);
 
         var adminController = CreateReportController("admin");
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => adminController.ListLedger(new ListWalletLedgerQuery(), default));
+            () => adminController.ListLedger(cancellationToken: default));
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => adminController.ReconcileWallets(new GetWalletReconciliationQuery(), default));
+            () => adminController.ReconcileWallets(cancellationToken: default));
     }
 
     private static AdminWalletsController CreateReportController(string role)

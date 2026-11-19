@@ -35,7 +35,9 @@ internal static class ServiceKeyGuard
         {
             if (!string.IsNullOrWhiteSpace(candidate) &&
                 !candidate.Contains("REPLACE_WITH", StringComparison.OrdinalIgnoreCase) &&
-                !candidate.Contains("SET_VIA_ENVIRONMENT", StringComparison.OrdinalIgnoreCase))
+                !candidate.Contains("SET_VIA_ENVIRONMENT", StringComparison.OrdinalIgnoreCase) &&
+                !candidate.Contains("OPTIONAL_", StringComparison.OrdinalIgnoreCase) &&
+                !(candidate.Trim().StartsWith('<') && candidate.Trim().EndsWith('>')))
             {
                 return candidate.Trim();
             }

@@ -15,7 +15,11 @@ internal sealed class ReconcilePendingTopupsCommandHandler(
 {
     public async Task<int> Handle(ReconcilePendingTopupsCommand request, CancellationToken cancellationToken)
     {
-        var cutoff = DateTimeOffset.UtcNow.AddMinutes(-1);
+        var now = DateTimeOffset.UtcNow;
+        var staleCreationCutoff = now.AddMinutes(-10);
+        var processed = await PromoteStaleCreationPendingAsync(staleCreationCutoff, cancellationToken);
+
+        var cutoff = now.AddMinutes(-1);
 
         var topupCandidates = await (from attempt in context.StripePaymentAttempts.AsNoTracking()
             join topup in context.WalletTopups.AsNoTracking() on attempt.WalletTopupId equals topup.Id
@@ -35,7 +39,6 @@ internal sealed class ReconcilePendingTopupsCommandHandler(
             orderby attempt.UpdatedAt, attempt.CreatedAt, attempt.Id
             select new { attempt.Id, SessionId = attempt.CheckoutSessionId }).Take(30).ToArrayAsync(cancellationToken);
 
-        var processed = 0;
         foreach (var candidate in topupCandidates.Concat(directCandidates))
         {
             if (await ReconcileCandidateAsync(candidate.Id, candidate.SessionId!, cancellationToken))
@@ -45,6 +48,81 @@ internal sealed class ReconcilePendingTopupsCommandHandler(
         }
 
         return processed;
+    }
+
+    private async Task<int> PromoteStaleCreationPendingAsync(
+        DateTimeOffset staleCutoff,
+        CancellationToken cancellationToken)
+    {
+        var staleAttempts = await context.StripePaymentAttempts
+            .AsNoTracking()
+            .Where(item => item.Status == StripePaymentAttemptStatus.CreationPending &&
+                           item.CheckoutSessionId == null &&
+                           item.BlocksReplacement &&
+                           item.CreatedAt < staleCutoff)
+            .OrderBy(item => item.CreatedAt)
+            .ThenBy(item => item.Id)
+            .Select(item => new
+            {
+                item.Id,
+                item.Purpose,
+                item.WalletTopupId,
+                item.DirectPaymentOrderId
+            })
+            .Take(30)
+            .ToArrayAsync(cancellationToken);
+
+        var promoted = 0;
+        foreach (var candidate in staleAttempts)
+        {
+            await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+
+            if (candidate.Purpose == StripePaymentPurpose.Topup && candidate.WalletTopupId is Guid topupId)
+            {
+                var topup = await context.LockTopupByIdAsync(topupId, cancellationToken);
+                if (topup is not null)
+                {
+                    await context.ReloadUnmodifiedAsync(topup, cancellationToken);
+                }
+            }
+            else if (candidate.Purpose == StripePaymentPurpose.DirectOrder &&
+                     candidate.DirectPaymentOrderId is Guid directOrderId)
+            {
+                var order = await context.LockDirectPaymentOrderByIdAsync(directOrderId, cancellationToken);
+                if (order is not null)
+                {
+                    await context.ReloadUnmodifiedAsync(order, cancellationToken);
+                }
+            }
+
+            var attempt = await context.LockStripePaymentAttemptAsync(candidate.Id, cancellationToken);
+            if (attempt is null)
+            {
+                await transaction.CommitAsync(cancellationToken);
+                continue;
+            }
+
+            await context.ReloadUnmodifiedAsync(attempt, cancellationToken);
+            if (attempt.Status != StripePaymentAttemptStatus.CreationPending ||
+                attempt.CheckoutSessionId is not null ||
+                !attempt.BlocksReplacement)
+            {
+                await transaction.CommitAsync(cancellationToken);
+                continue;
+            }
+
+            attempt.Status = StripePaymentAttemptStatus.ReconciliationRequired;
+            attempt.UpdatedAt = DateTimeOffset.UtcNow;
+            await context.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+
+            logger.LogCritical(
+                "Stale CreationPending Stripe payment attempt {AttemptId} was promoted to ReconciliationRequired.",
+                attempt.Id);
+            promoted++;
+        }
+
+        return promoted;
     }
 
     private async Task<bool> ReconcileCandidateAsync(

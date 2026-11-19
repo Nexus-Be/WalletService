@@ -5,6 +5,7 @@
 - [Wallet and payments API](wallet-payments.md) — route catalog and request/response behavior verified against this repository.
 - [Direct checkout](checkout/direct.md) — Stripe checkout initiation, retry behavior, and payment state.
 - [Direct payment status](checkout/direct-status.md) — polling endpoint for the settled payment result.
+- [Cancel order escrow](checkout/cancel-order-escrow.md) — internal S2S strict all-or-nothing cancellation of an untouched wallet-payment `OrderEscrow`.
 - [Stripe payment contracts](stripe/payments.md) — top-up, direct checkout and signed webhook contracts.
 - [Stripe top-up recovery](stripe/topup-recovery.md) — history, resume and reconciliation.
 - [Auction deposit holds](holds/auction-deposits.md) — reserve, release, capture, refund and status.

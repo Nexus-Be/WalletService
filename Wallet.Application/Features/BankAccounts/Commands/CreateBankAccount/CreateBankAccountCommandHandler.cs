@@ -31,10 +31,17 @@ internal sealed class CreateBankAccountCommandHandler(IWalletDbContext context)
         var makeDefault = request.IsDefault || existingAccounts.Count == 0;
         if (makeDefault)
         {
-            foreach (var account in existingAccounts.Where(item => item.IsDefault))
+            var previousDefaults = existingAccounts.Where(item => item.IsDefault).ToList();
+            if (previousDefaults.Count > 0)
             {
-                account.IsDefault = false;
-                account.UpdatedAt = now;
+                foreach (var account in previousDefaults)
+                {
+                    account.IsDefault = false;
+                    account.UpdatedAt = now;
+                }
+
+                // Flush IsDefault = false first so inserting a new default row never transiently violates IX_BankAccounts_UserId_Default.
+                await context.SaveChangesAsync(cancellationToken);
             }
         }
 

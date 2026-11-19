@@ -130,7 +130,7 @@ internal static class StripeDirectPreparation
                 return (order, ledger, active, true);
             }
             if (order.Status is not (TopupStatus.Failed or TopupStatus.Expired) ||
-                ledger.Status != TransactionStatus.Failed ||
+                ledger.Status is not (TransactionStatus.Failed or TransactionStatus.Cancelled) ||
                 attempts.Any(item => item.Status is not (StripePaymentAttemptStatus.Failed or StripePaymentAttemptStatus.Expired)))
                 throw Conflict();
             order.Status = TopupStatus.Pending;

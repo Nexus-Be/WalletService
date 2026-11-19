@@ -84,7 +84,8 @@ internal static class OrderEscrowAccounting
             OrderId = orderId,
             WalletId = payment.WalletId,
             OriginalAmount = originalAmount,
-            RemainingAmount = originalAmount
+            RemainingAmount = originalAmount,
+            Status = OrderEscrowStatus.Active
         };
         context.OrderEscrows.Add(escrow);
         context.AddAuditLog(
@@ -111,6 +112,7 @@ internal static class OrderEscrowAccounting
             item => item.ReferenceId == orderId &&
                     item.Status == TransactionStatus.Success &&
                     (item.Type == WalletTransactionType.EscrowRelease ||
-                     item.Type == WalletTransactionType.RefundCredit),
+                     item.Type == WalletTransactionType.RefundCredit ||
+                     item.Type == WalletTransactionType.EscrowCancellationRefund),
             cancellationToken);
 }

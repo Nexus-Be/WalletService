@@ -68,11 +68,12 @@ All internal endpoints require header `X-Internal-Service-Key` matching `INTERNA
 |---|---|---|
 | Lookup wallet | `GET /api/v1/internal/wallets/{userId}` | Replaces calling `GET /api/v1/wallets/me` with spoofed `x-user-id`; returns `availableBalance`, `lockedBalance`, `status`. |
 | Pay order | `POST /api/v1/internal/wallets/orders/{orderId}/payment` | JSON `{ "buyerId": "<uuid>", "amount": 100000 }` |
-| Settle sub-order | `POST /api/v1/internal/wallets/sub-orders/{subOrderId}/settle` | JSON `{ "sellerId": "<uuid>", "amount": 100000 }` |
+| Settle sub-order | `POST /api/v1/internal/wallets/sub-orders/{subOrderId}/settle` | JSON `{ "sellerId": "<uuid>", "amount": 100000, "parentOrderId": "<uuid?>" }` (`parentOrderId` links multiple sub-order payouts against the parent `OrderEscrow`) |
 | Refund order | `POST /api/v1/internal/wallets/orders/{orderId}/refund` | JSON `{ "userId": "<uuid>", "amount": 100000, "reason": "..." }` |
-| Refund sub-order | `POST /api/v1/internal/wallets/sub-orders/{subOrderId}/refund` | JSON `{ "userId": "<uuid>", "amount": 100000, "reason": "..." }` |
+| Refund sub-order | `POST /api/v1/internal/wallets/sub-orders/{subOrderId}/refund` | JSON `{ "userId": "<uuid>", "amount": 100000, "reason": "...", "parentOrderId": "<uuid?>" }` (`parentOrderId` validates buyer ownership and decrements parent `OrderEscrow`) |
 | Expire direct checkout | `POST /api/v1/internal/wallets/checkout/direct/{orderId}/expire` | Marks unpaid Stripe direct payment expired on order timeout. |
 | Adjust order payment | `POST /api/v1/internal/wallets/orders/{orderId}/adjust-payment` | Header `Idempotency-Key`; JSON `{ "buyerId": "<uuid>", "deltaAmount": 15000, "reason": "..." }`. Positive `deltaAmount` debits buyer; negative refunds buyer from escrow. |
+| Cancel order escrow | `POST /api/v1/internal/wallets/orders/{orderId}/escrow/cancel` | Header `Idempotency-Key`; JSON `{ "reason": "...", "expectedBuyerId": "<uuid?>", "expectedAmount": 100000 }`. Strictly all-or-nothing (`RemainingAmount == OriginalAmount`); credits funding wallet (`EscrowCancellationRefund`), marks escrow `Cancelled`, and writes `OrderEscrowCancel` audit log. |
 
 ---
 

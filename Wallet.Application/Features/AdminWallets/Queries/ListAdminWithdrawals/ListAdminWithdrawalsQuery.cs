@@ -10,8 +10,8 @@ using Wallet.Application.Features.Withdrawals;
 using Wallet.Domain.Enums;
 
 public sealed record ListAdminWithdrawalsQuery(
-    [property: Range(1, int.MaxValue)] int Page = 1,
-    [property: Range(1, 100)] int PageSize = 20,
+    [Range(1, int.MaxValue)] int Page = 1,
+    [Range(1, 100)] int PageSize = 20,
     string? Status = null) : IRequest<PagedData<AdminWithdrawalResponse>>, IRequestValidation
 {
     public IEnumerable<ValidationResult> ValidateRequest()

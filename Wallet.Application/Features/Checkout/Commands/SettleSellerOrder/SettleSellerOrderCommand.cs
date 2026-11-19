@@ -14,7 +14,8 @@ public sealed record SettleSellerOrderCommand(
     string SellerId,
     [Range(0.01, double.MaxValue, ErrorMessage = "Amount must be greater than zero.")]
     [MoneyPrecision]
-    decimal Amount) : IRequest<WalletOrderTransactionResponse>, IRequestValidation
+    decimal Amount,
+    Guid? ParentOrderId = null) : IRequest<WalletOrderTransactionResponse>, IRequestValidation
 {
     [JsonIgnore] public Guid SubOrderId { get; init; }
 
@@ -24,6 +25,11 @@ public sealed record SettleSellerOrderCommand(
         if (error is not null)
         {
             yield return error;
+        }
+
+        if (ParentOrderId.HasValue && ParentOrderId.Value == Guid.Empty)
+        {
+            yield return new ValidationResult("Parent order ID must be a valid UUID.", new[] { nameof(ParentOrderId) });
         }
     }
 }

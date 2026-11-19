@@ -10,9 +10,9 @@ using Wallet.Application.Common.Validation;
 using Wallet.Domain.Enums;
 
 public sealed record ListWalletLedgerQuery(
-    [property: Range(1, int.MaxValue, ErrorMessage = "Page must be greater than or equal to 1.")]
+    [Range(1, int.MaxValue, ErrorMessage = "Page must be greater than or equal to 1.")]
     int Page = 1,
-    [property: Range(1, 100, ErrorMessage = "Page size must be between 1 and 100.")]
+    [Range(1, 100, ErrorMessage = "Page size must be between 1 and 100.")]
     int PageSize = 10,
     Guid? WalletId = null,
     string? Type = null,

@@ -20,13 +20,25 @@ public sealed record ProcessWithdrawalCommand(
     string? TransferReference = null,
     bool BankVerifiedNotTransferred = false,
     [StringLength(WithdrawalWorkflow.MaxReasonLength, ErrorMessage = "Verification evidence must be 500 characters or fewer.")]
-    string? VerificationEvidence = null) : IRequest<ProcessWithdrawalResponse>, IRequestValidation
+    string? VerificationEvidence = null,
+    [StringLength(WithdrawalWorkflow.MaxReferenceLength, ErrorMessage = "Reference code must be 100 characters or fewer.")]
+    string? ReferenceCode = null) : IRequest<ProcessWithdrawalResponse>, IRequestValidation
 {
     [JsonIgnore] public Guid WithdrawalId { get; init; }
 
     [JsonIgnore] public string AdminUserId { get; init; } = string.Empty;
 
     [JsonIgnore] public bool ActorIsAdmin { get; init; }
+
+    [JsonIgnore]
+    public string? EffectiveTransferReference =>
+        !string.IsNullOrWhiteSpace(TransferReference) ? TransferReference : ReferenceCode;
+
+    [JsonIgnore]
+    public bool HasConflictingReferences =>
+        !string.IsNullOrWhiteSpace(TransferReference) &&
+        !string.IsNullOrWhiteSpace(ReferenceCode) &&
+        !string.Equals(TransferReference.Trim(), ReferenceCode.Trim(), StringComparison.Ordinal);
 
     public IEnumerable<ValidationResult> ValidateRequest()
     {
@@ -43,6 +55,13 @@ public sealed record ProcessWithdrawalCommand(
             yield return adminUserIdError;
         }
 
+        if (HasConflictingReferences)
+        {
+            yield return new ValidationResult(
+                "Transfer reference and reference code must match when both are provided.",
+                new[] { nameof(TransferReference), nameof(ReferenceCode) });
+        }
+
         if (!WithdrawalWorkflow.TryParse(Action, out var action))
         {
             yield break;
@@ -57,7 +76,7 @@ public sealed record ProcessWithdrawalCommand(
                     new[] { nameof(TransferConfirmed) });
             }
 
-            if (string.IsNullOrWhiteSpace(TransferReference))
+            if (string.IsNullOrWhiteSpace(EffectiveTransferReference))
             {
                 yield return new ValidationResult(
                     "Transfer reference is required when completing a withdrawal.",
@@ -108,4 +127,8 @@ public sealed record ProcessWithdrawalResponse(
     DateTimeOffset ProcessedAt,
     string? TransactionId,
     string? TransferReference,
-    string? StatusReason);
+    string? StatusReason)
+{
+    /// <summary>Legacy alias of <see cref="TransferReference"/> kept for backward-compatible clients.</summary>
+    public string? ReferenceCode => TransferReference;
+}

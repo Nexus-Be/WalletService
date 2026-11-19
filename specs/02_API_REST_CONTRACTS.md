@@ -1,6 +1,6 @@
 # 02 — HỢP ĐỒNG GIAO TIẾP RESTFUL (WALLET SERVICE REST CONTRACTS)
 
-> **Trạng thái triển khai (2026-11-19):** ✅ 100% RESTFUL + CLASSIC CQRS — 46 use case (28 Command, 18 Query; `EnsureWalletCommand` do `GetMyWalletQueryHandler` gọi nội bộ). Controller chỉ inject `ISender`. Bãi bỏ hoàn toàn gRPC, Protobuf, RabbitMQ và MassTransit.
+> **Trạng thái triển khai (2026-11-19):** ✅ 100% RESTFUL + CLASSIC CQRS — 47 use case (29 Command, 18 Query; `EnsureWalletCommand` do `GetMyWalletQueryHandler` gọi nội bộ). Controller chỉ inject `ISender`. Bãi bỏ hoàn toàn gRPC, Protobuf, RabbitMQ và MassTransit.
 > **ĐÓNG BĂNG:** chạy `./scripts/verify-wallet-architecture.sh` trước khi sửa.
 > **Nguồn sự thật:** code (`Wallet.Api/Controllers/Public/`, `Wallet.Application/Features/`).
 > **Cập nhật lần cuối:** 2026-11-19.
@@ -46,7 +46,7 @@ Reconciliation accepts `page`, `pageSize`, and optional `walletId`. It compares 
 * `POST /api/v1/wallets/checkout/direct` → `CheckoutDirectCommand` (idempotent theo `OrderId`).
 * `POST /api/v1/wallets/checkout/direct/{orderId:guid}/resume` → `ResumeDirectPaymentCommand`; `POST /api/v1/wallets/checkout/direct/{orderId:guid}/cancel` → `CancelDirectPaymentCommand`.
 * `GET /api/v1/wallets/checkout/direct/{orderId}` → `GetDirectPaymentStatusQuery` (`[RequireRole]`; chỉ chủ đơn, admin/staff đọc được mọi đơn; 404 `PAYMENT_NOT_FOUND`). Trả `status` (`Pending`/`Success`/`Failed`) và `gatewayTransactionNo`. Chi tiết: `docs/api/checkout/direct-status.md`.
-* Internal S2S routes (`~/api/v1/internal/wallets/...`, `[RequireInternalServiceKey]`): `GET {userId:guid}`, `POST freeze-purchase`, `POST unfreeze-purchase`, `POST orders/{orderId:guid}/payment`, `POST sub-orders/{subOrderId:guid}/settle`, `POST orders/{orderId:guid}/refund`, `POST sub-orders/{subOrderId:guid}/refund`, `POST checkout/direct/{orderId:guid}/expire`, `POST orders/{orderId:guid}/adjust-payment`. Legacy public routes (`orders/{id}/payment`, `sub-orders/{id}/settle`, `orders/{id}/refund`, `sub-orders/{id}/refund`) cũng gắn `[RequireInternalServiceKey]` đến khi Commerce chuyển URL.
+* Internal S2S routes (`~/api/v1/internal/wallets/...`, `[RequireInternalServiceKey]`): `GET {userId:guid}`, `POST freeze-purchase`, `POST unfreeze-purchase`, `POST orders/{orderId:guid}/payment`, `POST sub-orders/{subOrderId:guid}/settle`, `POST orders/{orderId:guid}/refund`, `POST sub-orders/{subOrderId:guid}/refund`, `POST checkout/direct/{orderId:guid}/expire`, `POST orders/{orderId:guid}/adjust-payment`, `POST orders/{orderId:guid}/escrow/cancel`. Legacy public routes (`orders/{id}/payment`, `sub-orders/{id}/settle`, `orders/{id}/refund`, `sub-orders/{id}/refund`) cũng gắn `[RequireInternalServiceKey]` đến khi Commerce chuyển URL.
 * Internal Auction hold mirrors (`~/api/v1/internal/wallets/holds/...`, `[RequireAuctionServiceKey]`): mirror 6 action service của `holds`.
 
 ---

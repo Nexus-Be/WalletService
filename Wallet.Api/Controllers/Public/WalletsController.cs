@@ -20,6 +20,7 @@ using Wallet.Application.Features.BankAccounts.Commands.SetDefaultBankAccount;
 using Wallet.Application.Features.BankAccounts.Queries.ListMyBankAccounts;
 using Wallet.Application.Features.Checkout.Commands.AdjustOrderPayment;
 using Wallet.Application.Features.Checkout.Commands.CancelDirectPayment;
+using Wallet.Application.Features.Checkout.Commands.CancelOrderEscrow;
 using Wallet.Application.Features.Checkout.Commands.CheckoutDirect;
 using Wallet.Application.Features.Checkout.Commands.ExpireDirectPayment;
 using Wallet.Application.Features.Checkout.Commands.PayOrderWithWallet;
@@ -628,6 +629,20 @@ public sealed class WalletsController : ControllerBase
     public async Task<IActionResult> AdjustOrderPaymentInternal(
         Guid orderId,
         [FromBody] AdjustOrderPaymentCommand command,
+        [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey,
+        CancellationToken cancellationToken) =>
+        Ok(await _sender.Send(
+            command with { OrderId = orderId, IdempotencyKey = idempotencyKey?.Trim() ?? string.Empty },
+            cancellationToken));
+
+    /// <summary>Cancels an untouched wallet-payment order escrow and returns the full balance to the funding wallet.</summary>
+    [HttpPost("~/api/v1/internal/wallets/orders/{orderId:guid}/escrow/cancel")]
+    [RequireInternalServiceKey]
+    [ApiExplorerSettings(IgnoreApi = true)]
+    [ProducesResponseType(typeof(CancelOrderEscrowResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> CancelOrderEscrowInternal(
+        Guid orderId,
+        [FromBody] CancelOrderEscrowCommand command,
         [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey,
         CancellationToken cancellationToken) =>
         Ok(await _sender.Send(

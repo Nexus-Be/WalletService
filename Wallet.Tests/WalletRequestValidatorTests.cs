@@ -362,4 +362,40 @@ public class WalletRequestValidatorTests
 
         Assert.Empty(propertiesWithValidation);
     }
+
+    [Fact]
+    public void AllApplicationRequests_MustNotHaveValidationMetadataOnProperties()
+    {
+        var requestTypes = typeof(Wallet.Application.DependencyInjection).Assembly
+            .GetTypes()
+            .Where(t => !t.IsAbstract && !t.IsInterface && typeof(MediatR.IBaseRequest).IsAssignableFrom(t))
+            .OrderBy(t => t.FullName, StringComparer.Ordinal)
+            .ToList();
+
+        Assert.NotEmpty(requestTypes);
+
+        foreach (var requestType in requestTypes)
+        {
+            var propertiesWithValidation = requestType
+                .GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                .Where(p => p.GetCustomAttributes<ValidationAttribute>(inherit: false).Any())
+                .Select(p => $"{requestType.Name}.{p.Name}")
+                .ToList();
+
+            Assert.Empty(propertiesWithValidation);
+        }
+    }
+
+    [Fact]
+    public void ListWalletLedgerQuery_RejectsOutOfRangePagination()
+    {
+        var query = new Wallet.Application.Features.AdminWallets.Queries.ListWalletLedger.ListWalletLedgerQuery(
+            Page: 0,
+            PageSize: 101);
+
+        var results = ValidateModel(query);
+
+        Assert.Contains(results, result => result.MemberNames.Contains(nameof(query.Page)));
+        Assert.Contains(results, result => result.MemberNames.Contains(nameof(query.PageSize)));
+    }
 }
