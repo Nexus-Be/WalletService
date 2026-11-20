@@ -1,4 +1,4 @@
-namespace Wallet.Tests;
+﻿namespace Wallet.Tests;
 
 using System;
 using System.Collections.Generic;
@@ -25,6 +25,20 @@ using Xunit;
 
 public sealed class NotificationIntegrationTests
 {
+    [Fact]
+    public async Task NotificationClient_DoesNotSendAuctionDepositEvents_UnlessEnabled()
+    {
+        var handler = new StubHttpHandler(HttpStatusCode.OK, "{}");
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:8007/") };
+        var client = new NotificationClient(http, new ConfigurationBuilder().Build(), NullLogger<NotificationClient>.Instance);
+
+        var result = await client.SendAuctionDepositEventAsync(new AuctionDepositNotificationEvent(
+            "hold:333:Held", "333", "auc-2", Guid.NewGuid(), "Held", 100_000m, "VND", DateTimeOffset.UtcNow, null));
+
+        Assert.True(result.Succeeded);
+        Assert.Null(handler.LastPath);
+    }
+
     [Fact]
     public async Task NotificationClient_PostsExpectedRoutesPayloadsAndOptionalKey_AndNeverThrows()
     {
@@ -57,7 +71,10 @@ public sealed class NotificationIntegrationTests
         using var failHttp = new HttpClient(failHandler) { BaseAddress = new Uri("http://localhost:8007/") };
         var failClient = new NotificationClient(
             failHttp,
-            new ConfigurationBuilder().Build(),
+            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Services:Notification:SendAuctionDepositEvents"] = "true"
+            }).Build(),
             NullLogger<NotificationClient>.Instance);
         var depRes = await failClient.SendAuctionDepositEventAsync(new AuctionDepositNotificationEvent(
             "hold:222:Held",
