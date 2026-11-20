@@ -16,6 +16,7 @@ builder.Services.AddServiceDefaults(builder.Configuration, "wallet-service");
 builder.Services.AddApplicationServices();
 builder.Services.AddInfrastructureServices(builder.Configuration);
 builder.Services.AddHostedService<StripeTopupReconciliationWorker>();
+builder.Services.AddHostedService<WithdrawalNotificationRetryWorker>();
 
 // 3. REST Services
 builder.Services.AddControllers()

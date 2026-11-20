@@ -34,5 +34,8 @@ public enum AuditAction
     DirectPaymentExpire = 29,
     OrderPaymentAdjustment = 30,
     NotificationDispatchFailed = 31,
-    OrderEscrowCancel = 32
+    OrderEscrowCancel = 32,
+    NotificationQueued = 33,
+    NotificationDelivered = 34,
+    NotificationAbandoned = 35
 }

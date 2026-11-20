@@ -205,15 +205,13 @@ internal sealed class ProcessWithdrawalCommandHandler
             },
             userId: adminGuid.ToString());
 
-        await _context.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-
+        WithdrawalNotificationEvent? notification = null;
         if (withdrawal.Status is WithdrawalStatus.Approved
             or WithdrawalStatus.Rejected
             or WithdrawalStatus.Completed
             or WithdrawalStatus.Failed)
         {
-            var notification = new WithdrawalNotificationEvent(
+            notification = new WithdrawalNotificationEvent(
                 SourceEventId: $"withdrawal:{withdrawal.Id:D}:{withdrawal.Status}",
                 WithdrawalId: withdrawal.Id,
                 RecipientUserId: wallet.UserId,
@@ -223,6 +221,18 @@ internal sealed class ProcessWithdrawalCommandHandler
                 TransactionId: transactionId ?? withdrawal.GatewayReferenceId,
                 TraceId: Activity.Current?.Id);
 
+            // Written in the same SaveChanges as the money change, so a notification that is owed can never be lost.
+            if (_notificationClient is not null)
+            {
+                NotificationDispatchExtensions.QueueWithdrawalEvent(_context, notification);
+            }
+        }
+
+        await _context.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        if (notification is not null)
+        {
             await NotificationDispatchExtensions.TryDispatchWithdrawalEventAsync(
                 _context,
                 _notificationClient,
