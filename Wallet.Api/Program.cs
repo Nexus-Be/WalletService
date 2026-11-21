@@ -55,6 +55,19 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.MapControllers();
-app.MapGet("/health", () => Results.Ok(new { status = "Healthy", service = "wallet-service" }));
+// Readiness, not just "the process is up": the database must answer, otherwise 503 so the central health view can tell.
+app.MapGet("/health", async (Wallet.Infrastructure.Persistence.WalletDbContext db, CancellationToken ct) =>
+{
+    try
+    {
+        return await db.Database.CanConnectAsync(ct)
+            ? Results.Ok(new { status = "Healthy", service = "wallet-service" })
+            : Results.Json(new { status = "Unhealthy", service = "wallet-service", message = "The database is not reachable." }, statusCode: 503);
+    }
+    catch (Exception)
+    {
+        return Results.Json(new { status = "Unhealthy", service = "wallet-service", message = "The database check failed." }, statusCode: 503);
+    }
+});
 
 app.Run();
