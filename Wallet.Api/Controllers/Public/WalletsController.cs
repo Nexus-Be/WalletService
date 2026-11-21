@@ -485,7 +485,7 @@ public sealed class WalletsController : ControllerBase
     [HttpPost("sub-orders/{subOrderId:guid}/settle")]
     [RequireInternalServiceKey]
     [ApiExplorerSettings(IgnoreApi = true)]
-    [ReleaseFeatureAttribute(ReleaseFeature.LegacyCommerceCredits)]
+    [ReleaseFeatureAttribute(ReleaseFeature.LegacyCommerceSettlement)]
     [ProducesResponseType(typeof(WalletOrderTransactionResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> SettleSellerOrder(

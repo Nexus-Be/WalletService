@@ -35,6 +35,10 @@ public sealed class ReleaseFeatureTests
     [InlineData(ReleaseFeature.LegacyCommerceCredits, "Production", "true", 0)]
     [InlineData(ReleaseFeature.LegacyCommerceCredits, "Development", "false", 503)]
     [InlineData(ReleaseFeature.LegacyCommerceCredits, "Production", "invalid", 500)]
+    [InlineData(ReleaseFeature.LegacyCommerceSettlement, "Production", null, 503)]
+    [InlineData(ReleaseFeature.LegacyCommerceSettlement, "Development", null, 0)]
+    [InlineData(ReleaseFeature.LegacyCommerceSettlement, "Production", "true", 0)]
+    [InlineData(ReleaseFeature.LegacyCommerceSettlement, "Development", "false", 503)]
     public void Gate_UsesExplicitConfigurationOrEnvironmentDefault(
         ReleaseFeature feature, string environment, string? configured, int expected)
     {
@@ -53,6 +57,36 @@ public sealed class ReleaseFeatureTests
         Assert.Equal(expected == 503 ? "FEATURE_DISABLED" : "INTERNAL_CONFIGURATION_ERROR", problem.ErrorCode);
         if (expected == 503)
             Assert.EndsWith("#section-15.6.4", problem.Type);
+    }
+
+    [Theory]
+    [InlineData("true", null, 0)]        // only the shared flag set: settlement follows it (no behaviour change)
+    [InlineData("false", null, 503)]
+    [InlineData("true", "false", 503)]   // settlement closed on its own while refunds stay open
+    [InlineData("false", "true", 0)]     // explicit settlement flag wins
+    public void LegacySettlement_CanBeClosedWithoutClosingTheSharedLegacyFlag(string credits, string? settlement, int expected)
+    {
+        var values = new Dictionary<string, string?> { ["ReleaseFeatures:LegacyCommerceCreditsEnabled"] = credits };
+        if (settlement is not null) values["ReleaseFeatures:LegacyCommerceSettlementEnabled"] = settlement;
+        var services = new ServiceCollection()
+            .AddSingleton<IConfiguration>(new ConfigurationBuilder().AddInMemoryCollection(values).Build())
+            .AddSingleton<IWebHostEnvironment>(new TestEnvironment { EnvironmentName = "Production" })
+            .AddLogging()
+            .BuildServiceProvider();
+        var http = new DefaultHttpContext { RequestServices = services };
+        var context = new ActionExecutingContext(new ActionContext(http, new RouteData(), new ActionDescriptor()), [],
+            new Dictionary<string, object?>(), new object());
+
+        new ReleaseFeatureAttribute(ReleaseFeature.LegacyCommerceSettlement).OnActionExecuting(context);
+
+        if (expected == 0) Assert.Null(context.Result);
+        else Assert.Equal(expected, Assert.IsType<ObjectResult>(context.Result).StatusCode);
+
+        // The refund routes keep following the shared flag only.
+        var refund = new ActionExecutingContext(new ActionContext(http, new RouteData(), new ActionDescriptor()), [],
+            new Dictionary<string, object?>(), new object());
+        new ReleaseFeatureAttribute(ReleaseFeature.LegacyCommerceCredits).OnActionExecuting(refund);
+        if (credits == "true") Assert.Null(refund.Result); else Assert.NotNull(refund.Result);
     }
 
     [Fact]
@@ -92,6 +126,7 @@ public sealed class ReleaseFeatureTests
             ReleaseFeature.Withdrawals => "ReleaseFeatures:WithdrawalsEnabled",
             ReleaseFeature.AuctionOrderCapture => "ReleaseFeatures:AuctionOrderCaptureEnabled",
             ReleaseFeature.LegacyCommerceCredits => "ReleaseFeatures:LegacyCommerceCreditsEnabled",
+            ReleaseFeature.LegacyCommerceSettlement => "ReleaseFeatures:LegacyCommerceSettlementEnabled",
             _ => throw new ArgumentOutOfRangeException(nameof(feature))
         };
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(

@@ -9,7 +9,9 @@ public enum ReleaseFeature
 {
     Withdrawals,
     AuctionOrderCapture,
-    LegacyCommerceCredits
+    LegacyCommerceCredits,
+    /// <summary>Legacy (V1) seller payout route only. Falls back to LegacyCommerceCredits when not configured, so it can be closed without closing the refund routes.</summary>
+    LegacyCommerceSettlement
 }
 
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
@@ -31,6 +33,10 @@ public sealed class ReleaseFeatureAttribute(ReleaseFeature feature) : Attribute,
             ReleaseFeature.Withdrawals => "ReleaseFeatures:WithdrawalsEnabled",
             ReleaseFeature.AuctionOrderCapture => "ReleaseFeatures:AuctionOrderCaptureEnabled",
             ReleaseFeature.LegacyCommerceCredits => "ReleaseFeatures:LegacyCommerceCreditsEnabled",
+            ReleaseFeature.LegacyCommerceSettlement =>
+                configuration["ReleaseFeatures:LegacyCommerceSettlementEnabled"] is not null
+                    ? "ReleaseFeatures:LegacyCommerceSettlementEnabled"
+                    : "ReleaseFeatures:LegacyCommerceCreditsEnabled",
             _ => throw new InvalidOperationException("The release feature is invalid.")
         };
         var configured = configuration[setting];
