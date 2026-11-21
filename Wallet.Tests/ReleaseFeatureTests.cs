@@ -106,6 +106,12 @@ public sealed class ReleaseFeatureTests
             .GetCustomAttribute<ReleaseFeatureAttribute>());
         Assert.NotNull(typeof(WalletsController).GetMethod(nameof(WalletsController.SettleSellerOrder))!
             .GetCustomAttribute<ReleaseFeatureAttribute>());
+        // Both V1 payout routes must follow the dedicated settlement flag, not the flag shared with the refund routes.
+        foreach (var name in new[] { nameof(WalletsController.SettleSellerOrder), nameof(WalletsController.SettleSellerOrderInternal) })
+        {
+            var attribute = typeof(WalletsController).GetMethod(name)!.GetCustomAttributes<ReleaseFeatureAttribute>().Single();
+            Assert.Equal(ReleaseFeature.LegacyCommerceSettlement, attribute.Feature);
+        }
         Assert.NotNull(typeof(WalletsController).GetMethod(nameof(WalletsController.RefundOrder))!
             .GetCustomAttribute<ReleaseFeatureAttribute>());
         Assert.NotNull(typeof(WalletsController).GetMethod(nameof(WalletsController.RefundSubOrder))!

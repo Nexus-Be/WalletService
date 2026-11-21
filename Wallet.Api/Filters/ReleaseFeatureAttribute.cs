@@ -17,6 +17,8 @@ public enum ReleaseFeature
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
 public sealed class ReleaseFeatureAttribute(ReleaseFeature feature) : Attribute, IActionFilter
 {
+    public ReleaseFeature Feature => feature;
+
     public void OnActionExecuting(ActionExecutingContext context)
     {
         if (feature == ReleaseFeature.AuctionOrderCapture &&
