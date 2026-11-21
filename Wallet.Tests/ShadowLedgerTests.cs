@@ -228,4 +228,30 @@ public sealed class ShadowLedgerTests
         Assert.Equal(balanceBefore, (await db.Wallets.SingleAsync()).Balance);
         Assert.Equal(1, run.FindingCount);
     }
+
+    [Fact]
+    public async Task A_completed_refund_is_matched_to_its_credit_through_the_sub_order_even_without_a_stored_link()
+    {
+        var (db, wallet) = await NewAsync(ledgerOn: false);
+        var orderId = Guid.NewGuid();
+        var subId = Guid.NewGuid();
+        db.WalletTransactions.Add(new WalletTransaction { WalletId = wallet.Id, Type = WalletTransactionType.PurchaseDebit, Amount = 110m, BalanceBefore = 210m, BalanceAfter = 100m, Status = TransactionStatus.Success, ReferenceId = orderId });
+        db.WalletTransactions.Add(new WalletTransaction { WalletId = wallet.Id, Type = WalletTransactionType.RefundCredit, Amount = 110m, BalanceBefore = 100m, BalanceAfter = 210m, Status = TransactionStatus.Success, ReferenceId = subId });
+        await db.SaveChangesAsync();
+
+        var sources = new FakeSources();
+        var sub = new SubOrderRecon(subId, "Paid", "Wallet", 100m, 0m, 0m, 0m, 10m, 110m, 90m, 20m, false, DateTimeOffset.UtcNow);
+        var refund = new RefundRecon(Guid.NewGuid(), subId, orderId, 110m, "Completed", null, null);
+        sources.Orders.Add(new OrderRecon(orderId, Guid.NewGuid(), "Paid", 110m, DateTimeOffset.UtcNow.AddMinutes(-10), new[] { sub }, new[] { refund }));
+
+        var clean = await new ReconciliationEvaluator(db, sources).RunAsync(new ReconciliationRequest(null, null, new[] { "I5" }), null, default);
+        Assert.Equal(0, clean.FindingCount);
+
+        var credit = await db.WalletTransactions.SingleAsync(tx => tx.Type == WalletTransactionType.RefundCredit);
+        credit.Amount = 90m;
+        await db.SaveChangesAsync();
+        var broken = await new ReconciliationEvaluator(db, sources).RunAsync(new ReconciliationRequest(null, null, new[] { "I5" }), null, default);
+        Assert.Equal("I5_AMOUNT_MISMATCH", (await db.ReconciliationFindings.SingleAsync()).Code);
+        Assert.Equal(1, broken.FindingCount);
+    }
 }

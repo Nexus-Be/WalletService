@@ -261,18 +261,37 @@ public sealed class ReconciliationEvaluator
         {
             var refundTxs = refundTxIds.Count == 0 ? new Dictionary<Guid, WalletTransaction>()
                 : (await _context.WalletTransactions.AsNoTracking().Where(tx => refundTxIds.Contains(tx.Id)).ToListAsync(ct)).ToDictionary(tx => tx.Id);
+            var claimed = new HashSet<Guid>();
             foreach (var order in walletOrders)
             {
                 foreach (var refund in order.Refunds.Where(refund => refund.Status == "Completed"))
                 {
-                    var txId = refund.RefundTransactionId ?? refund.WalletTransactionId;
-                    if (txId is null || !refundTxs.TryGetValue(txId.Value, out var tx) || tx.Status != TransactionStatus.Success)
+                    // Commerce does not always store the wallet transaction on the refund row, so besides an explicit link the credit is looked up
+                    // by what the wallet records it against: the refund, the sub-order or the order.
+                    var candidates = new List<WalletTransaction>();
+                    var linked = refund.RefundTransactionId ?? refund.WalletTransactionId;
+                    if (linked.HasValue && refundTxs.TryGetValue(linked.Value, out var linkedTx) && linkedTx.Status == TransactionStatus.Success)
+                        candidates.Add(linkedTx);
+                    foreach (var key in new Guid?[] { refund.RefundId, refund.SubOrderId, refund.OrderId, order.OrderId })
+                    {
+                        if (key.HasValue && byRef.TryGetValue(key.Value, out var list))
+                            candidates.AddRange(list.Where(tx => tx.Type is WalletTransactionType.RefundCredit or WalletTransactionType.EscrowCancellationRefund));
+                    }
+
+                    candidates = candidates.GroupBy(tx => tx.Id).Select(group => group.First()).ToList();
+                    var match = candidates.FirstOrDefault(tx => !claimed.Contains(tx.Id) && Math.Abs(tx.Amount - refund.Amount) <= Tolerance);
+                    if (match is not null)
+                    {
+                        claimed.Add(match.Id);
+                    }
+                    else if (candidates.Count == 0)
                     {
                         findings.Add(Finding("I5", "I5_MISSING_REFUND_CREDIT", "High", refund.RefundId.ToString(), "wallet-service", refund.Amount, 0m, "A completed refund has no successful wallet credit."));
                     }
-                    else if (Math.Abs(tx.Amount - refund.Amount) > Tolerance)
+                    else
                     {
-                        findings.Add(Finding("I5", "I5_AMOUNT_MISMATCH", "High", refund.RefundId.ToString(), "wallet-service", refund.Amount, tx.Amount, "The refund credit does not match the refund amount."));
+                        var seen = candidates.Where(tx => !claimed.Contains(tx.Id)).Select(tx => tx.Amount).DefaultIfEmpty(candidates[0].Amount).First();
+                        findings.Add(Finding("I5", "I5_AMOUNT_MISMATCH", "High", refund.RefundId.ToString(), "wallet-service", refund.Amount, seen, "The refund credit does not match the refund amount."));
                     }
                 }
             }
