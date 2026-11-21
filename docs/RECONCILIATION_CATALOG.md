@@ -19,8 +19,8 @@ Counter accounts: gateway top-ups and direct payments `EXTERNAL_GATEWAY`; order 
 |---|---|---|
 | I1 | Sub-order: SellerReceive + (PlatformFee - SystemDiscount) + Shipping = Total | I1_FORMULA_MISMATCH |
 | I2 | Wallet-paid order has exactly one PurchaseDebit equal to the order total (plus payment adjustments) | I2_MISSING_WALLET_DEBIT, I2_DUPLICATE_DEBIT, I2_AMOUNT_MISMATCH |
-| I3 | Escrow exists, original = amount paid, remaining = original - payouts - refunds | I3_MISSING_ESCROW, I3_ORIGINAL_MISMATCH, I3_REMAINING_MISMATCH |
-| I4 | Completed sub-order has an EscrowRelease equal to SellerReceive (platform fee is not released separately in the current flow and is not checked) | I4_MISSING_RELEASE, I4_AMOUNT_MISMATCH |
+| I3 | Escrow exists, original = amount paid, remaining = original - payouts - refunds | I3_MISSING_ESCROW, I3_ORIGINAL_MISMATCH, I3_REMAINING_MISMATCH, I3_LEGACY_ESCROW_NOT_REDUCED |
+| I4 | Completed sub-order has an EscrowRelease equal to SellerReceive (platform fee is not released separately in the current flow and is not checked). Under settlement V2 the check reads the Wallet's own allocation record (`OrderSettlements`) for the sub-order or auction order and its identity | I4_MISSING_RELEASE, I4_AMOUNT_MISMATCH, I4_ALLOCATION_MISMATCH, I4_AUCTION_AMOUNT_MISMATCH |
 | I5 | Completed refund has a successful wallet credit of the same amount | I5_MISSING_REFUND_CREDIT, I5_AMOUNT_MISMATCH |
 | I6 | Authorized, captured or released deposit matches a wallet hold (amount and state) | I6_MISSING_HOLD, I6_AMOUNT_MISMATCH, I6_STATUS_MISMATCH |
 | I7 | Successful top-up has exactly one credit | I7_MISSING_TOPUP_CREDIT, I7_DUPLICATE_TOPUP_CREDIT, I7_AMOUNT_MISMATCH |
@@ -34,3 +34,14 @@ When the ledger was never switched on, I10, I11 and I12 are skipped and the run 
 
 ## API (admin only)
 `GET ledger/status`, `GET ledger/journal`, `GET ledger/trial-balance`, `PUT ledger/shadow`, `POST ledger/backfill`, `POST reconciliation/runs`, `GET reconciliation/runs`, `GET reconciliation/runs/{id}`, `GET reconciliation/findings`, `GET reconciliation/findings/{id}`, `PATCH reconciliation/findings/{id}` (status plus required note). All under `/api/v1/admin/wallets/`.
+
+## Approval of this catalog (owner decision)
+This catalog is the proposal that the reconciliation runs are built from. It has not been approved yet. Only the project owner signs it off; engineering does not mark it approved.
+
+| Item | Value |
+|---|---|
+| Status | Pending owner approval |
+| Approved by | (to be filled by the owner) |
+| Date | (to be filled by the owner) |
+| Scope reviewed | I1-I12, finding codes, "Unchecked/Partial" rules, switch and epoch rules |
+| Questions for the owner | Are the I4 rule (fee not released separately) and the I12 blind spot (a direct SQL edit of `Balance`) acceptable as written? |
