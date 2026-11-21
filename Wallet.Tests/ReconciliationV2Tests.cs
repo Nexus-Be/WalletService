@@ -204,6 +204,15 @@ public sealed class ReconciliationV2Tests
         BalanceBefore = 0m, BalanceAfter = amount, Status = TransactionStatus.Success, CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-minutesAgo), UpdatedAt = DateTimeOffset.UtcNow.AddMinutes(-minutesAgo)
     };
 
+    [Theory]
+    [InlineData("{\"Enabled\":true}", true)]
+    [InlineData("{\"Enabled\": true, \"Version\": 58, \"ShadowEpoch\": 30}", true)]
+    [InlineData("{\"Enabled\": false, \"Version\": 59}", false)]
+    [InlineData("not json", false)]
+    [InlineData(null, false)]
+    public void The_switch_record_is_read_the_same_way_whether_or_not_postgres_added_spaces(string? json, bool expected)
+        => Assert.Equal(expected, ReconciliationEvaluator.SwitchedOn(json));
+
     [Fact]
     public async Task I12_reports_a_successful_balance_change_that_has_no_queue_row_and_accepts_one_that_has()
     {

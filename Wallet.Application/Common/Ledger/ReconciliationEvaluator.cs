@@ -507,7 +507,7 @@ public sealed class ReconciliationEvaluator
         // life plus a margin on both sides; anything near a switch is "not conclusive", never a finding.
         var switches = (await _context.AuditLogs.AsNoTracking().Where(log => log.Action == AuditAction.LedgerShadowSwitch)
             .OrderBy(log => log.CreatedAt).Select(log => new { log.CreatedAt, log.NewValues }).ToListAsync(ct))
-            .Select(log => (At: log.CreatedAt, On: log.NewValues != null && log.NewValues.Contains("\"Enabled\":true", StringComparison.OrdinalIgnoreCase)))
+            .Select(log => (At: log.CreatedAt, On: SwitchedOn(log.NewValues)))
             .ToList();
         bool OnThroughout(DateTimeOffset start, DateTimeOffset end)
         {
@@ -529,6 +529,22 @@ public sealed class ReconciliationEvaluator
             var opening = await _context.LedgerPostingPending.AsNoTracking().Where(row => row.WalletId == tx.WalletId && row.IsEpochOpening).MinAsync(row => (DateTimeOffset?)row.CreatedAt, ct);
             if (opening is null || tx.UpdatedAt < opening.Value + margin) continue;
             findings.Add(Finding("I12", "I12_MISSING_POSTING_ROW", "Medium", tx.Id.ToString(), "wallet-service", "queue row", "none", "A successful balance-changing transaction has no ledger queue row."));
+        }
+    }
+
+    // NewValues is a jsonb column: PostgreSQL stores it normalised (`"Enabled": true`, with a space), so it is parsed, not matched as text.
+    internal static bool SwitchedOn(string? newValues)
+    {
+        if (string.IsNullOrWhiteSpace(newValues)) return false;
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(newValues);
+            return document.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object
+                && document.RootElement.EnumerateObject().Any(p => string.Equals(p.Name, "Enabled", StringComparison.OrdinalIgnoreCase) && p.Value.ValueKind == System.Text.Json.JsonValueKind.True);
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return false;
         }
     }
 
