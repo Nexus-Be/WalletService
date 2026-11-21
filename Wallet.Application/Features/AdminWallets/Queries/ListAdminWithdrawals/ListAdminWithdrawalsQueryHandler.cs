@@ -35,6 +35,30 @@ internal sealed class ListAdminWithdrawalsQueryHandler(IWalletDbContext context)
             query = query.Where(item => item.Withdrawal.Status == status);
         }
 
+        if (request.UserId.HasValue)
+        {
+            var userId = request.UserId.Value;
+            query = query.Where(item => item.OwnerUserId == userId);
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.TransferReference))
+        {
+            var transferReference = request.TransferReference.Trim();
+            query = query.Where(item => item.Withdrawal.GatewayReferenceId == transferReference);
+        }
+
+        if (request.FromDate.HasValue)
+        {
+            var fromUtc = request.FromDate.Value.ToUniversalTime();
+            query = query.Where(item => item.Withdrawal.CreatedAt >= fromUtc);
+        }
+
+        if (request.ToDate.HasValue)
+        {
+            var toUtc = request.ToDate.Value.ToUniversalTime();
+            query = query.Where(item => item.Withdrawal.CreatedAt <= toUtc);
+        }
+
         var total = await query.CountAsync(cancellationToken);
         var pageItems = await query
             .OrderByDescending(item => item.Withdrawal.CreatedAt)

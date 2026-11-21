@@ -7,6 +7,7 @@ using System.Text.Json.Serialization;
 using MediatR;
 using Wallet.Application.Common.Validation;
 using Wallet.Application.Features.Checkout.Commands.PayOrderWithWallet;
+using Wallet.Application.Features.Withdrawals;
 
 public sealed record RefundOrderPaymentCommand(
     [Required(ErrorMessage = "User ID is required.")]
@@ -24,6 +25,8 @@ public sealed record RefundOrderPaymentCommand(
 
     [JsonIgnore] public bool IsSubOrder { get; init; }
 
+    [JsonIgnore] public string? IdempotencyKey { get; init; }
+
     public IEnumerable<ValidationResult> ValidateRequest()
     {
         var error = RequestValidation.ValidateGuid(OrderId, nameof(OrderId), "Order ID");
@@ -35,6 +38,14 @@ public sealed record RefundOrderPaymentCommand(
         if (ParentOrderId.HasValue && ParentOrderId.Value == Guid.Empty)
         {
             yield return new ValidationResult("Parent order ID must be a valid UUID.", new[] { nameof(ParentOrderId) });
+        }
+
+        if (!string.IsNullOrWhiteSpace(IdempotencyKey) &&
+            !WithdrawalWorkflow.IsValidIdempotencyKey(IdempotencyKey.Trim()))
+        {
+            yield return new ValidationResult(
+                "Idempotency-Key header must be 1 to 100 ASCII letters, digits, hyphens, or underscores.",
+                new[] { nameof(IdempotencyKey) });
         }
     }
 }

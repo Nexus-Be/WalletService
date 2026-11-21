@@ -51,9 +51,10 @@ public sealed class AdminWalletsController : ControllerBase
         [FromQuery] string? status = null,
         [FromQuery] Guid? userId = null,
         [FromQuery] string? search = null,
+        [FromQuery] string? currency = null,
         CancellationToken cancellationToken = default) =>
         Ok(await _sender.Send(
-            new ListAdminWalletsQuery(page, pageSize, status, userId, search),
+            new ListAdminWalletsQuery(page, pageSize, status, userId, search, currency),
             cancellationToken));
 
     /// <summary>Lists paginated withdrawal requests for admin and staff review.</summary>
@@ -63,8 +64,14 @@ public sealed class AdminWalletsController : ControllerBase
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
         [FromQuery] string? status = null,
+        [FromQuery] Guid? userId = null,
+        [FromQuery] string? transferReference = null,
+        [FromQuery] DateTimeOffset? fromDate = null,
+        [FromQuery] DateTimeOffset? toDate = null,
         CancellationToken cancellationToken = default) =>
-        Ok(await _sender.Send(new ListAdminWithdrawalsQuery(page, pageSize, status), cancellationToken));
+        Ok(await _sender.Send(
+            new ListAdminWithdrawalsQuery(page, pageSize, status, userId, transferReference, fromDate, toDate),
+            cancellationToken));
 
     /// <summary>Gets the audit history of a withdrawal request.</summary>
     [HttpGet("withdrawals/{id:guid}/history")]
@@ -110,6 +117,8 @@ public sealed class AdminWalletsController : ControllerBase
         [FromQuery] string? status = null,
         [FromQuery] DateTimeOffset? fromDate = null,
         [FromQuery] DateTimeOffset? toDate = null,
+        [FromQuery] Guid? userId = null,
+        [FromQuery] Guid? referenceId = null,
         CancellationToken cancellationToken = default)
     {
         if (!this.EnsureAdmin(out var authError))
@@ -118,7 +127,7 @@ public sealed class AdminWalletsController : ControllerBase
         }
 
         var result = await _sender.Send(
-            new ListWalletLedgerQuery(page, pageSize, walletId, type, status, fromDate, toDate),
+            new ListWalletLedgerQuery(page, pageSize, walletId, type, status, fromDate, toDate, userId, referenceId),
             cancellationToken);
         return Ok(result);
     }
@@ -133,6 +142,8 @@ public sealed class AdminWalletsController : ControllerBase
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 10,
         [FromQuery] Guid? walletId = null,
+        [FromQuery] Guid? userId = null,
+        [FromQuery] string? result = null,
         CancellationToken cancellationToken = default)
     {
         if (!this.EnsureAdmin(out var authError))
@@ -140,10 +151,10 @@ public sealed class AdminWalletsController : ControllerBase
             return authError;
         }
 
-        var result = await _sender.Send(
-            new GetWalletReconciliationQuery(page, pageSize, walletId),
+        var response = await _sender.Send(
+            new GetWalletReconciliationQuery(page, pageSize, walletId, userId, result),
             cancellationToken);
-        return Ok(result);
+        return Ok(response);
     }
 
     /// <summary>Manually adjusts a wallet balance by administrative action. Admin role required.</summary>
@@ -151,7 +162,8 @@ public sealed class AdminWalletsController : ControllerBase
     public async Task<IActionResult> AdjustBalance(
         Guid userId,
         [FromBody] AdjustWalletBalanceCommand command,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken = default,
+        [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey = null)
     {
         if (!this.EnsureAdmin(out var adminError))
         {
@@ -170,7 +182,12 @@ public sealed class AdminWalletsController : ControllerBase
             adminId,
             command.Amount);
         var result = await _sender.Send(
-            command with { UserId = userId, AdminUserId = adminId },
+            command with
+            {
+                UserId = userId,
+                AdminUserId = adminId,
+                IdempotencyKey = string.IsNullOrWhiteSpace(idempotencyKey) ? null : idempotencyKey.Trim()
+            },
             cancellationToken);
         return Ok(result);
     }
@@ -179,7 +196,7 @@ public sealed class AdminWalletsController : ControllerBase
     [HttpGet("{userId:guid}")]
     [ProducesResponseType(typeof(WalletResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetUserWallet(Guid userId, CancellationToken cancellationToken) =>
-        Ok(await _sender.Send(new GetMyWalletQuery(userId.ToString()), cancellationToken));
+        Ok(await _sender.Send(new GetMyWalletQuery(userId.ToString()) { AutoCreate = false }, cancellationToken));
 
     /// <summary>Freezes a user's wallet.</summary>
     [HttpPost("{userId:guid}/freeze")]

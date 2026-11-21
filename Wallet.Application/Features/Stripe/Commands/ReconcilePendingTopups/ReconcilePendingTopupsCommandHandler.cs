@@ -41,9 +41,21 @@ internal sealed class ReconcilePendingTopupsCommandHandler(
 
         foreach (var candidate in topupCandidates.Concat(directCandidates))
         {
-            if (await ReconcileCandidateAsync(candidate.Id, candidate.SessionId!, cancellationToken))
+            try
             {
-                processed++;
+                if (await ReconcileCandidateAsync(candidate.Id, candidate.SessionId!, cancellationToken))
+                {
+                    processed++;
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            {
+                if (context is DbContext dbContext)
+                {
+                    dbContext.ChangeTracker.Clear();
+                }
+
+                logger.LogError(ex, "Failed to reconcile Stripe payment attempt {AttemptId}.", candidate.Id);
             }
         }
 
@@ -75,51 +87,63 @@ internal sealed class ReconcilePendingTopupsCommandHandler(
         var promoted = 0;
         foreach (var candidate in staleAttempts)
         {
-            await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
-
-            if (candidate.Purpose == StripePaymentPurpose.Topup && candidate.WalletTopupId is Guid topupId)
+            try
             {
-                var topup = await context.LockTopupByIdAsync(topupId, cancellationToken);
-                if (topup is not null)
+                await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+
+                if (candidate.Purpose == StripePaymentPurpose.Topup && candidate.WalletTopupId is Guid topupId)
                 {
-                    await context.ReloadUnmodifiedAsync(topup, cancellationToken);
+                    var topup = await context.LockTopupByIdAsync(topupId, cancellationToken);
+                    if (topup is not null)
+                    {
+                        await context.ReloadUnmodifiedAsync(topup, cancellationToken);
+                    }
                 }
-            }
-            else if (candidate.Purpose == StripePaymentPurpose.DirectOrder &&
-                     candidate.DirectPaymentOrderId is Guid directOrderId)
-            {
-                var order = await context.LockDirectPaymentOrderByIdAsync(directOrderId, cancellationToken);
-                if (order is not null)
+                else if (candidate.Purpose == StripePaymentPurpose.DirectOrder &&
+                         candidate.DirectPaymentOrderId is Guid directOrderId)
                 {
-                    await context.ReloadUnmodifiedAsync(order, cancellationToken);
+                    var order = await context.LockDirectPaymentOrderByIdAsync(directOrderId, cancellationToken);
+                    if (order is not null)
+                    {
+                        await context.ReloadUnmodifiedAsync(order, cancellationToken);
+                    }
                 }
-            }
 
-            var attempt = await context.LockStripePaymentAttemptAsync(candidate.Id, cancellationToken);
-            if (attempt is null)
-            {
+                var attempt = await context.LockStripePaymentAttemptAsync(candidate.Id, cancellationToken);
+                if (attempt is null)
+                {
+                    await transaction.CommitAsync(cancellationToken);
+                    continue;
+                }
+
+                await context.ReloadUnmodifiedAsync(attempt, cancellationToken);
+                if (attempt.Status != StripePaymentAttemptStatus.CreationPending ||
+                    attempt.CheckoutSessionId is not null ||
+                    !attempt.BlocksReplacement)
+                {
+                    await transaction.CommitAsync(cancellationToken);
+                    continue;
+                }
+
+                attempt.Status = StripePaymentAttemptStatus.ReconciliationRequired;
+                attempt.UpdatedAt = DateTimeOffset.UtcNow;
+                await context.SaveChangesAsync(cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
-                continue;
-            }
 
-            await context.ReloadUnmodifiedAsync(attempt, cancellationToken);
-            if (attempt.Status != StripePaymentAttemptStatus.CreationPending ||
-                attempt.CheckoutSessionId is not null ||
-                !attempt.BlocksReplacement)
+                logger.LogCritical(
+                    "Stale CreationPending Stripe payment attempt {AttemptId} was promoted to ReconciliationRequired.",
+                    attempt.Id);
+                promoted++;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
-                await transaction.CommitAsync(cancellationToken);
-                continue;
+                if (context is DbContext dbContext)
+                {
+                    dbContext.ChangeTracker.Clear();
+                }
+
+                logger.LogError(ex, "Failed to promote stale CreationPending Stripe payment attempt {AttemptId}.", candidate.Id);
             }
-
-            attempt.Status = StripePaymentAttemptStatus.ReconciliationRequired;
-            attempt.UpdatedAt = DateTimeOffset.UtcNow;
-            await context.SaveChangesAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
-
-            logger.LogCritical(
-                "Stale CreationPending Stripe payment attempt {AttemptId} was promoted to ReconciliationRequired.",
-                attempt.Id);
-            promoted++;
         }
 
         return promoted;

@@ -18,7 +18,9 @@ public sealed record ListWalletLedgerQuery(
     string? Type = null,
     string? Status = null,
     DateTimeOffset? FromDate = null,
-    DateTimeOffset? ToDate = null)
+    DateTimeOffset? ToDate = null,
+    Guid? UserId = null,
+    Guid? ReferenceId = null)
     : IRequest<PagedData<AdminWalletLedgerEntry>>, IRequestValidation
 {
     public IEnumerable<ValidationResult> ValidateRequest()
@@ -26,6 +28,16 @@ public sealed record ListWalletLedgerQuery(
         if (WalletId == Guid.Empty)
         {
             yield return new ValidationResult("Wallet ID must be a valid UUID.", new[] { nameof(WalletId) });
+        }
+
+        if (UserId == Guid.Empty)
+        {
+            yield return new ValidationResult("User ID must be a valid UUID.", new[] { nameof(UserId) });
+        }
+
+        if (ReferenceId == Guid.Empty)
+        {
+            yield return new ValidationResult("Reference ID must be a valid UUID.", new[] { nameof(ReferenceId) });
         }
 
         if (!string.IsNullOrWhiteSpace(Type) &&
@@ -59,4 +71,5 @@ public sealed record AdminWalletLedgerEntry(
     decimal BalanceAfter,
     string Status,
     Guid? ReferenceId,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    string UserId = "");

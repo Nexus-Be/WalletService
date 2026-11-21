@@ -7,9 +7,11 @@ using System.Threading.Tasks;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Wallet.Application.Common.Extensions;
+using Wallet.Application.Features.Withdrawals;
 using Wallet.Application.Interfaces;
 using Wallet.Domain.Entities;
 using Wallet.Domain.Enums;
+using Wallet.Domain.Exceptions;
 
 internal sealed class CreateBankAccountCommandHandler(IWalletDbContext context)
     : IRequestHandler<CreateBankAccountCommand, BankAccountResponse>
@@ -18,7 +20,23 @@ internal sealed class CreateBankAccountCommandHandler(IWalletDbContext context)
         CreateBankAccountCommand request,
         CancellationToken cancellationToken)
     {
+        var bankError = WithdrawalWorkflow.ValidateManualBankDetails(
+            request.BankName,
+            request.AccountNumber,
+            request.AccountHolderName,
+            nameof(CreateBankAccountCommand.BankName),
+            "Bank name").FirstOrDefault();
+        if (bankError is not null)
+        {
+            throw new BusinessRuleValidationException(
+                "VAL_INVALID_INPUT",
+                bankError.ErrorMessage ?? "Bank account details are invalid.");
+        }
+
         var userId = request.UserId.ToString();
+        var bankName = request.BankName.Trim();
+        var accountNumber = request.AccountNumber.Trim();
+        var accountHolderName = request.AccountHolderName.Trim();
         var now = DateTimeOffset.UtcNow;
 
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
@@ -27,6 +45,17 @@ internal sealed class CreateBankAccountCommandHandler(IWalletDbContext context)
         var existingAccounts = await context.BankAccounts
             .Where(item => item.UserId == userId)
             .ToListAsync(cancellationToken);
+
+        var duplicateExists = existingAccounts.Any(item =>
+            string.Equals(item.BankName.Trim(), bankName, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(item.AccountNumber.Trim(), accountNumber, StringComparison.Ordinal));
+        if (duplicateExists)
+        {
+            throw new BusinessRuleValidationException(
+                "BANK_ACCOUNT_DUPLICATE",
+                "This bank account is already saved for the user.",
+                409);
+        }
 
         var makeDefault = request.IsDefault || existingAccounts.Count == 0;
         if (makeDefault)
@@ -49,9 +78,9 @@ internal sealed class CreateBankAccountCommandHandler(IWalletDbContext context)
         {
             Id = Guid.NewGuid(),
             UserId = userId,
-            BankName = request.BankName.Trim(),
-            AccountNumber = request.AccountNumber.Trim(),
-            AccountHolderName = request.AccountHolderName.Trim(),
+            BankName = bankName,
+            AccountNumber = accountNumber,
+            AccountHolderName = accountHolderName,
             IsDefault = makeDefault,
             CreatedAt = now,
             UpdatedAt = now

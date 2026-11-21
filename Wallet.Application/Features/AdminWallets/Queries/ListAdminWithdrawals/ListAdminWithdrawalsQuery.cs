@@ -1,5 +1,6 @@
 namespace Wallet.Application.Features.AdminWallets.Queries.ListAdminWithdrawals;
 
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using MediatR;
@@ -12,7 +13,11 @@ using Wallet.Domain.Enums;
 public sealed record ListAdminWithdrawalsQuery(
     [Range(1, int.MaxValue)] int Page = 1,
     [Range(1, 100)] int PageSize = 20,
-    string? Status = null) : IRequest<PagedData<AdminWithdrawalResponse>>, IRequestValidation
+    string? Status = null,
+    Guid? UserId = null,
+    string? TransferReference = null,
+    DateTimeOffset? FromDate = null,
+    DateTimeOffset? ToDate = null) : IRequest<PagedData<AdminWithdrawalResponse>>, IRequestValidation
 {
     public IEnumerable<ValidationResult> ValidateRequest()
     {
@@ -21,6 +26,20 @@ public sealed record ListAdminWithdrawalsQuery(
             yield return new ValidationResult(
                 "Withdrawal status filter is invalid.",
                 new[] { nameof(Status) });
+        }
+
+        if (UserId == Guid.Empty)
+        {
+            yield return new ValidationResult(
+                "User ID must be a valid UUID.",
+                new[] { nameof(UserId) });
+        }
+
+        if (FromDate.HasValue && ToDate.HasValue && FromDate.Value > ToDate.Value)
+        {
+            yield return new ValidationResult(
+                "From date must be earlier than or equal to to date.",
+                new[] { nameof(FromDate), nameof(ToDate) });
         }
     }
 }

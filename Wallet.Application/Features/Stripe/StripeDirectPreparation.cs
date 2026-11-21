@@ -30,7 +30,7 @@ internal static class StripeDirectPreparation
             return new StripePreparedDirect(ledger.Id, orderId, attempt.CheckoutUrl!, amount, ledger.CreatedAt);
 
         var session = await provider.CreateSessionAsync(
-            new StripeCheckoutRequest(attempt.Id, decimal.ToInt64(amount), attempt.ProviderIdempotencyKey), token);
+            new StripeCheckoutRequest(attempt.Id, decimal.ToInt64(amount), attempt.ProviderIdempotencyKey, OrderId: orderId), token);
         StripeCheckoutSessionValidation.Validate(session);
         context.EnsureNoPendingChanges();
         await using var transaction = await context.Database.BeginTransactionAsync(token);
@@ -76,6 +76,7 @@ internal static class StripeDirectPreparation
         await context.ReloadUnmodifiedAsync(wallet, token);
         if (wallet.UserId != ownerId || wallet.Currency != CurrencyCode.Vnd)
             throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Direct payment requires a VND wallet.");
+        wallet.EnsureActive();
 
         if (await context.WalletTransactions.AnyAsync(item => item.ReferenceId == orderId &&
             item.Type == WalletTransactionType.PurchaseDebit &&

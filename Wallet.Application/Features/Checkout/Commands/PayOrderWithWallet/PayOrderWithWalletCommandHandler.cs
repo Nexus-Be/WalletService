@@ -66,6 +66,22 @@ internal sealed class PayOrderWithWalletCommandHandler
                 _context,
                 request.OrderId,
                 cancellationToken);
+            if (escrowState.Escrow?.Status == OrderEscrowStatus.Cancelled)
+            {
+                throw new BusinessRuleValidationException(
+                    "ORDER_ESCROW_CANCELLED",
+                    "The order escrow was already cancelled and cannot be replayed.",
+                    409);
+            }
+
+            if (escrowState.Escrow?.Status == OrderEscrowStatus.Refunded)
+            {
+                throw new BusinessRuleValidationException(
+                    "ORDER_ESCROW_ALREADY_RESOLVED",
+                    "The order escrow was already refunded and cannot be replayed.",
+                    409);
+            }
+
             if (escrowState.WasReconciled)
             {
                 await _context.SaveChangesAsync(cancellationToken);

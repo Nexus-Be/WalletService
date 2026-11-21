@@ -1,6 +1,9 @@
 namespace Wallet.Application.Features.Checkout.Commands.RefundOrderPayment;
 
 using System;
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using MediatR;
@@ -8,6 +11,7 @@ using Microsoft.EntityFrameworkCore;
 using global::Wallet.Application.Common.Extensions;
 using global::Wallet.Application.Features.Checkout;
 using global::Wallet.Application.Features.Checkout.Commands.PayOrderWithWallet;
+using global::Wallet.Application.Features.Withdrawals;
 using global::Wallet.Application.Interfaces;
 using global::Wallet.Domain.Entities;
 using global::Wallet.Domain.Enums;
@@ -27,9 +31,29 @@ internal sealed class RefundOrderPaymentCommandHandler
         RefundOrderPaymentCommand request,
         CancellationToken cancellationToken)
     {
+        var idempotencyKey = string.IsNullOrWhiteSpace(request.IdempotencyKey)
+            ? null
+            : request.IdempotencyKey.Trim();
+        if (idempotencyKey is not null && !WithdrawalWorkflow.IsValidIdempotencyKey(idempotencyKey))
+        {
+            throw new BusinessRuleValidationException(
+                "VAL_INVALID_IDEMPOTENCY_KEY",
+                "Idempotency-Key header must be 1 to 100 ASCII letters, digits, hyphens, or underscores.");
+        }
+
         var buyerId = Guid.Parse(request.UserId);
         var escrowOrderId = request.ParentOrderId ?? request.OrderId;
         var enforceEscrow = !request.IsSubOrder || request.ParentOrderId.HasValue;
+        var normalizedReason = request.Reason?.Trim() ?? string.Empty;
+        var fingerprint = idempotencyKey is null
+            ? null
+            : ComputeFingerprint(
+                request.OrderId,
+                request.ParentOrderId,
+                request.IsSubOrder,
+                buyerId,
+                request.Amount,
+                normalizedReason);
 
         await using var dbTransaction = await _context.Database.BeginTransactionAsync(cancellationToken);
         await LockOrderAndChildAsync(escrowOrderId, request.OrderId, cancellationToken);
@@ -61,22 +85,50 @@ internal sealed class RefundOrderPaymentCommandHandler
         var wallet = await _context.LockWalletByUserIdAsync(buyerId, cancellationToken)
                      ?? throw new WalletNotFoundException(request.UserId);
 
-        var existing = await _context.WalletTransactions
-            .FirstOrDefaultAsync(
-                t => t.ReferenceId == request.OrderId && t.Type == WalletTransactionType.RefundCredit,
-                cancellationToken);
-
-        if (existing is not null)
+        if (idempotencyKey is not null)
         {
-            if (existing.WalletId != wallet.Id || existing.Amount != request.Amount)
-            {
-                throw new BusinessRuleValidationException(
-                    "REFUND_CONFLICT",
-                    "The order was already refunded with a different amount.",
-                    409);
-            }
+            var existingByKey = await _context.WalletTransactions
+                .FirstOrDefaultAsync(
+                    t => t.ReferenceId == request.OrderId && t.ClientIdempotencyKey == idempotencyKey,
+                    cancellationToken);
 
-            return Map(existing);
+            if (existingByKey is not null)
+            {
+                if (existingByKey.Type != WalletTransactionType.RefundCredit ||
+                    !string.Equals(existingByKey.RequestFingerprint, fingerprint, StringComparison.Ordinal))
+                {
+                    throw new BusinessRuleValidationException(
+                        "IDEMPOTENCY_KEY_REUSED",
+                        "The idempotency key was already used for a different order operation.",
+                        409);
+                }
+
+                await dbTransaction.CommitAsync(cancellationToken);
+                return Map(existingByKey);
+            }
+        }
+        else
+        {
+            var existing = await _context.WalletTransactions
+                .FirstOrDefaultAsync(
+                    t => t.ReferenceId == request.OrderId &&
+                         t.Type == WalletTransactionType.RefundCredit &&
+                         t.ClientIdempotencyKey == null,
+                    cancellationToken);
+
+            if (existing is not null)
+            {
+                if (existing.WalletId != wallet.Id || existing.Amount != request.Amount)
+                {
+                    throw new BusinessRuleValidationException(
+                        "REFUND_CONFLICT",
+                        "The order was already refunded with a different amount.",
+                        409);
+                }
+
+                await dbTransaction.CommitAsync(cancellationToken);
+                return Map(existing);
+            }
         }
 
         OrderEscrow? escrow = null;
@@ -155,6 +207,8 @@ internal sealed class RefundOrderPaymentCommandHandler
             Status = TransactionStatus.Success,
             ReferenceId = request.OrderId,
             Note = string.IsNullOrWhiteSpace(request.Reason) ? "Order refund" : request.Reason.Trim(),
+            ClientIdempotencyKey = idempotencyKey,
+            RequestFingerprint = fingerprint,
             CreatedAt = DateTimeOffset.UtcNow
         };
         _context.WalletTransactions.Add(transaction);
@@ -178,6 +232,25 @@ internal sealed class RefundOrderPaymentCommandHandler
         await _context.SaveChangesAsync(cancellationToken);
         await dbTransaction.CommitAsync(cancellationToken);
         return Map(transaction);
+    }
+
+    private static string ComputeFingerprint(
+        Guid orderId,
+        Guid? parentOrderId,
+        bool isSubOrder,
+        Guid buyerId,
+        decimal amount,
+        string reason)
+    {
+        var canonical = string.Join(
+            '\n',
+            orderId.ToString("D"),
+            parentOrderId?.ToString("D") ?? string.Empty,
+            isSubOrder ? "1" : "0",
+            buyerId.ToString("D"),
+            amount.ToString("0.00", CultureInfo.InvariantCulture),
+            reason);
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
     }
 
     private async Task LockOrderAndChildAsync(

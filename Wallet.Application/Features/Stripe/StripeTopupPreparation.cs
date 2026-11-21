@@ -67,6 +67,7 @@ internal static class StripeTopupPreparation
         await context.ReloadUnmodifiedAsync(wallet, token);
         if (wallet.UserId != ownerId || wallet.Currency != CurrencyCode.Vnd)
             throw new BusinessRuleValidationException("VAL_INVALID_INPUT", "Topup requires a VND wallet.");
+        wallet.EnsureActive();
 
         var fingerprint = Fingerprint(ownerId, amount);
         var existing = await context.StripePaymentAttempts.AsNoTracking().SingleOrDefaultAsync(

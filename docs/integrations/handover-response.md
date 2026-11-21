@@ -81,7 +81,7 @@ All internal endpoints require header `X-Internal-Service-Key` matching `INTERNA
 
 - Mirror internal routes are live under `/api/v1/internal/wallets/holds/...` using `[RequireAuctionServiceKey]` (`InternalSecurity:AuctionServiceKey` with fallback to `InternalSecurity:ServiceKey`).
 - Legacy `/api/v1/wallets/holds/...` routes remain active until AuctionService and CommerceService (`GetAuctionDepositHoldAsync`) switch URLs.
-- `ReleaseHold` now accepts `"BUYER_WITHDRAWN"` in addition to existing release reasons.
+- `ReleaseHold` accepts `"BUYER_WITHDRAWN"`, `"AUCTION_SETTLED"`, `"SECOND_CHANCE_EXPIRED"`, `"LATE_AUTHORIZATION"`, `"RECONCILED_CLOSED_AUCTION"`, `"AMOUNT_MISMATCH"`, and any valid `SCREAMING_SNAKE_CASE` reason code (`1..128` chars) in addition to existing release reasons.
 - `CreateHold` replay returns live `Status`.
 
 ---

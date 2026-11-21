@@ -5,8 +5,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using Wallet.Application.Common.Extensions;
 using Wallet.Application.Interfaces;
-using Wallet.Domain.Entities;
-using Wallet.Domain.Enums;
+using global::Wallet.Domain.Entities;
+using global::Wallet.Domain.Enums;
+using global::Wallet.Domain.Exceptions;
 
 public sealed record WalletFreezeStatusResponse(
     Guid WalletId,
@@ -30,7 +31,10 @@ internal static class WalletFreezeHelper
         var targetStatus = freeze ? "FROZEN" : "ACTIVE";
 
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
-        var wallet = await context.LockOrEnsureWalletByUserIdAsync(userId, cancellationToken);
+        var wallet = freeze
+            ? await context.LockOrEnsureWalletByUserIdAsync(userId, cancellationToken)
+            : await context.LockWalletByUserIdAsync(userId, cancellationToken)
+              ?? throw new WalletNotFoundException(userId.ToString());
 
         if (!string.Equals(wallet.Status, targetStatus, StringComparison.OrdinalIgnoreCase))
         {

@@ -63,7 +63,7 @@ internal sealed class ProcessWithdrawalCommandHandler
 
         await using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
         var withdrawal = await _context.LockWithdrawalRequestAsync(request.WithdrawalId, cancellationToken)
-            ?? throw new EntityNotFoundException(nameof(WithdrawalRequest), request.WithdrawalId);
+            ?? throw new EntityNotFoundException("WITHDRAWAL_NOT_FOUND", nameof(WithdrawalRequest), request.WithdrawalId);
 
         if (!WithdrawalWorkflow.CanTransition(withdrawal.Status, action))
         {
@@ -77,6 +77,7 @@ internal sealed class ProcessWithdrawalCommandHandler
                      ?? throw new WalletNotFoundException(withdrawal.WalletId.ToString());
 
         var oldStatus = withdrawal.Status;
+        var oldTransferReference = withdrawal.GatewayReferenceId;
         var now = DateTimeOffset.UtcNow;
         string? transactionId = null;
         string? verificationEvidence = null;
@@ -84,6 +85,8 @@ internal sealed class ProcessWithdrawalCommandHandler
         switch (action)
         {
             case WithdrawalAction.Approve:
+                wallet.EnsureActive();
+
                 if (!string.IsNullOrWhiteSpace(effectiveReference))
                 {
                     var approveReference = effectiveReference.Trim();
@@ -126,6 +129,8 @@ internal sealed class ProcessWithdrawalCommandHandler
                 break;
 
             case WithdrawalAction.Complete:
+                wallet.EnsureActive();
+
                 if (!request.TransferConfirmed || string.IsNullOrWhiteSpace(effectiveReference))
                 {
                     throw new BusinessRuleValidationException(
@@ -181,6 +186,7 @@ internal sealed class ProcessWithdrawalCommandHandler
                 };
                 _context.WalletTransactions.Add(reversal);
                 transactionId = reversal.Id.ToString();
+                withdrawal.GatewayReferenceId = null;
                 withdrawal.Status = WithdrawalStatus.Failed;
                 withdrawal.StatusReason = reason;
                 withdrawal.ProcessedAt = now;
@@ -194,7 +200,7 @@ internal sealed class ProcessWithdrawalCommandHandler
             action: WithdrawalWorkflow.AuditActionOf(action),
             entityName: nameof(WithdrawalRequest),
             entityId: withdrawal.Id.ToString(),
-            oldValues: new { Status = oldStatus.ToString() },
+            oldValues: new { Status = oldStatus.ToString(), TransferReference = oldTransferReference },
             newValues: new
             {
                 Status = withdrawal.Status.ToString(),
@@ -205,7 +211,18 @@ internal sealed class ProcessWithdrawalCommandHandler
             },
             userId: adminGuid.ToString());
 
-        await _context.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (IsGatewayReferenceUniqueViolation(ex))
+        {
+            throw new BusinessRuleValidationException(
+                "TRANSFER_REFERENCE_ALREADY_USED",
+                "Transfer reference has already been used for another withdrawal.",
+                409);
+        }
+
         await transaction.CommitAsync(cancellationToken);
 
         if (withdrawal.Status is WithdrawalStatus.Approved
@@ -257,5 +274,30 @@ internal sealed class ProcessWithdrawalCommandHandler
                 "Transfer reference has already been used for another withdrawal.",
                 409);
         }
+    }
+
+    private static bool IsGatewayReferenceUniqueViolation(DbUpdateException exception)
+    {
+        var inner = exception.InnerException;
+        if (inner is null)
+        {
+            return false;
+        }
+
+        var innerType = inner.GetType();
+        var sqlState = innerType.GetProperty("SqlState")?.GetValue(inner) as string;
+        if (!string.Equals(sqlState, "23505", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var constraintName = innerType.GetProperty("ConstraintName")?.GetValue(inner) as string;
+        if (!string.IsNullOrEmpty(constraintName))
+        {
+            return constraintName.Contains("IX_WithdrawalRequests_GatewayReferenceId", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return inner.Message.Contains("IX_WithdrawalRequests_GatewayReferenceId", StringComparison.OrdinalIgnoreCase)
+            || inner.Message.Contains("GatewayReferenceId", StringComparison.OrdinalIgnoreCase);
     }
 }

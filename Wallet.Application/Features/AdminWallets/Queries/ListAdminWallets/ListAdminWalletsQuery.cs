@@ -4,16 +4,19 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using MediatR;
+using Wallet.Application.Common.Extensions;
 using Wallet.Application.Common.Models;
 using Wallet.Application.Common.Validation;
 using Wallet.Application.Features.Wallets.Queries.GetMyWallet;
+using Wallet.Domain.Enums;
 
 public sealed record ListAdminWalletsQuery(
     [Range(1, int.MaxValue)] int Page = 1,
     [Range(1, 100)] int PageSize = 20,
     string? Status = null,
     Guid? UserId = null,
-    string? Search = null) : IRequest<PagedData<WalletResponse>>, IRequestValidation
+    string? Search = null,
+    string? Currency = null) : IRequest<PagedData<WalletResponse>>, IRequestValidation
 {
     public IEnumerable<ValidationResult> ValidateRequest()
     {
@@ -31,6 +34,13 @@ public sealed record ListAdminWalletsQuery(
                     "Wallet status filter must be 'Active' or 'Frozen'.",
                     new[] { nameof(Status) });
             }
+        }
+
+        if (!string.IsNullOrWhiteSpace(Currency) && !Currency.TryToEnum<CurrencyCode>(out _))
+        {
+            yield return new ValidationResult(
+                "Currency filter must be 'Vnd' or 'Usd'.",
+                new[] { nameof(Currency) });
         }
     }
 }

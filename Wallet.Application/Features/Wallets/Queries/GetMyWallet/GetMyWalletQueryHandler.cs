@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using global::Wallet.Application.Common.Extensions;
 using global::Wallet.Application.Features.Wallets.Commands.EnsureWallet;
 using global::Wallet.Application.Interfaces;
+using global::Wallet.Domain.Exceptions;
 
 internal sealed class GetMyWalletQueryHandler : IRequestHandler<GetMyWalletQuery, WalletResponse>
 {
@@ -31,6 +32,11 @@ internal sealed class GetMyWalletQueryHandler : IRequestHandler<GetMyWalletQuery
 
         if (wallet is null)
         {
+            if (!request.AutoCreate)
+            {
+                throw new WalletNotFoundException(request.UserId);
+            }
+
             return await _sender.Send(new EnsureWalletCommand(userGuid), cancellationToken);
         }
 

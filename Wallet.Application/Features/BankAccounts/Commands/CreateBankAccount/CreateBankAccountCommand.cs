@@ -6,6 +6,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
 using MediatR;
 using Wallet.Application.Common.Validation;
+using Wallet.Application.Features.Withdrawals;
 
 public sealed record CreateBankAccountCommand(
     [Required(ErrorMessage = "Bank name is required.")]
@@ -27,6 +28,16 @@ public sealed record CreateBankAccountCommand(
         if (error is not null)
         {
             yield return error;
+        }
+
+        foreach (var bankError in WithdrawalWorkflow.ValidateManualBankDetails(
+            BankName,
+            AccountNumber,
+            AccountHolderName,
+            nameof(BankName),
+            "Bank name"))
+        {
+            yield return bankError;
         }
     }
 }
