@@ -363,7 +363,9 @@ public sealed class ReconciliationEvaluator
             {
                 "Authorized" => new[] { AuctionHoldStatus.Held },
                 "Captured" => new[] { AuctionHoldStatus.Captured, AuctionHoldStatus.Refunded },
-                _ => new[] { AuctionHoldStatus.Released }
+                // Auction records a deposit given back as Released, whether the hold was released before capture or refunded after it
+                // (a seller rejection or a cancelled order refunds a captured deposit). Both leave the buyer whole.
+                _ => new[] { AuctionHoldStatus.Released, AuctionHoldStatus.Refunded }
             };
             if (!expected.Contains(hold.Status))
             {

@@ -25,8 +25,10 @@ public sealed class ReconciliationV2Tests
         public Task<IReadOnlyList<OrderRecon>> GetOrdersAsync(DateTimeOffset? updatedFrom, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<OrderRecon>>(Orders);
 
+        public List<DepositRecon> Deposits { get; } = new();
+
         public Task<IReadOnlyList<DepositRecon>> GetDepositsAsync(DateTimeOffset? updatedFrom, CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<DepositRecon>>(Array.Empty<DepositRecon>());
+            Task.FromResult<IReadOnlyList<DepositRecon>>(Deposits);
     }
 
     private static WalletAccount AddWallet(TestWalletDbContext db, decimal balance)
@@ -160,6 +162,27 @@ public sealed class ReconciliationV2Tests
 
         Assert.Equal("I3_REMAINING_MISMATCH", finding.Code);
         Assert.Equal("High", finding.Severity);
+    }
+
+    [Theory]
+    [InlineData(AuctionHoldStatus.Released, 0)]   // released before capture
+    [InlineData(AuctionHoldStatus.Refunded, 0)]   // captured, then refunded (seller rejected, order cancelled): still a given-back deposit
+    [InlineData(AuctionHoldStatus.Held, 1)]       // the hold is still held although the deposit says it was given back: real mismatch
+    [InlineData(AuctionHoldStatus.Captured, 1)]   // money was taken although the deposit says it was given back: real mismatch
+    public async Task I6_treats_a_released_deposit_as_matching_a_released_or_refunded_hold(AuctionHoldStatus holdStatus, int expectedFindings)
+    {
+        using var db = new TestWalletDbContext("i6-" + holdStatus);
+        var wallet = AddWallet(db, 0m);
+        var hold = new AuctionHold { Id = Guid.NewGuid(), WalletId = wallet.Id, OwnerUserId = wallet.UserId, Amount = 200_000m, Status = holdStatus, ReferenceType = "AUCTION_DEPOSIT", ReferenceId = Guid.NewGuid().ToString(), MetadataJson = "{}" };
+        db.AuctionHolds.Add(hold);
+        await db.SaveChangesAsync();
+        var sources = new Sources();
+        sources.Deposits.Add(new DepositRecon(Guid.NewGuid(), Guid.NewGuid(), wallet.UserId, 200_000m, "Released", hold.Id.ToString(), DateTimeOffset.UtcNow.AddMinutes(-10)));
+
+        var findings = await RunAsync(db, sources, "I6");
+
+        Assert.Equal(expectedFindings, findings.Count);
+        if (expectedFindings > 0) Assert.Equal("I6_STATUS_MISMATCH", findings[0].Code);
     }
 
     [Fact]
