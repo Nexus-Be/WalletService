@@ -171,6 +171,41 @@ public sealed class OrderSettlementPostgresTests
         });
 
     [DisposablePostgresFact]
+    public async Task ConcurrentApprovalsOfTwoBudgets_LeaveExactlyOneActive()
+    {
+        var (options, _, _) = await Setup(buyerBalance: 1m);
+        var adminA = Guid.NewGuid();
+        var adminB = Guid.NewGuid();
+        var ids = new List<Guid>();
+        await using (var context = new WalletDbContext(options))
+        {
+            foreach (var active in await context.PlatformSubsidyBudgets.Where(b => b.Status == SubsidyBudgetStatus.Active).ToListAsync())
+            {
+                active.Status = SubsidyBudgetStatus.Closed;
+            }
+
+            await context.SaveChangesAsync();
+            for (var i = 0; i < 2; i++)
+            {
+                var created = await new CreateSubsidyBudgetCommandHandler(context).Handle(
+                    new CreateSubsidyBudgetCommand("Approval race " + i, 50_000m, 20_000m, 10_000m, "proof") { AdminUserId = adminA }, default);
+                ids.Add(Guid.Parse(created.Id));
+            }
+        }
+
+        var attempts = await Task.WhenAll(ids.Select(id => Attempt(async () =>
+        {
+            await using var context = new WalletDbContext(options);
+            return await new ApproveSubsidyBudgetCommandHandler(context).Handle(new ApproveSubsidyBudgetCommand { BudgetId = id, AdminUserId = adminB }, default);
+        })));
+
+        Assert.Equal(1, attempts.Count(a => a.Error is null));
+        Assert.Equal("SUBSIDY_ACTIVE_BUDGET_EXISTS", Assert.IsType<BusinessRuleValidationException>(attempts.Single(a => a.Error is not null).Error).ErrorCode);
+        await using var verify = new WalletDbContext(options);
+        Assert.Equal(1, await verify.PlatformSubsidyBudgets.CountAsync(b => b.Status == SubsidyBudgetStatus.Active));
+    }
+
+    [DisposablePostgresFact]
     public async Task ConcurrentSubsidyHolds_NeverExceedTheBudget()
     {
         var (options, _, _) = await Setup(buyerBalance: 1m);

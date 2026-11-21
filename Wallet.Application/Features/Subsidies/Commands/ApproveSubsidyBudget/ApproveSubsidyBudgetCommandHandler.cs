@@ -24,6 +24,8 @@ internal sealed class ApproveSubsidyBudgetCommandHandler : IRequestHandler<Appro
     public async Task<SubsidyBudgetResult> Handle(ApproveSubsidyBudgetCommand request, CancellationToken cancellationToken)
     {
         await using var dbTransaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+        // "Only one active budget" is a rule across rows, so approvals are serialized: two approvals of two different budgets cannot both pass.
+        await _context.LockAuctionKeyAsync("subsidy-budget-activation", cancellationToken);
         var budget = await _context.LockSubsidyBudgetAsync(request.BudgetId, cancellationToken)
             ?? throw new BusinessRuleValidationException("SUBSIDY_BUDGET_NOT_FOUND", "The subsidy budget was not found.", 404);
 
