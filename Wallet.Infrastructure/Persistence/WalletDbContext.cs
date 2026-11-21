@@ -34,8 +34,7 @@ public class WalletDbContext : DbContext, IWalletDbContext
     {
         if (orderId == Guid.Empty)
             throw new ArgumentException("Order ID must not be empty.", nameof(orderId));
-        if (Database.CurrentTransaction is null)
-            throw new InvalidOperationException("Order payment lock requires a transaction.");
+        RequireTransaction("Order payment lock");
         return Database.ExecuteSqlInterpolatedAsync(
             $"SELECT pg_advisory_xact_lock(hashtextextended({orderId.ToString("D")}, 0))", cancellationToken);
     }
@@ -44,8 +43,7 @@ public class WalletDbContext : DbContext, IWalletDbContext
     {
         if (string.IsNullOrWhiteSpace(key))
             throw new ArgumentException("Auction lock key must not be empty.", nameof(key));
-        if (Database.CurrentTransaction is null)
-            throw new InvalidOperationException("Auction lock requires a transaction.");
+        RequireTransaction("Auction lock");
         var namespacedKey = $"auction-hold:{key}";
         return Database.ExecuteSqlInterpolatedAsync(
             $"SELECT pg_advisory_xact_lock(hashtextextended({namespacedKey}, 0))", cancellationToken);
@@ -53,14 +51,14 @@ public class WalletDbContext : DbContext, IWalletDbContext
 
     public Task<AuctionHold?> LockAuctionHoldAsync(Guid holdId, CancellationToken cancellationToken)
     {
-        if (Database.CurrentTransaction is null)
-            throw new InvalidOperationException("Auction hold lock requires a transaction.");
+        RequireTransaction("Auction hold lock");
         return AuctionHolds.FromSqlRaw(BuildLockQuery<AuctionHold>(nameof(AuctionHold.Id)), holdId)
             .SingleOrDefaultAsync(cancellationToken);
     }
 
     public Task<WalletAccount?> LockWalletByUserIdAsync(Guid userId, CancellationToken cancellationToken)
     {
+        RequireTransaction("Wallet lock");
         return Wallets
             .FromSqlRaw(BuildLockQuery<WalletAccount>(nameof(WalletAccount.UserId)), userId)
             .SingleOrDefaultAsync(cancellationToken);
@@ -68,6 +66,7 @@ public class WalletDbContext : DbContext, IWalletDbContext
 
     public Task<WalletAccount?> LockWalletByIdAsync(Guid walletId, CancellationToken cancellationToken)
     {
+        RequireTransaction("Wallet lock");
         return Wallets
             .FromSqlRaw(BuildLockQuery<WalletAccount>(nameof(WalletAccount.Id)), walletId)
             .SingleOrDefaultAsync(cancellationToken);
@@ -75,6 +74,7 @@ public class WalletDbContext : DbContext, IWalletDbContext
 
     public Task<WalletTopup?> LockTopupByIdAsync(Guid topupId, CancellationToken cancellationToken)
     {
+        RequireTransaction("Topup lock");
         return WalletTopups
             .FromSqlRaw(BuildLockQuery<WalletTopup>(nameof(WalletTopup.Id)), topupId)
             .SingleOrDefaultAsync(cancellationToken);
@@ -82,6 +82,7 @@ public class WalletDbContext : DbContext, IWalletDbContext
 
     public Task<DirectPaymentOrder?> LockDirectPaymentOrderByIdAsync(Guid orderId, CancellationToken cancellationToken)
     {
+        RequireTransaction("Direct payment order lock");
         return DirectPaymentOrders
             .FromSqlRaw(BuildLockQuery<DirectPaymentOrder>(nameof(DirectPaymentOrder.Id)), orderId)
             .SingleOrDefaultAsync(cancellationToken);
@@ -89,35 +90,24 @@ public class WalletDbContext : DbContext, IWalletDbContext
 
     public Task<StripePaymentAttempt?> LockStripePaymentAttemptAsync(Guid attemptId, CancellationToken cancellationToken)
     {
+        RequireTransaction("Stripe payment attempt lock");
         return StripePaymentAttempts
             .FromSqlRaw(BuildLockQuery<StripePaymentAttempt>(nameof(StripePaymentAttempt.Id)), attemptId)
             .SingleOrDefaultAsync(cancellationToken);
     }
 
-    public Task<WalletTopup?> LockTopupByReferenceAsync(string transactionReference,
-        CancellationToken cancellationToken)
-    {
-        return WalletTopups
-            .FromSqlRaw(BuildLockQuery<WalletTopup>(nameof(WalletTopup.VnpTxnRef)), transactionReference)
-            .SingleOrDefaultAsync(cancellationToken);
-    }
-
-    public Task<DirectPaymentOrder?> LockDirectPaymentOrderByReferenceAsync(
-        string transactionReference,
-        CancellationToken cancellationToken)
-    {
-        return DirectPaymentOrders
-            .FromSqlRaw(
-                BuildLockQuery<DirectPaymentOrder>(nameof(DirectPaymentOrder.VnpTxnRef)),
-                transactionReference)
-            .SingleOrDefaultAsync(cancellationToken);
-    }
-
     public Task<WithdrawalRequest?> LockWithdrawalRequestAsync(Guid withdrawalId, CancellationToken cancellationToken)
     {
+        RequireTransaction("Withdrawal request lock");
         return WithdrawalRequests
             .FromSqlRaw(BuildLockQuery<WithdrawalRequest>(nameof(WithdrawalRequest.Id)), withdrawalId)
             .SingleOrDefaultAsync(cancellationToken);
+    }
+
+    private void RequireTransaction(string lockName)
+    {
+        if (Database.CurrentTransaction is null)
+            throw new InvalidOperationException($"{lockName} requires a database transaction.");
     }
 
     public void EnsureNoPendingChanges()

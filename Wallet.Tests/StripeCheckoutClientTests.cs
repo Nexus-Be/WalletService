@@ -218,6 +218,71 @@ public sealed class StripeCheckoutClientTests
         Assert.Throws<InvalidOperationException>(() => new StripeCheckoutClient(http, configuration));
     }
 
+    [Fact]
+    public async Task ExpireSession_PostsToExpireEndpointAndReturnsSnapshot()
+    {
+        var attemptId = Guid.NewGuid();
+        var handler = new ExpireSessionHandler(attemptId);
+        using var http = new HttpClient(handler);
+        var client = new StripeCheckoutClient(http, Configuration());
+
+        var snapshot = await client.ExpireSessionAsync("cs_test_exp_1", default);
+
+        Assert.Equal(HttpMethod.Post, handler.Method);
+        Assert.Equal("/v1/checkout/sessions/cs_test_exp_1/expire", handler.Path);
+        Assert.Equal("cs_test_exp_1", snapshot.SessionId);
+        Assert.Equal("expired", snapshot.SessionStatus);
+        Assert.Equal("unpaid", snapshot.PaymentStatus);
+        Assert.Equal(100000, snapshot.AmountVnd);
+        Assert.Equal(attemptId.ToString("D"), snapshot.ClientReference);
+        Assert.Equal(attemptId.ToString("D"), snapshot.AttemptReference);
+        Assert.False(snapshot.RecoveryEnabled);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("cs_live_123")]
+    [InlineData("cs_test_")]
+    [InlineData("cs_test_bad id")]
+    public async Task ExpireSession_InvalidSessionId_ThrowsBeforeNetworkCall(string sessionId)
+    {
+        var handler = new ExpireSessionHandler(Guid.NewGuid());
+        using var http = new HttpClient(handler);
+        var client = new StripeCheckoutClient(http, Configuration());
+
+        await Assert.ThrowsAsync<ArgumentException>(() => client.ExpireSessionAsync(sessionId, default));
+        Assert.Null(handler.Method);
+    }
+
+    [Theory]
+    [InlineData("id")]
+    [InlineData("live")]
+    [InlineData("currency")]
+    public async Task ExpireSession_MismatchedOrLiveResponse_ThrowsInvalidOperation(string mismatch)
+    {
+        var handler = new ExpireSessionHandler(Guid.NewGuid(), mismatch: mismatch);
+        using var http = new HttpClient(handler);
+        var client = new StripeCheckoutClient(http, Configuration());
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.ExpireSessionAsync("cs_test_exp_1", default));
+    }
+
+    [Fact]
+    public async Task ExpireSession_ProviderErrors_Map503ToUnavailableAnd400ToStripeRequestRejected()
+    {
+        using var unavailableHttp = new HttpClient(new ExpireSessionHandler(Guid.NewGuid(), HttpStatusCode.ServiceUnavailable));
+        var unavailableClient = new StripeCheckoutClient(unavailableHttp, Configuration());
+        await Assert.ThrowsAsync<PaymentProviderUnavailableException>(() =>
+            unavailableClient.ExpireSessionAsync("cs_test_exp_1", default));
+
+        using var badRequestHttp = new HttpClient(new ExpireSessionHandler(Guid.NewGuid(), HttpStatusCode.BadRequest));
+        var badRequestClient = new StripeCheckoutClient(badRequestHttp, Configuration());
+        var rejected = await Assert.ThrowsAsync<Wallet.Domain.Exceptions.BusinessRuleValidationException>(() =>
+            badRequestClient.ExpireSessionAsync("cs_test_exp_1", default));
+        Assert.Equal("STRIPE_REQUEST_REJECTED", rejected.ErrorCode);
+        Assert.Equal(400, rejected.StatusCode);
+    }
+
     private static IConfiguration Configuration(
         string key = "sk_test_not-a-real-key",
         string successUrl = "https://example.test/success",
@@ -291,5 +356,44 @@ public sealed class StripeCheckoutClientTests
             timeout
                 ? Task.FromException<HttpResponseMessage>(new TaskCanceledException("Simulated timeout."))
                 : Task.FromException<HttpResponseMessage>(new HttpRequestException("Simulated network failure."));
+    }
+
+    private sealed class ExpireSessionHandler(
+        Guid attemptId,
+        HttpStatusCode status = HttpStatusCode.OK,
+        string? mismatch = null) : HttpMessageHandler
+    {
+        public HttpMethod? Method { get; private set; }
+        public string? Path { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            Method = request.Method;
+            Path = request.RequestUri?.AbsolutePath;
+            var json = status == HttpStatusCode.OK
+                ? JsonSerializer.Serialize(new
+                {
+                    id = mismatch == "id" ? "cs_test_other" : "cs_test_exp_1",
+                    @object = "checkout.session",
+                    status = "expired",
+                    payment_status = "unpaid",
+                    livemode = mismatch == "live",
+                    mode = "payment",
+                    currency = mismatch == "currency" ? "usd" : "vnd",
+                    amount_total = 100000,
+                    client_reference_id = attemptId.ToString("D"),
+                    after_expiration = new { recovery = new { enabled = false } },
+                    metadata = new Dictionary<string, string>
+                    {
+                        ["attempt_id"] = attemptId.ToString("D")
+                    }
+                })
+                : """{"error":{"message":"Test expire error","type":"invalid_request_error"}}""";
+
+            return Task.FromResult(new HttpResponseMessage(status)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            });
+        }
     }
 }

@@ -505,6 +505,94 @@ public class WalletContractRegressionTests
         Assert.Empty(result.Items);
     }
 
+    [Fact]
+    public async Task ListTransactions_SupportsAllPaymentWithdrawalExactEnumsAndPaginationBeyondPageOne()
+    {
+        using var context = new TestWalletDbContext(nameof(ListTransactions_SupportsAllPaymentWithdrawalExactEnumsAndPaginationBeyondPageOne));
+        var wallet = AddWallet(context, balance: 500_000m);
+        var userId = wallet.UserId.ToString();
+        var t0 = new DateTimeOffset(2026, 6, 1, 10, 0, 0, TimeSpan.Zero);
+
+        WalletTransaction Make(WalletTransactionType type, int minuteOffset) => new()
+        {
+            Id = Guid.NewGuid(),
+            WalletId = wallet.Id,
+            UserId = userId,
+            Type = type,
+            Amount = 10_000m,
+            Currency = "Vnd",
+            BalanceBefore = 100_000m,
+            BalanceAfter = 100_000m,
+            Status = TransactionStatus.Success,
+            CreatedAt = t0.AddMinutes(minuteOffset)
+        };
+
+        var txTopup = Make(WalletTransactionType.TopupStripe, 1);
+        var txPurchase = Make(WalletTransactionType.PurchaseDebit, 2);
+        var txDirect = Make(WalletTransactionType.DirectGatewayPayment, 3);
+        var txAdjDebit = Make(WalletTransactionType.OrderPaymentAdjustmentDebit, 4);
+        var txCapture = Make(WalletTransactionType.AuctionHoldCapture, 5);
+        var txWdDebit = Make(WalletTransactionType.WithdrawalDebit, 6);
+        var txWdRev = Make(WalletTransactionType.WithdrawalReversal, 7);
+        var txEscrowCancel = Make(WalletTransactionType.EscrowCancellationRefund, 8);
+        var txAdjRefund = Make(WalletTransactionType.OrderPaymentAdjustmentRefund, 9);
+        var txForfeit = Make(WalletTransactionType.AuctionForfeitCredit, 10);
+        var txDepRefund = Make(WalletTransactionType.AuctionDepositRefund, 11);
+
+        context.WalletTransactions.AddRange(
+            txTopup, txPurchase, txDirect, txAdjDebit, txCapture,
+            txWdDebit, txWdRev, txEscrowCancel, txAdjRefund, txForfeit, txDepRefund);
+        await context.SaveChangesAsync();
+
+        var handler = new ListTransactionsQueryHandler(context);
+
+        var allPage = await handler.Handle(new ListTransactionsQuery(Page: 1, PageSize: 20, Type: "ALL") { UserId = userId }, default);
+        Assert.Equal(11, allPage.Pagination.TotalCount);
+
+        var paymentPage = await handler.Handle(new ListTransactionsQuery(Page: 1, PageSize: 20, Type: "PAYMENT") { UserId = userId }, default);
+        Assert.Equal(
+            new[]
+            {
+                nameof(WalletTransactionType.AuctionHoldCapture),
+                nameof(WalletTransactionType.OrderPaymentAdjustmentDebit),
+                nameof(WalletTransactionType.DirectGatewayPayment),
+                nameof(WalletTransactionType.PurchaseDebit)
+            },
+            paymentPage.Items.Select(i => i.Type).ToArray());
+
+        var withdrawalPage = await handler.Handle(new ListTransactionsQuery(Page: 1, PageSize: 20, Type: "WITHDRAWAL") { UserId = userId }, default);
+        Assert.Equal(
+            new[]
+            {
+                nameof(WalletTransactionType.WithdrawalReversal),
+                nameof(WalletTransactionType.WithdrawalDebit)
+            },
+            withdrawalPage.Items.Select(i => i.Type).ToArray());
+
+        foreach (var exactType in new[]
+                 {
+                     nameof(WalletTransactionType.EscrowCancellationRefund),
+                     nameof(WalletTransactionType.OrderPaymentAdjustmentDebit),
+                     nameof(WalletTransactionType.OrderPaymentAdjustmentRefund),
+                     nameof(WalletTransactionType.AuctionForfeitCredit),
+                     nameof(WalletTransactionType.AuctionDepositRefund)
+                 })
+        {
+            var exactPage = await handler.Handle(new ListTransactionsQuery(Type: exactType) { UserId = userId }, default);
+            Assert.Equal(exactType, Assert.Single(exactPage.Items).Type);
+        }
+
+        // Page 2 of 2 (descending by CreatedAt across 11 rows) returns items #3 and #4 (txForfeit, txAdjRefund).
+        var pageTwo = await handler.Handle(new ListTransactionsQuery(Page: 2, PageSize: 2, Type: "ALL") { UserId = userId }, default);
+        Assert.Equal(11, pageTwo.Pagination.TotalCount);
+        Assert.Equal(6, pageTwo.Pagination.TotalPages);
+        Assert.True(pageTwo.Pagination.HasPreviousPage);
+        Assert.True(pageTwo.Pagination.HasNextPage);
+        Assert.Equal(
+            new[] { txAdjRefund.Id.ToString(), txEscrowCancel.Id.ToString() },
+            pageTwo.Items.Select(i => i.Id).ToArray());
+    }
+
     private static WalletTransaction NewTransaction(WalletAccount wallet, DateTimeOffset createdAt, string userId)
         => new()
         {

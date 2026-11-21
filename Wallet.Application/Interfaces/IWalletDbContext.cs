@@ -32,10 +32,6 @@ public interface IWalletDbContext
     Task<WalletTopup?> LockTopupByIdAsync(Guid topupId, CancellationToken cancellationToken);
     Task<DirectPaymentOrder?> LockDirectPaymentOrderByIdAsync(Guid orderId, CancellationToken cancellationToken);
     Task<StripePaymentAttempt?> LockStripePaymentAttemptAsync(Guid attemptId, CancellationToken cancellationToken);
-    Task<WalletTopup?> LockTopupByReferenceAsync(string transactionReference, CancellationToken cancellationToken);
-    Task<DirectPaymentOrder?> LockDirectPaymentOrderByReferenceAsync(
-        string transactionReference,
-        CancellationToken cancellationToken);
     Task<WithdrawalRequest?> LockWithdrawalRequestAsync(Guid withdrawalId, CancellationToken cancellationToken);
     void EnsureNoPendingChanges();
     Task ReloadUnmodifiedAsync<TEntity>(TEntity entity, CancellationToken cancellationToken) where TEntity : class;

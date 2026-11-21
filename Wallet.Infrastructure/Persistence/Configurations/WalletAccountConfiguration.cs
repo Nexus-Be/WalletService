@@ -10,28 +10,16 @@ public class WalletAccountConfiguration : IEntityTypeConfiguration<WalletAccount
     {
         builder.ToTable("Wallets", table =>
         {
-            table.HasCheckConstraint("CK_Wallets_LockedBalance",
-                "\"LockedBalance\" >= 0 AND \"LockedBalance\" <= \"Balance\"");
             table.HasCheckConstraint("CK_Wallets_BalanceLocks",
                 "\"Balance\" >= 0 AND \"LockedBalance\" >= 0 AND \"LockedBalance\" <= \"Balance\"");
         });
         builder.HasKey(w => w.Id);
-        builder.HasIndex(w => w.UserId).IsUnique();
+        builder.HasIndex(w => w.UserId)
+            .IsUnique()
+            .HasFilter("\"IsDeleted\" = FALSE");
         builder.Property(w => w.Balance).HasPrecision(18, 2);
         builder.Property(w => w.LockedBalance).HasPrecision(18, 2);
         builder.Property(w => w.Status).HasMaxLength(30);
         builder.HasQueryFilter(w => !w.IsDeleted);
-
-        builder.HasMany(w => w.Transactions)
-            .WithOne()
-            .HasForeignKey(t => t.WalletId);
-
-        builder.HasMany(w => w.Topups)
-            .WithOne()
-            .HasForeignKey(t => t.WalletId);
-
-        builder.HasMany(w => w.WithdrawalRequests)
-            .WithOne()
-            .HasForeignKey(r => r.WalletId);
     }
 }

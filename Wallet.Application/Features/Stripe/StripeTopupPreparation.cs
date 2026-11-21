@@ -70,11 +70,12 @@ internal static class StripeTopupPreparation
         wallet.EnsureActive();
 
         var fingerprint = Fingerprint(ownerId, amount);
-        var existing = await context.StripePaymentAttempts.AsNoTracking().SingleOrDefaultAsync(
+        var existing = await context.StripePaymentAttempts.IgnoreQueryFilters().AsNoTracking().SingleOrDefaultAsync(
             item => item.OwnerId == ownerId && item.ClientIdempotencyKey == key, token);
         if (existing is not null)
         {
-            if (existing.Purpose != StripePaymentPurpose.Topup || existing.Amount != amount ||
+            if (existing.IsDeleted ||
+                existing.Purpose != StripePaymentPurpose.Topup || existing.Amount != amount ||
                 existing.RequestFingerprint != fingerprint || existing.WalletTopupId is not Guid topupId ||
                 existing.Status != StripePaymentAttemptStatus.AwaitingPayment || !existing.BlocksReplacement ||
                 string.IsNullOrWhiteSpace(existing.CheckoutUrl) || existing.SessionExpiresAt <= DateTimeOffset.UtcNow ||

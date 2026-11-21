@@ -161,4 +161,91 @@ public sealed class WalletReconciliationQueryTests
         Assert.Contains(results, result => result.MemberNames.Contains(nameof(query.PageSize)));
         Assert.Contains(results, result => result.MemberNames.Contains(nameof(query.WalletId)));
     }
+
+    [Fact]
+    public async Task Reconciliation_FlagsLockedBalanceMismatch_ExcludesDirectGatewayAndFlagsNonZeroZeroHistory()
+    {
+        using var context = new TestWalletDbContext(Guid.NewGuid().ToString());
+        var timestamp = new DateTimeOffset(2026, 6, 15, 8, 0, 0, TimeSpan.Zero);
+
+        var lockedMismatch = AddWallet(context, Guid.NewGuid(), 100_000m);
+        lockedMismatch.LockedBalance = 50_000m;
+        context.AuctionHolds.Add(new AuctionHold
+        {
+            Id = Guid.NewGuid(),
+            WalletId = lockedMismatch.Id,
+            OwnerUserId = lockedMismatch.UserId,
+            ReferenceType = "AUCTION_DEPOSIT",
+            ReferenceId = "recon-hold-1",
+            Amount = 30_000m,
+            MetadataJson = "{}",
+            Status = AuctionHoldStatus.Held
+        });
+        context.WalletTransactions.Add(new WalletTransaction
+        {
+            Id = Guid.NewGuid(),
+            WalletId = lockedMismatch.Id,
+            Type = WalletTransactionType.TopupStripe,
+            Amount = 100_000m,
+            Currency = "Vnd",
+            BalanceBefore = 0m,
+            BalanceAfter = 100_000m,
+            Status = TransactionStatus.Success,
+            CreatedAt = timestamp
+        });
+
+        var directExcluded = AddWallet(context, Guid.NewGuid(), 100_000m);
+        context.WalletTransactions.AddRange(
+            new WalletTransaction
+            {
+                Id = Guid.NewGuid(),
+                WalletId = directExcluded.Id,
+                Type = WalletTransactionType.TopupStripe,
+                Amount = 100_000m,
+                Currency = "Vnd",
+                BalanceBefore = 0m,
+                BalanceAfter = 100_000m,
+                Status = TransactionStatus.Success,
+                CreatedAt = timestamp
+            },
+            new WalletTransaction
+            {
+                Id = Guid.NewGuid(),
+                WalletId = directExcluded.Id,
+                Type = WalletTransactionType.DirectGatewayPayment,
+                Amount = 50_000m,
+                Currency = "Vnd",
+                BalanceBefore = 0m,
+                BalanceAfter = 0m,
+                Status = TransactionStatus.Success,
+                CreatedAt = timestamp.AddMinutes(5)
+            });
+
+        var nonZeroNoTx = AddWallet(context, Guid.NewGuid(), 25_000m);
+        var zeroNoTx = AddWallet(context, Guid.NewGuid(), 0m);
+        await context.SaveChangesAsync();
+
+        var handler = new GetWalletReconciliationQueryHandler(context);
+        var result = await handler.Handle(new GetWalletReconciliationQuery(Page: 1, PageSize: 20), default);
+
+        var lockedRow = Assert.Single(result.Items, item => item.WalletId == lockedMismatch.Id);
+        Assert.Equal("Discrepancy", lockedRow.Result);
+        Assert.Equal(50_000m, lockedRow.LockedBalance);
+        Assert.Equal(30_000m, lockedRow.ExpectedLockedBalance);
+        Assert.Equal(20_000m, lockedRow.LockedDifference);
+
+        var directRow = Assert.Single(result.Items, item => item.WalletId == directExcluded.Id);
+        Assert.Equal("Balanced", directRow.Result);
+        Assert.Equal(100_000m, directRow.LatestSuccessfulBalance);
+        Assert.Equal(1, directRow.SuccessfulTransactionCount);
+
+        var nonZeroRow = Assert.Single(result.Items, item => item.WalletId == nonZeroNoTx.Id);
+        Assert.Equal("Discrepancy", nonZeroRow.Result);
+        Assert.Equal(25_000m, nonZeroRow.CurrentBalance);
+        Assert.Null(nonZeroRow.LatestSuccessfulBalance);
+        Assert.Null(nonZeroRow.Difference);
+
+        var zeroRow = Assert.Single(result.Items, item => item.WalletId == zeroNoTx.Id);
+        Assert.Equal("InsufficientHistory", zeroRow.Result);
+    }
 }

@@ -1,12 +1,19 @@
 namespace Wallet.Tests;
 
 using System.ComponentModel.DataAnnotations;
+using MediatR;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Logging.Abstractions;
+using Wallet.Api.Controllers;
 using Wallet.Application.Common.Validation;
 using Wallet.Application.Features.AdminWallets.Commands.AdjustWalletBalance;
 using Wallet.Application.Features.AdminWallets.Commands.ProcessWithdrawal;
 using Wallet.Application.Features.Transfers.Commands.Transfer;
 using Wallet.Application.Features.VnPay.Commands.ProcessVnPayIpn;
+using Wallet.Application.Interfaces;
 using Wallet.Domain.Entities;
 using Wallet.Domain.Enums;
 using Wallet.Domain.Exceptions;
@@ -506,5 +513,112 @@ public class WalletOperationsEdgeCaseTests
         Assert.Equal("04", result.ResponseCode);
         Assert.Equal(0m, wallet.Balance);
         Assert.Empty(TransactionsOf(context, wallet));
+    }
+
+    [Fact]
+    public async Task Transfer_NullOrWhitespaceNotesUseDefaults_NoteMaxLengthValidated_LockOrderDeterministic_AndControllerEnrichesHeaders()
+    {
+        using var context = new TestWalletDbContext(Guid.NewGuid().ToString());
+        var lowerId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var higherId = Guid.Parse("22222222-2222-2222-2222-222222222222");
+        var lowerWallet = new WalletAccount { Id = Guid.NewGuid(), UserId = lowerId, Balance = 300_000m, Currency = CurrencyCode.Vnd, Status = "ACTIVE" };
+        var higherWallet = new WalletAccount { Id = Guid.NewGuid(), UserId = higherId, Balance = 300_000m, Currency = CurrencyCode.Vnd, Status = "ACTIVE" };
+        context.Wallets.AddRange(lowerWallet, higherWallet);
+        await context.SaveChangesAsync();
+
+        var maxLenValid = new TransferCommand(higherId.ToString(), 10_000m, new string('A', 500)) { SenderUserId = lowerId.ToString() };
+        var overMaxInvalid = new TransferCommand(higherId.ToString(), 10_000m, new string('A', 501)) { SenderUserId = lowerId.ToString() };
+        Assert.True(RequestValidation.TryValidate(maxLenValid, new List<ValidationResult>()));
+        Assert.False(RequestValidation.TryValidate(overMaxInvalid, new List<ValidationResult>()));
+
+        var recorderDb = new LockOrderRecordingDbContext(context);
+        var handler = new TransferCommandHandler(recorderDb);
+
+        await handler.Handle(new TransferCommand(higherId.ToString(), 20_000m, null) { SenderUserId = lowerId.ToString() }, default);
+        await handler.Handle(new TransferCommand(lowerId.ToString(), 10_000m, "   ") { SenderUserId = higherId.ToString() }, default);
+
+        // Opposite-direction transfers must always acquire wallet row locks in ascending UUID order.
+        Assert.Equal(new[] { lowerId, higherId, lowerId, higherId }, recorderDb.LockedUserOrder);
+
+        var outTxs = context.WalletTransactions.Where(t => t.Type == WalletTransactionType.TransferOut).OrderBy(t => t.CreatedAt).ToList();
+        var inTxs = context.WalletTransactions.Where(t => t.Type == WalletTransactionType.TransferIn).OrderBy(t => t.CreatedAt).ToList();
+        Assert.Equal($"Transfer to {higherId}", outTxs[0].Note);
+        Assert.Equal($"Transfer from {lowerId}", inTxs[0].Note);
+        Assert.Equal($"Transfer to {lowerId}", outTxs[1].Note);
+        Assert.Equal($"Transfer from {higherId}", inTxs[1].Note);
+
+        // Thin controller smoke check for SenderUserId + Idempotency-Key enrichment.
+        var senderProxy = new TransferCaptureSender();
+        var httpContext = new DefaultHttpContext();
+        httpContext.Request.Headers["x-user-id"] = lowerId.ToString("D");
+        httpContext.Request.Headers["x-user-roles"] = "buyer";
+        var controller = new WalletsController(senderProxy, NullLogger<WalletsController>.Instance)
+        {
+            ControllerContext = new ControllerContext { HttpContext = httpContext }
+        };
+
+        var actionResult = await controller.Transfer(new TransferCommand(higherId.ToString(), 15_000m, "hi"), "  transfer-hdr-1  ", default);
+        Assert.IsType<OkObjectResult>(actionResult);
+        var dispatched = Assert.IsType<TransferCommand>(senderProxy.LastCommand);
+        Assert.Equal(lowerId.ToString("D"), dispatched.SenderUserId);
+        Assert.Equal("transfer-hdr-1", dispatched.IdempotencyKey);
+    }
+
+    private sealed class LockOrderRecordingDbContext(TestWalletDbContext inner) : IWalletDbContext
+    {
+        public List<Guid> LockedUserOrder { get; } = [];
+        public DbSet<WalletAccount> Wallets => inner.Wallets;
+        public DbSet<AuctionHold> AuctionHolds => inner.AuctionHolds;
+        public DbSet<AuctionHoldOperation> AuctionHoldOperations => inner.AuctionHoldOperations;
+        public DbSet<AuctionHoldCapture> AuctionHoldCaptures => inner.AuctionHoldCaptures;
+        public DbSet<AuctionCaptureTransfer> AuctionCaptureTransfers => inner.AuctionCaptureTransfers;
+        public DbSet<AuctionDepositEscrow> AuctionDepositEscrows => inner.AuctionDepositEscrows;
+        public DbSet<OrderEscrow> OrderEscrows => inner.OrderEscrows;
+        public DbSet<WalletTransaction> WalletTransactions => inner.WalletTransactions;
+        public DbSet<BankAccount> BankAccounts => inner.BankAccounts;
+        public DbSet<WalletTopup> WalletTopups => inner.WalletTopups;
+        public DbSet<DirectPaymentOrder> DirectPaymentOrders => inner.DirectPaymentOrders;
+        public DbSet<StripePaymentAttempt> StripePaymentAttempts => inner.StripePaymentAttempts;
+        public DbSet<StripeWebhookEvent> StripeWebhookEvents => inner.StripeWebhookEvents;
+        public DbSet<VnpayIpnLog> VnpayIpnLogs => inner.VnpayIpnLogs;
+        public DbSet<WithdrawalRequest> WithdrawalRequests => inner.WithdrawalRequests;
+        public DbSet<AuditLog> AuditLogs => inner.AuditLogs;
+        public DatabaseFacade Database => inner.Database;
+
+        public Task LockOrderPaymentAsync(Guid orderId, CancellationToken cancellationToken) => inner.LockOrderPaymentAsync(orderId, cancellationToken);
+        public Task LockAuctionKeyAsync(string key, CancellationToken cancellationToken) => inner.LockAuctionKeyAsync(key, cancellationToken);
+        public Task<AuctionHold?> LockAuctionHoldAsync(Guid holdId, CancellationToken cancellationToken) => inner.LockAuctionHoldAsync(holdId, cancellationToken);
+
+        public Task<WalletAccount?> LockWalletByUserIdAsync(Guid userId, CancellationToken cancellationToken)
+        {
+            LockedUserOrder.Add(userId);
+            return inner.LockWalletByUserIdAsync(userId, cancellationToken);
+        }
+
+        public Task<WalletAccount?> LockWalletByIdAsync(Guid walletId, CancellationToken cancellationToken) => inner.LockWalletByIdAsync(walletId, cancellationToken);
+        public Task<WalletTopup?> LockTopupByIdAsync(Guid topupId, CancellationToken cancellationToken) => inner.LockTopupByIdAsync(topupId, cancellationToken);
+        public Task<DirectPaymentOrder?> LockDirectPaymentOrderByIdAsync(Guid orderId, CancellationToken cancellationToken) => inner.LockDirectPaymentOrderByIdAsync(orderId, cancellationToken);
+        public Task<StripePaymentAttempt?> LockStripePaymentAttemptAsync(Guid attemptId, CancellationToken cancellationToken) => inner.LockStripePaymentAttemptAsync(attemptId, cancellationToken);
+        public Task<WithdrawalRequest?> LockWithdrawalRequestAsync(Guid withdrawalId, CancellationToken cancellationToken) => inner.LockWithdrawalRequestAsync(withdrawalId, cancellationToken);
+        public void EnsureNoPendingChanges() => inner.EnsureNoPendingChanges();
+        public Task ReloadUnmodifiedAsync<TEntity>(TEntity entity, CancellationToken cancellationToken) where TEntity : class => inner.ReloadUnmodifiedAsync(entity, cancellationToken);
+        public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) => inner.SaveChangesAsync(cancellationToken);
+    }
+
+    private sealed class TransferCaptureSender : ISender
+    {
+        public object? LastCommand { get; private set; }
+
+        public Task<TResponse> Send<TResponse>(IRequest<TResponse> request, CancellationToken cancellationToken = default)
+        {
+            LastCommand = request;
+            object response = new TransferResponse(Guid.NewGuid().ToString(), 15_000m, "Vnd", "Success", DateTimeOffset.UtcNow);
+            return Task.FromResult((TResponse)response);
+        }
+
+        public Task Send<TRequest>(TRequest request, CancellationToken cancellationToken = default) where TRequest : IRequest => throw new NotSupportedException();
+        public Task<object?> Send(object request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public IAsyncEnumerable<TResponse> CreateStream<TResponse>(IStreamRequest<TResponse> request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public IAsyncEnumerable<object?> CreateStream(object request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 }

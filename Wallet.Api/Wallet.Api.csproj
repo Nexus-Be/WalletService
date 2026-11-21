@@ -25,4 +25,8 @@
       <ProjectReference Include="..\Wallet.Infrastructure\Wallet.Infrastructure.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <InternalsVisibleTo Include="Wallet.Tests" />
+    </ItemGroup>
+
 </Project>

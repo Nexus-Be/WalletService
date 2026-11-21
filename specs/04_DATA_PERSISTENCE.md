@@ -1,6 +1,6 @@
 # 04 — WalletService data persistence
 
-Updated: 2026-11-19. The source of truth is
+Updated: 2026-11-21. The source of truth is
 `Wallet.Infrastructure/Persistence/WalletDbContext.cs`, entity configurations
 and migrations under `Wallet.Infrastructure/Persistence/Migrations/`.
 PostgreSQL uses quoted PascalCase table names, such as `"Wallets"`; these
@@ -36,7 +36,7 @@ auction deposits and Stripe payments require whole VND.
 ## Balance and hold invariants
 
 - `0 <= LockedBalance <= Balance` and `Balance >= 0` are enforced by
-  `CK_Wallets_LockedBalance` and `CK_Wallets_BalanceLocks`. Locked balance includes withdrawal reservations
+  `CK_Wallets_BalanceLocks`. Locked balance includes withdrawal reservations
   and auction holds; available balance is the difference.
 - Holds have a globally unique `(ReferenceType, ReferenceId)`, positive
   whole-VND amount and immutable identity. Hold states are `Held`, `Captured`,
@@ -59,6 +59,24 @@ See [auction deposit contracts](../docs/api/holds/auction-deposits.md) and
 details. The existing reconciliation report compares a wallet's balance with
 its latest successful transaction snapshot; it is not external bank
 reconciliation or a complete double-entry ledger.
+
+## Soft-delete and unique-index policy
+
+- **Filtered unique indexes (`"IsDeleted" = FALSE`):** Applied on
+  `Wallets.UserId`, `DirectPaymentOrders.OrderId`, `DirectPaymentOrders.VnpTxnRef`
+  (`"VnpTxnRef" IS NOT NULL AND "IsDeleted" = FALSE`), `WalletTopups.VnpTxnRef`
+  (`"VnpTxnRef" IS NOT NULL AND "IsDeleted" = FALSE`), `BankAccounts` default per
+  user, `WalletTransactions` `(ReferenceId, ClientIdempotencyKey)`, and
+  `WithdrawalRequests` `GatewayReferenceId` / `(WalletId, ClientIdempotencyKey)`.
+- **Intentionally unfiltered immutable financial indexes:** `OrderEscrows.OrderId`,
+  `StripeWebhookEvents.ProviderEventId`, `StripePaymentAttempts` identity and
+  idempotency keys (`StripeTopupPreparation` checks `(OwnerId, ClientIdempotencyKey)`
+  with `.IgnoreQueryFilters()`), and `AuctionHolds` `(ReferenceType, ReferenceId)`
+  remain globally unique across soft deletes to preserve replay and double-spend
+  guarantees.
+- **Append-only auction accounting tables:** `AuctionHoldOperations`,
+  `AuctionHoldCaptures`, `AuctionCaptureTransfers`, and `AuctionDepositEscrows`
+  omit `HasQueryFilter(!IsDeleted)` and are protected by `DeleteBehavior.Restrict`.
 
 ## Migrations and verification
 

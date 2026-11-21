@@ -56,3 +56,5 @@ app.MapControllers();
 app.MapGet("/health", () => Results.Ok(new { status = "Healthy", service = "wallet-service" }));
 
 app.Run();
+
+public partial class Program;

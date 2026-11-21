@@ -382,6 +382,133 @@ public sealed class WithdrawalWorkflowTests
         Assert.Equal(WithdrawalStatus.Pending, context.WithdrawalRequests.Single(r => r.Id == w2).Status);
     }
 
+    [Fact]
+    public async Task ProcessWithdrawal_DirectApprovedToCompleted_AndInvalidTransitionGuards()
+    {
+        using var context = new TestWalletDbContext(Guid.NewGuid().ToString());
+        var sellerId = Guid.NewGuid();
+        AddWallet(context, sellerId, 500_000m);
+        var reqHandler = new RequestWithdrawalCommandHandler(context);
+
+        var id1 = Guid.Parse((await reqHandler.Handle(
+            new RequestWithdrawalCommand(100_000m, "VND", "VCB", "1234567890", "Seller")
+            { UserId = sellerId.ToString(), IdempotencyKey = "direct-complete-1" }, default)).WithdrawalId);
+        var id2 = Guid.Parse((await reqHandler.Handle(
+            new RequestWithdrawalCommand(100_000m, "VND", "VCB", "1234567890", "Seller")
+            { UserId = sellerId.ToString(), IdempotencyKey = "invalid-trans-2" }, default)).WithdrawalId);
+
+        var adminId = Guid.NewGuid().ToString();
+        var proc = new ProcessWithdrawalCommandHandler(context);
+
+        await proc.Handle(new ProcessWithdrawalCommand("Approve") { WithdrawalId = id1, AdminUserId = adminId }, default);
+        var completed = await proc.Handle(
+            new ProcessWithdrawalCommand("Complete", TransferConfirmed: true, TransferReference: "FT-DIRECT-1")
+            { WithdrawalId = id1, AdminUserId = adminId }, default);
+        Assert.Equal("Completed", completed.Status);
+        Assert.NotNull(context.WithdrawalRequests.Single(r => r.Id == id1).CompletedAt);
+
+        await proc.Handle(new ProcessWithdrawalCommand("Approve") { WithdrawalId = id2, AdminUserId = adminId }, default);
+        var approvedResolveErr = await Assert.ThrowsAsync<BusinessRuleValidationException>(() =>
+            proc.Handle(new ProcessWithdrawalCommand(
+                    "ResolveFailed",
+                    AdminNote: "Cannot resolve without processing",
+                    BankVerifiedNotTransferred: true,
+                    VerificationEvidence: "Bank statement #1")
+            { WithdrawalId = id2, AdminUserId = adminId, ActorIsAdmin = true }, default));
+        Assert.Equal("WITHDRAWAL_INVALID_TRANSITION", approvedResolveErr.ErrorCode);
+        Assert.Equal(409, approvedResolveErr.StatusCode);
+
+        await proc.Handle(new ProcessWithdrawalCommand("StartProcessing") { WithdrawalId = id2, AdminUserId = adminId }, default);
+        var processingFailErr = await Assert.ThrowsAsync<BusinessRuleValidationException>(() =>
+            proc.Handle(new ProcessWithdrawalCommand("Fail", AdminNote: "Must use ResolveFailed")
+            { WithdrawalId = id2, AdminUserId = adminId }, default));
+        Assert.Equal("WITHDRAWAL_INVALID_TRANSITION", processingFailErr.ErrorCode);
+        Assert.Equal(409, processingFailErr.StatusCode);
+    }
+
+    [Fact]
+    public async Task RequestAndReadWithdrawals_EnforceBankOwnershipSoftDeleteAndStatusFilters()
+    {
+        using var context = new TestWalletDbContext(Guid.NewGuid().ToString());
+        var ownerId = Guid.NewGuid();
+        var otherUserId = Guid.NewGuid();
+        AddWallet(context, ownerId, 500_000m);
+
+        var otherBank = new BankAccount
+        {
+            Id = Guid.NewGuid(),
+            UserId = otherUserId.ToString(),
+            BankName = "VCB",
+            AccountNumber = "5555666677",
+            AccountHolderName = "Other",
+            IsDefault = true
+        };
+        var deletedBank = new BankAccount
+        {
+            Id = Guid.NewGuid(),
+            UserId = ownerId.ToString(),
+            BankName = "ACB",
+            AccountNumber = "8888999900",
+            AccountHolderName = "Owner",
+            IsDeleted = true,
+            DeletedAt = DateTimeOffset.UtcNow
+        };
+        context.BankAccounts.AddRange(otherBank, deletedBank);
+        await context.SaveChangesAsync();
+
+        var reqHandler = new RequestWithdrawalCommandHandler(context);
+        var otherErr = await Assert.ThrowsAsync<EntityNotFoundException>(() =>
+            reqHandler.Handle(new RequestWithdrawalCommand(100_000m, BankAccountId: otherBank.Id)
+            { UserId = ownerId.ToString(), IdempotencyKey = "other-bank" }, default));
+        Assert.Equal("BANK_ACCOUNT_NOT_FOUND", otherErr.ErrorCode);
+
+        var deletedErr = await Assert.ThrowsAsync<EntityNotFoundException>(() =>
+            reqHandler.Handle(new RequestWithdrawalCommand(100_000m, BankAccountId: deletedBank.Id)
+            { UserId = ownerId.ToString(), IdempotencyKey = "deleted-bank" }, default));
+        Assert.Equal("BANK_ACCOUNT_NOT_FOUND", deletedErr.ErrorCode);
+
+        var wPending = Guid.Parse((await reqHandler.Handle(
+            new RequestWithdrawalCommand(100_000m, "VND", "VCB", "1234567890", "Owner")
+            { UserId = ownerId.ToString(), IdempotencyKey = "list-pending" }, default)).WithdrawalId);
+        var wApproved = Guid.Parse((await reqHandler.Handle(
+            new RequestWithdrawalCommand(100_000m, "VND", "VCB", "1234567890", "Owner")
+            { UserId = ownerId.ToString(), IdempotencyKey = "list-approved" }, default)).WithdrawalId);
+
+        await new ProcessWithdrawalCommandHandler(context).Handle(
+            new ProcessWithdrawalCommand("Approve") { WithdrawalId = wApproved, AdminUserId = Guid.NewGuid().ToString() },
+            default);
+
+        var nonOwnerGet = await Assert.ThrowsAsync<EntityNotFoundException>(() =>
+            new GetMyWithdrawalQueryHandler(context).Handle(new GetMyWithdrawalQuery(wPending) { UserId = otherUserId }, default));
+        Assert.Equal("WITHDRAWAL_NOT_FOUND", nonOwnerGet.ErrorCode);
+
+        var approvedList = await new ListMyWithdrawalsQueryHandler(context)
+            .Handle(new ListMyWithdrawalsQuery(1, 10, "Approved") { UserId = ownerId }, default);
+        Assert.Equal(wApproved, Assert.Single(approvedList.Items).WithdrawalId);
+
+        var pendingList = await new ListMyWithdrawalsQueryHandler(context)
+            .Handle(new ListMyWithdrawalsQuery(1, 10, "Pending") { UserId = ownerId }, default);
+        Assert.Equal(wPending, Assert.Single(pendingList.Items).WithdrawalId);
+    }
+
+    [Theory]
+    [InlineData(49_999, false)]
+    [InlineData(50_000, true)]
+    [InlineData(500_000_000, true)]
+    [InlineData(500_000_001, false)]
+    public void RequestWithdrawal_AmountBoundaries_ValidatedAtExactEdges(int amount, bool expectedValid)
+    {
+        var command = new RequestWithdrawalCommand(amount, "VND", "VCB", "1234567890", "Seller")
+        {
+            UserId = Guid.NewGuid().ToString(),
+            IdempotencyKey = "boundary-key"
+        };
+
+        var results = new List<System.ComponentModel.DataAnnotations.ValidationResult>();
+        var actualValid = Wallet.Application.Common.Validation.RequestValidation.TryValidate(command, results);
+        Assert.Equal(expectedValid, actualValid);
+    }
+
     private static WalletAccount AddWallet(TestWalletDbContext context, Guid userId, decimal balance)
     {
         var wallet = new WalletAccount
