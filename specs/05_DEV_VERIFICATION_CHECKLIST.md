@@ -1,6 +1,6 @@
 # 05 — DANH SÁCH KIỂM CHỨNG & NGHIỆM THU (WALLET SERVICE CHECKLIST)
 
-> **Trạng thái triển khai (2026-11-19):** ✅ CLASSIC CQRS — 47 use case (29 Command, 18 Query), 2 public controllers.
+> **Trạng thái triển khai (2026-11-19):** ✅ CLASSIC CQRS — 60 use case (34 Command, 26 Query), 2 public controllers.
 > **Nguồn sự thật:** code (`Wallet.sln`, `Wallet.Application/Features/`, `Wallet.Tests/`).
 > **Cập nhật lần cuối:** 2026-11-19.
 
@@ -26,7 +26,7 @@
 | 1 | Build Release 0 error | `dotnet build Wallet.sln -c Release` | ✅ |
 | 2 | Test pass 100% | `dotnet test Wallet.sln -c Release` | ✅ |
 | 3 | Không còn service facade | `grep -rn "IWalletService\|IAdminWalletService" --include=*.cs .` = 0 | ✅ |
-| 4 | Mỗi use case có Handler | `find Wallet.Application/Features -name "*Handler.cs"` = 47 | ✅ |
+| 4 | Mỗi use case có Handler | `find Wallet.Application/Features -name "*Handler.cs"` = 60 | ✅ |
 | 5 | Không dùng Repository Pattern | `grep -rn "IRepository\|UnitOfWork" --include=*.cs .` = 0 | ✅ |
 | 6 | Không rò `userId` qua body | controller dùng `TryGetUserId` / `command with { UserId = ... }` | ✅ |
 | 7 | Số dư không âm | `WalletAccount.EnsureAvailableBalance` ném `InsufficientBalanceException` | ✅ |
@@ -44,8 +44,8 @@
 # 1. Không còn feature service facade
 grep -rn "interface I.*Service\b" --include="*.cs" Wallet.Application Wallet.Api   # kỳ vọng rỗng
 
-# 2. Đủ 47 use case handler (29 Command, 18 Query)
-find Wallet.Application/Features -name "*Handler.cs" | wc -l                       # kỳ vọng 47
+# 2. Đủ 60 use case handler (34 Command, 26 Query)
+find Wallet.Application/Features -name "*Handler.cs" | wc -l                       # kỳ vọng 60
 
 # 3. MediatR + ValidationBehavior được đăng ký
 grep -n "AddMediatR\|AddOpenBehavior" Wallet.Application/DependencyInjection.cs    # kỳ vọng 2 dòng

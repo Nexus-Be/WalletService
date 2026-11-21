@@ -1,6 +1,6 @@
 # 02 — HỢP ĐỒNG GIAO TIẾP RESTFUL (WALLET SERVICE REST CONTRACTS)
 
-> **Trạng thái triển khai (2026-11-19):** ✅ 100% RESTFUL + CLASSIC CQRS — 47 use case (29 Command, 18 Query; `EnsureWalletCommand` do `GetMyWalletQueryHandler` gọi nội bộ). Controller chỉ inject `ISender`. Bãi bỏ hoàn toàn gRPC, Protobuf, RabbitMQ và MassTransit.
+> **Trạng thái triển khai (2026-11-19):** ✅ 100% RESTFUL + CLASSIC CQRS — 60 use case (34 Command, 26 Query; `EnsureWalletCommand` do `GetMyWalletQueryHandler` gọi nội bộ). Controller chỉ inject `ISender`. Bãi bỏ hoàn toàn gRPC, Protobuf, RabbitMQ và MassTransit.
 > **ĐÓNG BĂNG:** chạy `./scripts/verify-wallet-architecture.sh` trước khi sửa.
 > **Nguồn sự thật:** code (`Wallet.Api/Controllers/Public/`, `Wallet.Application/Features/`).
 > **Cập nhật lần cuối:** 2026-11-19.
@@ -32,6 +32,8 @@
 * `GET /api/v1/admin/wallets/withdrawals` → `ListAdminWithdrawalsQuery`; `GET /api/v1/admin/wallets/withdrawals/{id:guid}/history` → `GetWithdrawalHistoryQuery`.
 * `PATCH /api/v1/admin/wallets/withdrawals/{id:guid}` → `ProcessWithdrawalCommand` (`Approve`, `Reject`, `StartProcessing`, `Complete`, `Fail`, admin-only `ResolveFailed`; gửi `withdrawal-events` sau commit).
 * `POST /api/v1/admin/wallets/{userId:guid}/adjustments` → `AdjustWalletBalanceCommand` (admin-only `EnsureAdmin`).
+* Shadow ledger and reconciliation (admin only, read-only for money): `GET ledger/status`, `GET ledger/journal`, `GET ledger/trial-balance`, `PUT ledger/shadow` (`{ enabled, expectedVersion }`, idempotent, 409 `LEDGER_SETTINGS_VERSION_CONFLICT`), `POST ledger/backfill`, `POST reconciliation/runs`, `GET reconciliation/runs`, `GET reconciliation/runs/{id}`, `GET reconciliation/findings`, `GET reconciliation/findings/{id}`, `PATCH reconciliation/findings/{id}` (status plus required note). See `docs/RECONCILIATION_CATALOG.md`.
+* Internal (service key): `GET /api/v1/internal/audit-logs/unsynced`, `POST /api/v1/internal/audit-logs/mark-synced`.
 * `GET /api/v1/admin/wallets/ledger` → `ListWalletLedgerQuery` (admin only); `GET /api/v1/admin/wallets/reconciliation` → `GetWalletReconciliationQuery` (admin only).
 * `GET /api/v1/admin/wallets/holds` & `GET /api/v1/admin/wallets/{userId:guid}/holds` → `ListAdminHoldsQuery`.
 * `GET /api/v1/admin/wallets/stripe/reconciliation-required` → `ListStripeReconciliationRequiredQuery` (admin only); `POST /api/v1/admin/wallets/stripe/attempts/{attemptId:guid}/resolve` → `ResolveStripeAttemptCommand` (admin only); `POST /api/v1/admin/wallets/stripe/reconcile-pending` → `ReconcilePendingTopupsCommand` (admin only).

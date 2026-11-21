@@ -33,6 +33,9 @@ filters and foreign keys. Enum values are stored as integers unless a
 specific configuration states otherwise. Amounts use `decimal(18,2)`;
 auction deposits and Stripe payments require whole VND.
 
+## Shadow ledger and reconciliation tables
+`Wallets.LedgerEpoch`, `Wallets.LedgerSeq` (position in the shadow ledger); `LedgerSettings` (single row: `Enabled`, `ShadowEpoch`, `Version`); `LedgerPostingPending` (one row per balance event, unique per `(WalletId, LedgerEpoch, LedgerSeq)`, written in the same transaction as the money change); `LedgerAccounts`, `JournalEntries`, `JournalLines`; `ReconciliationRuns`, `ReconciliationFindings` (unique `DedupKey`). Migration `20261121120000_AddShadowLedgerAndReconciliation` is idempotent and only adds.
+
 ## Balance and hold invariants
 
 - `0 <= LockedBalance <= Balance` and `Balance >= 0` are enforced by

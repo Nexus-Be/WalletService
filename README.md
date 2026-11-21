@@ -1,6 +1,6 @@
 # Wallet Service
 
-WalletService is a .NET 8 REST/JSON service (see [production readiness](docs/operations/production-readiness.md) regarding .NET 8 EOL on **2026-11-10**) for wallet balances, payments, transfers, withdrawals, seller bank accounts, and auction deposits. It uses PostgreSQL, EF Core, and classic CQRS with MediatR; there are **two public controllers** (`WalletsController` and `AdminWalletsController`, with internal `~/api/v1/internal/wallets/...` routes hosted on `WalletsController`) and **47 handlers** (`29` commands, `18` queries).
+WalletService is a .NET 8 REST/JSON service (see [production readiness](docs/operations/production-readiness.md) regarding .NET 8 EOL on **2026-11-10**) for wallet balances, payments, transfers, withdrawals, seller bank accounts, and auction deposits. It uses PostgreSQL, EF Core, and classic CQRS with MediatR; there are **two public controllers** (`WalletsController` and `AdminWalletsController`, with internal `~/api/v1/internal/wallets/...` routes hosted on `WalletsController`) and **60 handlers** (`34` commands, `26` queries).
 The API normally listens on port `8008`; local PostgreSQL uses port `5440`.
 
 ## Branch provenance
@@ -72,7 +72,7 @@ PostgreSQL integration tests (`36` tests) require `WALLET_STRIPE_TEST_DATABASE`
 to point to an existing **disposable** database; without it those tests are
 skipped. Without `WALLET_STRIPE_TEST_DATABASE`, the latest unit/in-memory run
 passed **455** tests with **0** failures and **36** skipped (`491` total). The
-architecture check enforces **47 handlers** (`29` commands, `18` queries) and
+architecture check enforces **60 handlers** (`34` commands, `26` queries) and
 **two controllers**.
 
 ## Documentation
