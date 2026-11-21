@@ -185,6 +185,68 @@ public sealed class ReconciliationV2Tests
         if (expectedFindings > 0) Assert.Equal("I6_STATUS_MISMATCH", findings[0].Code);
     }
 
+    private static async Task<(TestWalletDbContext Db, WalletAccount Wallet)> LedgerOnFor(string name)
+    {
+        var db = new TestWalletDbContext(name);
+        db.LedgerSettings.Add(new LedgerSettings { Id = 1, Enabled = true, ShadowEpoch = 1, Version = 1 });
+        // The ledger was switched on an hour ago and nothing has switched it since.
+        db.AuditLogs.Add(new AuditLog { ServiceName = "wallet-service", Action = AuditAction.LedgerShadowSwitch, EntityName = "LedgerSettings", EntityId = "1", NewValues = "{\"Enabled\":true}", CreatedAt = DateTimeOffset.UtcNow.AddHours(-1) });
+        var wallet = new WalletAccount { Id = Guid.NewGuid(), UserId = Guid.NewGuid(), Balance = 0m, Currency = CurrencyCode.Vnd };
+        db.Wallets.Add(wallet);
+        db.LedgerPostingPending.Add(new LedgerPostingPending { WalletId = wallet.Id, LedgerEpoch = 1, LedgerSeq = 1, IsEpochOpening = true, Type = "EpochOpening", CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-40) });
+        await db.SaveChangesAsync();
+        return (db, wallet);
+    }
+
+    private static WalletTransaction OldCredit(WalletAccount wallet, int minutesAgo, decimal amount = 100m) => new()
+    {
+        WalletId = wallet.Id, UserId = wallet.UserId.ToString(), Type = WalletTransactionType.AdjustmentCredit, Amount = amount, Currency = "Vnd",
+        BalanceBefore = 0m, BalanceAfter = amount, Status = TransactionStatus.Success, CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-minutesAgo), UpdatedAt = DateTimeOffset.UtcNow.AddMinutes(-minutesAgo)
+    };
+
+    [Fact]
+    public async Task I12_reports_a_successful_balance_change_that_has_no_queue_row_and_accepts_one_that_has()
+    {
+        var (db, wallet) = await LedgerOnFor(nameof(I12_reports_a_successful_balance_change_that_has_no_queue_row_and_accepts_one_that_has));
+        using var _ = db;
+        var covered = OldCredit(wallet, 20);
+        var lost = OldCredit(wallet, 10);
+        db.WalletTransactions.AddRange(covered, lost);
+        db.LedgerPostingPending.Add(new LedgerPostingPending { WalletId = wallet.Id, LedgerEpoch = 1, LedgerSeq = 2, WalletTransactionId = covered.Id, RelatedTransactionIds = covered.Id.ToString(), Type = "AdjustmentCredit", Delta = 100m, CreatedAt = covered.CreatedAt });
+        await db.SaveChangesAsync();
+
+        var findings = await RunAsync(db, new Sources(), "I12");
+
+        var finding = Assert.Single(findings);
+        Assert.Equal("I12_MISSING_POSTING_ROW", finding.Code);
+        Assert.Equal(lost.Id.ToString(), finding.ReferenceId);
+    }
+
+    [Fact]
+    public async Task I12_still_sees_a_recent_transaction_when_more_than_two_thousand_older_ones_are_covered()
+    {
+        var (db, wallet) = await LedgerOnFor(nameof(I12_still_sees_a_recent_transaction_when_more_than_two_thousand_older_ones_are_covered));
+        using var _ = db;
+        // 2,050 older transactions, all with a queue row, then one recent one that lost its row. A scan that stops after the first
+        // 2,000 would never reach it.
+        for (var i = 0; i < 2050; i++)
+        {
+            var tx = OldCredit(wallet, 30);
+            tx.UpdatedAt = DateTimeOffset.UtcNow.AddMinutes(-30).AddMilliseconds(i);
+            db.WalletTransactions.Add(tx);
+            db.LedgerPostingPending.Add(new LedgerPostingPending { WalletId = wallet.Id, LedgerEpoch = 1, LedgerSeq = i + 2, WalletTransactionId = tx.Id, RelatedTransactionIds = tx.Id.ToString(), Type = "AdjustmentCredit", Delta = 100m, CreatedAt = tx.CreatedAt });
+        }
+
+        var lost = OldCredit(wallet, 5);
+        db.WalletTransactions.Add(lost);
+        await db.SaveChangesAsync();
+
+        var findings = await RunAsync(db, new Sources(), "I12");
+
+        var finding = Assert.Single(findings);
+        Assert.Equal(lost.Id.ToString(), finding.ReferenceId);
+    }
+
     [Fact]
     public async Task An_auction_payout_is_checked_from_the_wallets_own_allocation_record()
     {

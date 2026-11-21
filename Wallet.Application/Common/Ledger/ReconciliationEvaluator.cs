@@ -486,10 +486,23 @@ public sealed class ReconciliationEvaluator
         var covered = (await _context.LedgerPostingPending.AsNoTracking().Where(row => row.RelatedTransactionIds != null).Select(row => row.RelatedTransactionIds!).ToListAsync(ct))
             .SelectMany(text => text.Split(',', StringSplitOptions.RemoveEmptyEntries)).Select(text => Guid.TryParse(text, out var id) ? id : Guid.Empty).ToHashSet();
 
-        var candidates = await _context.WalletTransactions.AsNoTracking()
-            .Where(tx => tx.Status == TransactionStatus.Success && tx.Type != WalletTransactionType.DirectGatewayPayment && tx.BalanceBefore != tx.BalanceAfter
-                && tx.UpdatedAt >= from && tx.UpdatedAt <= cutoff)
-            .OrderBy(tx => tx.UpdatedAt).Take(2000).ToListAsync(ct);
+        // Every candidate is judged, oldest first, one page at a time. A fixed "first 2,000" would stop before the recent transactions
+        // on any database with a long history, so a missing queue row there would never be seen.
+        var candidates = new List<WalletTransaction>();
+        var cursorAt = from;
+        var cursorId = Guid.Empty;
+        while (true)
+        {
+            var page = await _context.WalletTransactions.AsNoTracking()
+                .Where(tx => tx.Status == TransactionStatus.Success && tx.Type != WalletTransactionType.DirectGatewayPayment && tx.BalanceBefore != tx.BalanceAfter
+                    && tx.UpdatedAt <= cutoff && (tx.UpdatedAt > cursorAt || (tx.UpdatedAt == cursorAt && tx.Id.CompareTo(cursorId) > 0)))
+                .OrderBy(tx => tx.UpdatedAt).ThenBy(tx => tx.Id).Take(2000).ToListAsync(ct);
+            // Only the ones with no queue row can be a finding: drop the covered ones here so the list stays small.
+            candidates.AddRange(page.Where(tx => !covered.Contains(tx.Id)));
+            if (page.Count < 2000) break;
+            cursorAt = page[^1].UpdatedAt;
+            cursorId = page[^1].Id;
+        }
         // When the ledger was switched on or off is kept in the audit log. A transaction is only judged when the ledger was on for its whole
         // life plus a margin on both sides; anything near a switch is "not conclusive", never a finding.
         var switches = (await _context.AuditLogs.AsNoTracking().Where(log => log.Action == AuditAction.LedgerShadowSwitch)
