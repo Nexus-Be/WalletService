@@ -95,7 +95,7 @@ public sealed class OrderSettlementPostgresTests
         var deposit = await verify.AuctionDepositEscrows.SingleAsync(e => e.OrderId == orderId);
         Assert.Equal(0m, deposit.RemainingAmount);
         var sellerBalance = (await verify.Wallets.SingleAsync(w => w.UserId == sellerId)).Balance;
-        var refunds = await verify.WalletTransactions.CountAsync(t => t.Type == WalletTransactionType.AuctionDepositRefund);
+        var refunds = await verify.WalletTransactions.CountAsync(t => t.Type == WalletTransactionType.AuctionDepositRefund && t.ReferenceId == holdId);
         if (attempts[0].Error is null)
         {
             Assert.Equal(950_000m, sellerBalance);
