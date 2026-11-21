@@ -26,7 +26,20 @@ public sealed class StripeCheckoutClient : IStripeCheckoutClient
         _successUrl = StripeSettings.RequireReturnUrl(configuration["Stripe:SuccessUrl"], "Stripe success URL", allowLocalHttp);
         _cancelUrl = StripeSettings.RequireReturnUrl(configuration["Stripe:CancelUrl"], "Stripe cancel URL", allowLocalHttp);
         var stripeHttp = new SystemNetHttpClient(httpClient, maxNetworkRetries: 0);
-        var client = new StripeClient(key, httpClient: stripeHttp);
+        // Test hook for an isolated QA stack: point the SDK at a fake Stripe server. Accepted only in Development, never with a live key
+        // (a sk_test_ key is already required above), so a production or shared environment cannot be redirected by configuration.
+        var apiBase = configuration["Stripe:ApiBase"];
+        StripeClient client;
+        if (string.IsNullOrWhiteSpace(apiBase))
+        {
+            client = new StripeClient(key, httpClient: stripeHttp);
+        }
+        else
+        {
+            if (!allowLocalHttp)
+                throw new InvalidOperationException("Stripe:ApiBase is only allowed in the Development environment.");
+            client = new StripeClient(new StripeClientOptions { ApiKey = key, ApiBase = apiBase.TrimEnd('/'), HttpClient = stripeHttp });
+        }
         _sessions = new SessionService(client);
         _paymentIntents = new PaymentIntentService(client);
     }
