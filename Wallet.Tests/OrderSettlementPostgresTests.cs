@@ -1,7 +1,10 @@
 namespace Wallet.Tests;
 
 using Microsoft.EntityFrameworkCore;
+using Wallet.Application.Features.Checkout.Commands.AdjustOrderPayment;
+using Wallet.Application.Features.Checkout.Commands.CancelOrderEscrow;
 using Wallet.Application.Features.Checkout.Commands.PayOrderWithWallet;
+using Wallet.Application.Features.Checkout.Commands.RefundOrderPayment;
 using Wallet.Application.Features.Holds.Commands.CaptureHold;
 using Wallet.Application.Features.Holds.Commands.CreateHold;
 using Wallet.Application.Features.Holds.Commands.RefundCapturedHold;
@@ -107,6 +110,65 @@ public sealed class OrderSettlementPostgresTests
             Assert.Equal(1, refunds);
         }
     }
+
+    /// <summary>Runs the payout against another spender of the same order escrow at the same time and checks that money is conserved.</summary>
+    private static async Task PayoutRacing(string name, Func<DbContextOptions<WalletDbContext>, Guid, Guid, Task<object>> other)
+    {
+        var (options, buyerId, sellerId) = await Setup(buyerBalance: 500_000m);
+        var orderId = Guid.NewGuid();
+        var subOrderId = Guid.NewGuid();
+        await Pay(options, buyerId, orderId, 230_000m);
+        var payout = new SettleOrderPayoutCommand("OrderPayout", orderId, subOrderId, sellerId.ToString(), 180_000m, 20_000m, 30_000m, 0m, 230_000m, 0m);
+
+        var attempts = await Task.WhenAll(
+            Attempt<object>(async () =>
+            {
+                await using var context = new WalletDbContext(options);
+                return await new SettleOrderPayoutCommandHandler(context).Handle(payout, default);
+            }),
+            Attempt<object>(() => other(options, orderId, buyerId)));
+
+        // Both outcomes are allowed (the order decides who wins), but a refusal must be a business refusal, never a lock or constraint failure.
+        foreach (var attempt in attempts.Where(a => a.Error is not null))
+            Assert.IsType<BusinessRuleValidationException>(attempt.Error);
+        Assert.True(attempts.Any(a => a.Error is null), $"{name}: at least one of the two must succeed");
+
+        await using var verify = new WalletDbContext(options);
+        var buyerBalance = (await verify.Wallets.SingleAsync(w => w.UserId == buyerId)).Balance;
+        var sellerBalance = (await verify.Wallets.SingleAsync(w => w.UserId == sellerId)).Balance;
+        var escrow = await verify.OrderEscrows.SingleAsync(e => e.OrderId == orderId);
+        var allocated = await verify.OrderSettlements.Where(s => s.ParentOrderId == orderId).SumAsync(s => s.PlatformFeeAmount + s.ShippingAmount);
+        Assert.True(escrow.RemainingAmount >= 0m);
+        // 500,000 in the world: nothing created, nothing lost, whoever won.
+        Assert.Equal(500_000m, buyerBalance + sellerBalance + escrow.RemainingAmount + allocated);
+    }
+
+    [DisposablePostgresFact]
+    public Task PayoutRacingAnOrderRefund_ConservesMoney() =>
+        PayoutRacing("refund", async (options, orderId, buyerId) =>
+        {
+            await using var context = new WalletDbContext(options);
+            return await new RefundOrderPaymentCommandHandler(context).Handle(
+                new RefundOrderPaymentCommand(buyerId.ToString(), 230_000m, "Order refunded") { OrderId = orderId }, default);
+        });
+
+    [DisposablePostgresFact]
+    public Task PayoutRacingAnEscrowCancellation_ConservesMoney() =>
+        PayoutRacing("cancel", async (options, orderId, buyerId) =>
+        {
+            await using var context = new WalletDbContext(options);
+            return await new CancelOrderEscrowCommandHandler(context).Handle(
+                new CancelOrderEscrowCommand("Order cancelled before payout", buyerId.ToString(), 230_000m) { OrderId = orderId, IdempotencyKey = $"cancel-{Guid.NewGuid():N}" }, default);
+        });
+
+    [DisposablePostgresFact]
+    public Task PayoutRacingAPaymentAdjustment_ConservesMoney() =>
+        PayoutRacing("adjust", async (options, orderId, buyerId) =>
+        {
+            await using var context = new WalletDbContext(options);
+            return await new AdjustOrderPaymentCommandHandler(context).Handle(
+                new AdjustOrderPaymentCommand(buyerId.ToString(), -50_000m, "Partial refund of the order") { OrderId = orderId, IdempotencyKey = $"adjust-{Guid.NewGuid():N}" }, default);
+        });
 
     [DisposablePostgresFact]
     public async Task ConcurrentSubsidyHolds_NeverExceedTheBudget()
