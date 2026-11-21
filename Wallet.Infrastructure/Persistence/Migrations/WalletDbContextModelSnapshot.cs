@@ -456,6 +456,190 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     b.ToTable("DirectPaymentOrders");
                 });
 
+            modelBuilder.Entity("Wallet.Domain.Entities.JournalEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<Guid?>("PendingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("WalletId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("WalletTransactionId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PendingId")
+                        .IsUnique()
+                        .HasFilter("\"PendingId\" IS NOT NULL");
+
+                    b.HasIndex("WalletId");
+
+                    b.HasIndex("WalletTransactionId");
+
+                    b.ToTable("JournalEntries", (string)null);
+                });
+
+            modelBuilder.Entity("Wallet.Domain.Entities.JournalLine", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AccountCode")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<decimal>("Credit")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("Debit")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<Guid>("EntryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("WalletId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountCode");
+
+                    b.HasIndex("EntryId");
+
+                    b.ToTable("JournalLines", (string)null);
+                });
+
+            modelBuilder.Entity("Wallet.Domain.Entities.LedgerAccount", b =>
+                {
+                    b.Property<string>("Code")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.HasKey("Code");
+
+                    b.ToTable("LedgerAccounts", (string)null);
+                });
+
+            modelBuilder.Entity("Wallet.Domain.Entities.LedgerPostingPending", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("Delta")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<bool>("IsEpochOpening")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<int>("LedgerEpoch")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("LedgerSeq")
+                        .HasColumnType("bigint");
+
+                    b.Property<decimal>("OpeningBalance")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTimeOffset?>("PostedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RelatedTransactionIds")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<decimal>("WalletBalanceAfter")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<Guid>("WalletId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("WalletTransactionId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status", "CreatedAt");
+
+                    b.HasIndex("WalletId", "LedgerEpoch", "LedgerSeq")
+                        .IsUnique();
+
+                    b.ToTable("LedgerPostingPending", (string)null);
+                });
+
+            modelBuilder.Entity("Wallet.Domain.Entities.LedgerSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("ShadowEpoch")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("LedgerSettings", (string)null);
+                });
+
             modelBuilder.Entity("Wallet.Domain.Entities.OrderEscrow", b =>
                 {
                     b.Property<Guid>("Id")
@@ -511,6 +695,124 @@ namespace Wallet.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("CK_OrderEscrows_Status", "(\"Status\" = 0 AND \"RemainingAmount\" > 0 AND \"CancelledAt\" IS NULL AND \"CancelReason\" IS NULL) OR (\"Status\" IN (1, 2) AND \"RemainingAmount\" = 0 AND \"CancelledAt\" IS NULL AND \"CancelReason\" IS NULL) OR (\"Status\" = 3 AND \"RemainingAmount\" = 0 AND \"CancelledAt\" IS NOT NULL AND \"CancelReason\" IS NOT NULL)");
                         });
+                });
+
+            modelBuilder.Entity("Wallet.Domain.Entities.ReconciliationFinding", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ActualValue")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DedupKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("ExpectedValue")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("InvariantCode")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("ReferenceId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("RunId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Source")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DedupKey")
+                        .IsUnique();
+
+                    b.HasIndex("Status", "CreatedAt");
+
+                    b.ToTable("ReconciliationFindings", (string)null);
+                });
+
+            modelBuilder.Entity("Wallet.Domain.Entities.ReconciliationRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("FindingCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("FromDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Invariants")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("SkippedNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("ToDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UnavailableSources")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.ToTable("ReconciliationRuns", (string)null);
                 });
 
             modelBuilder.Entity("Wallet.Domain.Entities.StripePaymentAttempt", b =>
@@ -736,6 +1038,12 @@ namespace Wallet.Infrastructure.Persistence.Migrations
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
+
+                    b.Property<int>("LedgerEpoch")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("LedgerSeq")
+                        .HasColumnType("bigint");
 
                     b.Property<decimal>("LockedBalance")
                         .HasPrecision(18, 2)
@@ -1041,6 +1349,15 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Wallet.Domain.Entities.JournalLine", b =>
+                {
+                    b.HasOne("Wallet.Domain.Entities.JournalEntry", null)
+                        .WithMany("Lines")
+                        .HasForeignKey("EntryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Wallet.Domain.Entities.OrderEscrow", b =>
                 {
                     b.HasOne("Wallet.Domain.Entities.WalletAccount", null)
@@ -1102,6 +1419,11 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Wallet");
+                });
+
+            modelBuilder.Entity("Wallet.Domain.Entities.JournalEntry", b =>
+                {
+                    b.Navigation("Lines");
                 });
 
             modelBuilder.Entity("Wallet.Domain.Entities.WalletAccount", b =>

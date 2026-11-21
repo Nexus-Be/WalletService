@@ -22,6 +22,13 @@ public interface IWalletDbContext
     DbSet<VnpayIpnLog> VnpayIpnLogs { get; }
     DbSet<WithdrawalRequest> WithdrawalRequests { get; }
     DbSet<AuditLog> AuditLogs { get; }
+    DbSet<LedgerSettings> LedgerSettings { get; }
+    DbSet<LedgerPostingPending> LedgerPostingPending { get; }
+    DbSet<LedgerAccount> LedgerAccounts { get; }
+    DbSet<JournalEntry> JournalEntries { get; }
+    DbSet<JournalLine> JournalLines { get; }
+    DbSet<ReconciliationRun> ReconciliationRuns { get; }
+    DbSet<ReconciliationFinding> ReconciliationFindings { get; }
     DatabaseFacade Database { get; }
 
     Task LockOrderPaymentAsync(Guid orderId, CancellationToken cancellationToken);

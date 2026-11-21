@@ -37,5 +37,9 @@ public enum AuditAction
     OrderEscrowCancel = 32,
     NotificationQueued = 33,
     NotificationDelivered = 34,
-    NotificationAbandoned = 35
+    NotificationAbandoned = 35,
+    LedgerShadowSwitch = 36,
+    LedgerBackfill = 37,
+    ReconciliationRun = 38,
+    ReconciliationFindingUpdate = 39
 }

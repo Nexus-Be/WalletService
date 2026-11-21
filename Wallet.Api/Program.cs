@@ -17,6 +17,7 @@ builder.Services.AddApplicationServices();
 builder.Services.AddInfrastructureServices(builder.Configuration);
 builder.Services.AddHostedService<StripeTopupReconciliationWorker>();
 builder.Services.AddHostedService<WithdrawalNotificationRetryWorker>();
+builder.Services.AddHostedService<JournalPostingWorker>();
 
 // 3. REST Services
 builder.Services.AddControllers()

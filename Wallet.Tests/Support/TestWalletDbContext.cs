@@ -37,6 +37,13 @@ public sealed class TestWalletDbContext : IWalletDbContext, IDisposable
     public DbSet<VnpayIpnLog> VnpayIpnLogs => _inner.VnpayIpnLogs;
     public DbSet<WithdrawalRequest> WithdrawalRequests => _inner.WithdrawalRequests;
     public DbSet<AuditLog> AuditLogs => _inner.AuditLogs;
+    public DbSet<LedgerSettings> LedgerSettings => _inner.LedgerSettings;
+    public DbSet<LedgerPostingPending> LedgerPostingPending => _inner.LedgerPostingPending;
+    public DbSet<LedgerAccount> LedgerAccounts => _inner.LedgerAccounts;
+    public DbSet<JournalEntry> JournalEntries => _inner.JournalEntries;
+    public DbSet<JournalLine> JournalLines => _inner.JournalLines;
+    public DbSet<ReconciliationRun> ReconciliationRuns => _inner.ReconciliationRuns;
+    public DbSet<ReconciliationFinding> ReconciliationFindings => _inner.ReconciliationFindings;
     public DatabaseFacade Database => _inner.Database;
 
     public Task LockOrderPaymentAsync(Guid orderId, CancellationToken cancellationToken)

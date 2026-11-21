@@ -13,6 +13,8 @@ using Wallet.Api.Common;
 using Wallet.Api.Extensions;
 using Wallet.Api.Filters;
 using Wallet.Application.Common.Models;
+using Wallet.Application.Features.Audit.Commands.MarkAuditLogsSynced;
+using Wallet.Application.Features.Audit.Queries.GetUnsyncedAuditLogs;
 using Wallet.Application.Features.BankAccounts;
 using Wallet.Application.Features.BankAccounts.Commands.CreateBankAccount;
 using Wallet.Application.Features.BankAccounts.Commands.DeleteBankAccount;
@@ -530,6 +532,22 @@ public sealed class WalletsController : ControllerBase
     }
 
     // ---- Internal Service-to-Service Endpoints (Gateway never exposes /api/v1/internal/*) ----
+
+    /// <summary>Lists audit records that the central log service has not pulled yet, oldest first.</summary>
+    [HttpGet("~/api/v1/internal/audit-logs/unsynced")]
+    [RequireInternalServiceKey]
+    [ApiExplorerSettings(IgnoreApi = true)]
+    [ProducesResponseType(typeof(UnsyncedAuditLogsResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetUnsyncedAuditLogsInternal([FromQuery] int limit = 200, CancellationToken cancellationToken = default) =>
+        Ok(await _sender.Send(new GetUnsyncedAuditLogsQuery(limit), cancellationToken));
+
+    /// <summary>Marks audit records as pulled after the central log service stored them.</summary>
+    [HttpPost("~/api/v1/internal/audit-logs/mark-synced")]
+    [RequireInternalServiceKey]
+    [ApiExplorerSettings(IgnoreApi = true)]
+    [ProducesResponseType(typeof(MarkAuditLogsSyncedResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> MarkAuditLogsSyncedInternal([FromBody] MarkAuditLogsSyncedCommand command, CancellationToken cancellationToken = default) =>
+        Ok(await _sender.Send(command, cancellationToken));
 
     /// <summary>Gets a user's wallet balance, available balance, and freeze status for internal services.</summary>
     [HttpGet("~/api/v1/internal/wallets/{userId:guid}")]
