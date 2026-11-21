@@ -48,7 +48,8 @@ public interface IWalletDbContext
         CancellationToken cancellationToken);
     Task<WithdrawalRequest?> LockWithdrawalRequestAsync(Guid withdrawalId, CancellationToken cancellationToken);
     Task<OrderEscrow?> LockOrderEscrowByOrderIdAsync(Guid orderId, CancellationToken cancellationToken);
-    Task<AuctionDepositEscrow?> LockDepositEscrowByOrderIdAsync(Guid orderId, CancellationToken cancellationToken);
+    /// <summary>Locks every deposit escrow of an order (a Buy Now order has two: the deposit and the goods hold), oldest first.</summary>
+    Task<IReadOnlyList<AuctionDepositEscrow>> LockDepositEscrowsByOrderIdAsync(Guid orderId, CancellationToken cancellationToken);
     Task<AuctionDepositEscrow?> LockDepositEscrowByHoldIdAsync(Guid holdId, CancellationToken cancellationToken);
     Task<PlatformSubsidyBudget?> LockSubsidyBudgetAsync(Guid budgetId, CancellationToken cancellationToken);
     void EnsureNoPendingChanges();

@@ -245,6 +245,46 @@ public sealed class OrderSettlementV2Tests
     }
 
     [Fact]
+    public async Task Payout_BuyNow_UsesTheDepositAndTheGoodsHoldEscrowsAsOnePool()
+    {
+        using var context = new TestWalletDbContext(nameof(Payout_BuyNow_UsesTheDepositAndTheGoodsHoldEscrowsAsOnePool));
+        var buyer = AddWallet(context, 500_000m);
+        var seller = AddWallet(context, 0m);
+        var orderId = Guid.NewGuid();
+        // Buy Now at 2,000,000: a 50,000 deposit and a 1,950,000 goods hold are captured into two escrows of the same order; the buyer pays only shipping.
+        context.AuctionDepositEscrows.Add(new AuctionDepositEscrow { Id = Guid.NewGuid(), HoldId = Guid.NewGuid(), OrderId = orderId, OriginalAmount = 50_000m, RemainingAmount = 50_000m, CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-2) });
+        context.AuctionDepositEscrows.Add(new AuctionDepositEscrow { Id = Guid.NewGuid(), HoldId = Guid.NewGuid(), OrderId = orderId, OriginalAmount = 1_950_000m, RemainingAmount = 1_950_000m, CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-1) });
+        await context.SaveChangesAsync();
+        await PayAsync(context, buyer, orderId, 30_000m);
+
+        // fee 5% of 2,000,000 = 100,000; seller 1,900,000; shipping 30,000
+        await SettleAsync(context, Payout(orderId, orderId, seller, 1_900_000m, 100_000m, 30_000m, 0m, 30_000m, depositEscrow: 2_000_000m, type: "AuctionPayout"));
+
+        Assert.Equal(1_900_000m, (await context.Wallets.SingleAsync(w => w.Id == seller.Id)).Balance);
+        Assert.All(context.AuctionDepositEscrows.Where(e => e.OrderId == orderId), e => Assert.Equal(0m, e.RemainingAmount));
+        Assert.Equal(0m, (await context.OrderEscrows.SingleAsync(e => e.OrderId == orderId)).RemainingAmount);
+    }
+
+    [Fact]
+    public async Task Payout_BuyNow_WhileTheGoodsHoldIsNotCapturedYet_IsRefusedWithoutTakingAnything()
+    {
+        using var context = new TestWalletDbContext(nameof(Payout_BuyNow_WhileTheGoodsHoldIsNotCapturedYet_IsRefusedWithoutTakingAnything));
+        var buyer = AddWallet(context, 500_000m);
+        var seller = AddWallet(context, 0m);
+        var orderId = Guid.NewGuid();
+        context.AuctionDepositEscrows.Add(new AuctionDepositEscrow { Id = Guid.NewGuid(), HoldId = Guid.NewGuid(), OrderId = orderId, OriginalAmount = 50_000m, RemainingAmount = 50_000m });
+        await context.SaveChangesAsync();
+        await PayAsync(context, buyer, orderId, 30_000m);
+
+        var code = await ErrorCodeAsync(() => SettleAsync(context, Payout(orderId, orderId, seller, 1_900_000m, 100_000m, 30_000m, 0m, 30_000m, depositEscrow: 2_000_000m, type: "AuctionPayout")));
+
+        Assert.Equal("DEPOSIT_ESCROW_INSUFFICIENT", code);
+        Assert.Equal(50_000m, (await context.AuctionDepositEscrows.SingleAsync(e => e.OrderId == orderId)).RemainingAmount);
+        Assert.Equal(30_000m, (await context.OrderEscrows.SingleAsync(e => e.OrderId == orderId)).RemainingAmount);
+        Assert.Empty(context.OrderSettlements);
+    }
+
+    [Fact]
     public async Task Payout_Auction_WithAMissingDepositEscrow_IsRefused_AndLeavesTheOrderEscrowUntouched()
     {
         using var context = new TestWalletDbContext(nameof(Payout_Auction_WithAMissingDepositEscrow_IsRefused_AndLeavesTheOrderEscrowUntouched));

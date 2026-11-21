@@ -1,6 +1,7 @@
 namespace Wallet.Application.Features.Settlements.Commands.SettleOrderPayout;
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -131,17 +132,21 @@ internal sealed class SettleOrderPayoutCommandHandler : IRequestHandler<SettleOr
         }
 
         decimal? depositBefore = null;
-        AuctionDepositEscrow? depositEscrow = null;
+        IReadOnlyList<AuctionDepositEscrow> depositEscrows = Array.Empty<AuctionDepositEscrow>();
         if (request.DepositEscrowAmount > 0m)
         {
-            depositEscrow = await _context.LockDepositEscrowByOrderIdAsync(request.ParentOrderId, cancellationToken)
-                ?? throw new BusinessRuleValidationException("DEPOSIT_ESCROW_NOT_FOUND", "No captured deposit escrow was found for the order.", 404);
-            if (depositEscrow.RemainingAmount < request.DepositEscrowAmount)
+            // An auction order can have several deposit escrows (Buy Now: the deposit and the goods hold). They are one pool for the payout.
+            depositEscrows = await _context.LockDepositEscrowsByOrderIdAsync(request.ParentOrderId, cancellationToken);
+            if (depositEscrows.Count == 0)
+            {
+                throw new BusinessRuleValidationException("DEPOSIT_ESCROW_NOT_FOUND", "No captured deposit escrow was found for the order.", 404);
+            }
+
+            depositBefore = depositEscrows.Sum(item => item.RemainingAmount);
+            if (depositBefore < request.DepositEscrowAmount)
             {
                 throw new BusinessRuleValidationException("DEPOSIT_ESCROW_INSUFFICIENT", "The deposit escrow has insufficient funds for this payout.", 409);
             }
-
-            depositBefore = depositEscrow.RemainingAmount;
         }
 
         PlatformSubsidyReservation? reservation = null;
@@ -212,10 +217,15 @@ internal sealed class SettleOrderPayoutCommandHandler : IRequestHandler<SettleOr
             orderEscrow.UpdatedAt = now;
         }
 
-        if (depositEscrow is not null)
+        var depositToTake = request.DepositEscrowAmount;
+        foreach (var depositEscrow in depositEscrows)
         {
-            depositEscrow.RemainingAmount -= request.DepositEscrowAmount;
+            if (depositToTake <= 0m) break;
+            var take = Math.Min(depositEscrow.RemainingAmount, depositToTake);
+            if (take <= 0m) continue;
+            depositEscrow.RemainingAmount -= take;
             depositEscrow.UpdatedAt = now;
+            depositToTake -= take;
         }
 
         if (reservation is not null && budget is not null)
@@ -268,7 +278,7 @@ internal sealed class SettleOrderPayoutCommandHandler : IRequestHandler<SettleOr
                 request.OrderEscrowAmount,
                 request.DepositEscrowAmount,
                 OrderEscrowRemaining = orderEscrow?.RemainingAmount,
-                DepositEscrowRemaining = depositEscrow?.RemainingAmount,
+                DepositEscrowRemaining = depositEscrows.Count == 0 ? (decimal?)null : depositEscrows.Sum(item => item.RemainingAmount),
                 EscrowReleaseTransactionId = releaseTransaction?.Id,
                 SubsidyTransactionId = subsidyTransaction?.Id
             },

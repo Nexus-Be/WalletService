@@ -97,8 +97,9 @@ public sealed class TestWalletDbContext : IWalletDbContext, IDisposable
     public Task<OrderEscrow?> LockOrderEscrowByOrderIdAsync(Guid orderId, CancellationToken cancellationToken)
         => _inner.OrderEscrows.SingleOrDefaultAsync(e => e.OrderId == orderId, cancellationToken);
 
-    public Task<AuctionDepositEscrow?> LockDepositEscrowByOrderIdAsync(Guid orderId, CancellationToken cancellationToken)
-        => _inner.AuctionDepositEscrows.SingleOrDefaultAsync(e => e.OrderId == orderId, cancellationToken);
+    public async Task<IReadOnlyList<AuctionDepositEscrow>> LockDepositEscrowsByOrderIdAsync(Guid orderId, CancellationToken cancellationToken)
+        => (await _inner.AuctionDepositEscrows.Where(e => e.OrderId == orderId).ToListAsync(cancellationToken))
+            .OrderBy(e => e.CreatedAt).ThenBy(e => e.Id).ToList();
 
     public Task<AuctionDepositEscrow?> LockDepositEscrowByHoldIdAsync(Guid holdId, CancellationToken cancellationToken)
         => _inner.AuctionDepositEscrows.SingleOrDefaultAsync(e => e.HoldId == holdId, cancellationToken);

@@ -138,12 +138,14 @@ public class WalletDbContext : DbContext, IWalletDbContext
             .SingleOrDefaultAsync(cancellationToken);
     }
 
-    public Task<AuctionDepositEscrow?> LockDepositEscrowByOrderIdAsync(Guid orderId, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<AuctionDepositEscrow>> LockDepositEscrowsByOrderIdAsync(Guid orderId, CancellationToken cancellationToken)
     {
         if (Database.CurrentTransaction is null)
             throw new InvalidOperationException("Deposit escrow lock requires a transaction.");
-        return AuctionDepositEscrows.FromSqlRaw(BuildLockQuery<AuctionDepositEscrow>(nameof(AuctionDepositEscrow.OrderId)), orderId)
-            .SingleOrDefaultAsync(cancellationToken);
+        // FOR UPDATE on every row of the order, always in the same order, so two spenders of the same deposits queue instead of crossing.
+        var rows = await AuctionDepositEscrows.FromSqlRaw(BuildLockQuery<AuctionDepositEscrow>(nameof(AuctionDepositEscrow.OrderId)), orderId)
+            .ToListAsync(cancellationToken);
+        return rows.OrderBy(item => item.CreatedAt).ThenBy(item => item.Id).ToList();
     }
 
     public Task<AuctionDepositEscrow?> LockDepositEscrowByHoldIdAsync(Guid holdId, CancellationToken cancellationToken)
