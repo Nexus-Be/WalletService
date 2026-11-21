@@ -289,6 +289,32 @@ public sealed class OrderSettlementV2Tests
     }
 
     [Fact]
+    public async Task Payout_WithASubsidy_PostsTheSubsidyToItsOwnLedgerAccount_NotToTheEscrowAccount()
+    {
+        using var context = new TestWalletDbContext(nameof(Payout_WithASubsidy_PostsTheSubsidyToItsOwnLedgerAccount_NotToTheEscrowAccount));
+        context.LedgerSettings.Add(new LedgerSettings { Id = 1, Enabled = true, ShadowEpoch = 1, Version = 1 });
+        await context.SaveChangesAsync();
+        await ActiveBudgetAsync(context);
+        var buyer = AddWallet(context, 500_000m);
+        var seller = AddWallet(context, 0m);
+        var orderId = Guid.NewGuid();
+        var subOrderId = Guid.NewGuid();
+        await PayAsync(context, buyer, orderId, 220_000m);
+        await new HoldPlatformSubsidyCommandHandler(context).Handle(new HoldPlatformSubsidyCommand(orderId, 10_000m) { SubOrderId = subOrderId }, default);
+
+        await SettleAsync(context, Payout(orderId, subOrderId, seller, 200_000m, 0m, 30_000m, 10_000m, 220_000m));
+
+        // One ledger posting per counter account: the escrow release (190,000) and the platform subsidy (10,000) are separate rows.
+        var postings = context.LedgerPostingPending.Where(p => p.WalletId == seller.Id && !p.IsEpochOpening).OrderBy(p => p.LedgerSeq).ToList();
+        Assert.Equal(2, postings.Count);
+        Assert.Equal(("EscrowRelease", 190_000m), (postings[0].Type, postings[0].Delta));
+        Assert.Equal(("PlatformSubsidyCredit", 10_000m), (postings[1].Type, postings[1].Delta));
+        Assert.Equal("ORDER_ESCROW", Wallet.Application.Common.Ledger.LedgerPostingRules.CounterAccountForPending(postings[0].Type));
+        Assert.Equal("PLATFORM_SUBSIDY", Wallet.Application.Common.Ledger.LedgerPostingRules.CounterAccountForPending(postings[1].Type));
+        Assert.Equal(200_000m, (await context.Wallets.SingleAsync(w => w.Id == seller.Id)).Balance);
+    }
+
+    [Fact]
     public async Task Payout_WithASubsidyThatWasNeverReserved_IsRefused_AndPaysNothing()
     {
         using var context = new TestWalletDbContext(nameof(Payout_WithASubsidyThatWasNeverReserved_IsRefused_AndPaysNothing));

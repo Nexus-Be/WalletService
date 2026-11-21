@@ -178,6 +178,13 @@ internal sealed class SettleOrderPayoutCommandHandler : IRequestHandler<SettleOr
             if (escrowPart > 0m)
             {
                 releaseTransaction = StageCredit(wallet, WalletTransactionType.EscrowRelease, escrowPart, request.SubOrderId, "Sub-order payout released to seller");
+                // The shadow ledger posts one entry per save against one counter account (the first transaction type decides). The subsidy
+                // belongs to a different account (PLATFORM_SUBSIDY) than the escrow release (ORDER_ESCROW), so it is saved on its own. Both
+                // saves are inside the same database transaction: they still commit or roll back together.
+                if (request.SubsidyAmount > 0m)
+                {
+                    await _context.SaveChangesAsync(cancellationToken);
+                }
             }
 
             if (request.SubsidyAmount > 0m)
