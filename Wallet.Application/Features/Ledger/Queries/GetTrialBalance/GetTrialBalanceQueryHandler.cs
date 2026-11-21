@@ -29,9 +29,11 @@ internal sealed class GetTrialBalanceQueryHandler : IRequestHandler<GetTrialBala
 
     public async Task<TrialBalanceResult> Handle(GetTrialBalanceQuery request, CancellationToken cancellationToken)
     {
-        var accounts = await _context.JournalLines.AsNoTracking().GroupBy(line => line.AccountCode)
-            .Select(group => new TrialBalanceAccount(group.Key, group.Sum(line => line.Debit), group.Sum(line => line.Credit)))
-            .OrderBy(account => account.Account).ToListAsync(cancellationToken);
+        var totals = await _context.JournalLines.AsNoTracking().GroupBy(line => line.AccountCode)
+            .Select(group => new { Account = group.Key, Debit = group.Sum(line => line.Debit), Credit = group.Sum(line => line.Credit) })
+            .ToListAsync(cancellationToken);
+        var accounts = totals.OrderBy(item => item.Account, StringComparer.Ordinal)
+            .Select(item => new TrialBalanceAccount(item.Account, item.Debit, item.Credit)).ToList();
         var debit = accounts.Sum(account => account.TotalDebit);
         var credit = accounts.Sum(account => account.TotalCredit);
         return new TrialBalanceResult(accounts, debit, credit, debit == credit);

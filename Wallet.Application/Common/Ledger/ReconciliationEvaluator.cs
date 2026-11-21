@@ -428,8 +428,28 @@ public sealed class ReconciliationEvaluator
             .Where(tx => tx.Status == TransactionStatus.Success && tx.Type != WalletTransactionType.DirectGatewayPayment && tx.BalanceBefore != tx.BalanceAfter
                 && tx.UpdatedAt >= from && tx.UpdatedAt <= cutoff)
             .OrderBy(tx => tx.UpdatedAt).Take(2000).ToListAsync(ct);
+        // When the ledger was switched on or off is kept in the audit log. A transaction is only judged when the ledger was on for its whole
+        // life plus a margin on both sides; anything near a switch is "not conclusive", never a finding.
+        var switches = (await _context.AuditLogs.AsNoTracking().Where(log => log.Action == AuditAction.LedgerShadowSwitch)
+            .OrderBy(log => log.CreatedAt).Select(log => new { log.CreatedAt, log.NewValues }).ToListAsync(ct))
+            .Select(log => (At: log.CreatedAt, On: log.NewValues != null && log.NewValues.Contains("\"Enabled\":true", StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+        bool OnThroughout(DateTimeOffset start, DateTimeOffset end)
+        {
+            var state = false;
+            foreach (var change in switches)
+            {
+                if (change.At > end + margin) break;
+                if (change.At >= start - margin) return false;   // a switch inside or next to the window
+                state = change.On;
+            }
+
+            return state;
+        }
+
         foreach (var tx in candidates.Where(tx => !covered.Contains(tx.Id)))
         {
+            if (!OnThroughout(tx.CreatedAt, tx.UpdatedAt)) continue;
             // A wallet only opens its epoch at its own first event after switch-on, so a gap before its opening row is history, not a miss.
             var opening = await _context.LedgerPostingPending.AsNoTracking().Where(row => row.WalletId == tx.WalletId && row.IsEpochOpening).MinAsync(row => (DateTimeOffset?)row.CreatedAt, ct);
             if (opening is null || tx.UpdatedAt < opening.Value + margin) continue;
