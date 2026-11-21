@@ -29,6 +29,9 @@ using Wallet.Application.Features.Checkout.Commands.PayOrderWithWallet;
 using Wallet.Application.Features.Checkout.Commands.RefundOrderPayment;
 using Wallet.Application.Features.Checkout.Commands.ResumeDirectPayment;
 using Wallet.Application.Features.Checkout.Commands.SettleSellerOrder;
+using Wallet.Application.Features.Settlements.Commands.SettleOrderPayout;
+using Wallet.Application.Features.Subsidies.Commands.HoldPlatformSubsidy;
+using Wallet.Application.Features.Subsidies.Commands.ReleasePlatformSubsidy;
 using Wallet.Application.Features.Checkout.Queries.GetDirectPaymentStatus;
 using Wallet.Application.Features.Holds.Commands.CaptureHold;
 using Wallet.Application.Features.Holds.Commands.CreateHold;
@@ -600,6 +603,45 @@ public sealed class WalletsController : ControllerBase
     public async Task<IActionResult> SettleSellerOrderInternal(
         Guid subOrderId,
         [FromBody] SettleSellerOrderCommand command,
+        CancellationToken cancellationToken) =>
+        Ok(await _sender.Send(command with { SubOrderId = subOrderId }, cancellationToken));
+
+    /// <summary>Atomic seller payout (protocol V2) over internal service authentication: escrow, seller credit, fee and shipping allocation and subsidy use in one transaction.</summary>
+    [HttpPost("~/api/v1/internal/wallets/order-settlements")]
+    [RequireInternalServiceKey]
+    [ApiExplorerSettings(IgnoreApi = true)]
+    [ReleaseFeatureAttribute(ReleaseFeature.OrderSettlementV2)]
+    [ProducesResponseType(typeof(SettleOrderPayoutResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+    public async Task<IActionResult> SettleOrderPayout(
+        [FromBody] SettleOrderPayoutCommand command,
+        CancellationToken cancellationToken) =>
+        Ok(await _sender.Send(command, cancellationToken));
+
+    /// <summary>Reserves the platform-funded voucher subsidy of one sub-order over internal service authentication.</summary>
+    [HttpPost("~/api/v1/internal/wallets/sub-orders/{subOrderId:guid}/subsidy-hold")]
+    [RequireInternalServiceKey]
+    [ApiExplorerSettings(IgnoreApi = true)]
+    [ReleaseFeatureAttribute(ReleaseFeature.OrderSettlementV2)]
+    [ProducesResponseType(typeof(SubsidyReservationResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+    public async Task<IActionResult> HoldPlatformSubsidy(
+        Guid subOrderId,
+        [FromBody] HoldPlatformSubsidyCommand command,
+        CancellationToken cancellationToken) =>
+        Ok(await _sender.Send(command with { SubOrderId = subOrderId }, cancellationToken));
+
+    /// <summary>Gives a held platform subsidy back to the budget over internal service authentication. A recovery action, so it is not gated.</summary>
+    [HttpPost("~/api/v1/internal/wallets/sub-orders/{subOrderId:guid}/subsidy-release")]
+    [RequireInternalServiceKey]
+    [ApiExplorerSettings(IgnoreApi = true)]
+    [ProducesResponseType(typeof(ReleasePlatformSubsidyResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> ReleasePlatformSubsidy(
+        Guid subOrderId,
+        [FromBody] ReleasePlatformSubsidyCommand command,
         CancellationToken cancellationToken) =>
         Ok(await _sender.Send(command with { SubOrderId = subOrderId }, cancellationToken));
 

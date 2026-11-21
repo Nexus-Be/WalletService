@@ -12,11 +12,11 @@ grep -q 'Include="MediatR"' Wallet.Application/Wallet.Application.csproj \
   || fail "Wallet.Application.csproj lost the MediatR package reference."
 
 handlers=$(find Wallet.Application/Features -name '*Handler.cs' 2>/dev/null | wc -l | tr -d ' ')
-[ "$handlers" = "60" ] || fail "Expected 60 handlers under Wallet.Application/Features, found $handlers."
+[ "$handlers" = "67" ] || fail "Expected 67 handlers under Wallet.Application/Features, found $handlers."
 commands=$(find Wallet.Application/Features -path '*/Commands/*' -name '*Handler.cs' 2>/dev/null | wc -l | tr -d ' ')
 queries=$(find Wallet.Application/Features -path '*/Queries/*' -name '*Handler.cs' 2>/dev/null | wc -l | tr -d ' ')
-[ "$commands" = "34" ] || fail "Expected 34 command handlers, found $commands."
-[ "$queries" = "26" ] || fail "Expected 26 query handlers, found $queries."
+[ "$commands" = "40" ] || fail "Expected 40 command handlers, found $commands."
+[ "$queries" = "27" ] || fail "Expected 27 query handlers, found $queries."
 
 if grep -rInE "interface I(Wallet|AdminWallet|Topup|Checkout|Transfer|Withdrawal|VnPayCallback)Service\b" \
     --include='*.cs' Wallet.Application Wallet.Api >/dev/null 2>&1; then
@@ -40,6 +40,6 @@ for controller in \
 done
 
 if [ "$failed" -eq 0 ]; then
-  echo "OK: Wallet CQRS architecture is intact (60 handlers, 2 controllers, MediatR wired)."
+  echo "OK: Wallet CQRS architecture is intact (67 handlers, 2 controllers, MediatR wired)."
 fi
 exit "$failed"

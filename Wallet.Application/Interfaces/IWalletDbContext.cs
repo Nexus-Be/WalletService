@@ -29,6 +29,9 @@ public interface IWalletDbContext
     DbSet<JournalLine> JournalLines { get; }
     DbSet<ReconciliationRun> ReconciliationRuns { get; }
     DbSet<ReconciliationFinding> ReconciliationFindings { get; }
+    DbSet<OrderSettlement> OrderSettlements { get; }
+    DbSet<PlatformSubsidyBudget> PlatformSubsidyBudgets { get; }
+    DbSet<PlatformSubsidyReservation> PlatformSubsidyReservations { get; }
     DatabaseFacade Database { get; }
 
     Task LockOrderPaymentAsync(Guid orderId, CancellationToken cancellationToken);
@@ -44,6 +47,10 @@ public interface IWalletDbContext
         string transactionReference,
         CancellationToken cancellationToken);
     Task<WithdrawalRequest?> LockWithdrawalRequestAsync(Guid withdrawalId, CancellationToken cancellationToken);
+    Task<OrderEscrow?> LockOrderEscrowByOrderIdAsync(Guid orderId, CancellationToken cancellationToken);
+    Task<AuctionDepositEscrow?> LockDepositEscrowByOrderIdAsync(Guid orderId, CancellationToken cancellationToken);
+    Task<AuctionDepositEscrow?> LockDepositEscrowByHoldIdAsync(Guid holdId, CancellationToken cancellationToken);
+    Task<PlatformSubsidyBudget?> LockSubsidyBudgetAsync(Guid budgetId, CancellationToken cancellationToken);
     void EnsureNoPendingChanges();
     Task ReloadUnmodifiedAsync<TEntity>(TEntity entity, CancellationToken cancellationToken) where TEntity : class;
 

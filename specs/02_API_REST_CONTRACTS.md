@@ -1,6 +1,6 @@
 # 02 — HỢP ĐỒNG GIAO TIẾP RESTFUL (WALLET SERVICE REST CONTRACTS)
 
-> **Trạng thái triển khai (2026-11-19):** ✅ 100% RESTFUL + CLASSIC CQRS — 60 use case (34 Command, 26 Query; `EnsureWalletCommand` do `GetMyWalletQueryHandler` gọi nội bộ). Controller chỉ inject `ISender`. Bãi bỏ hoàn toàn gRPC, Protobuf, RabbitMQ và MassTransit.
+> **Trạng thái triển khai (2026-11-19):** ✅ 100% RESTFUL + CLASSIC CQRS — 67 use case (40 Command, 27 Query; `EnsureWalletCommand` do `GetMyWalletQueryHandler` gọi nội bộ). Controller chỉ inject `ISender`. Bãi bỏ hoàn toàn gRPC, Protobuf, RabbitMQ và MassTransit.
 > **ĐÓNG BĂNG:** chạy `./scripts/verify-wallet-architecture.sh` trước khi sửa.
 > **Nguồn sự thật:** code (`Wallet.Api/Controllers/Public/`, `Wallet.Application/Features/`).
 > **Cập nhật lần cuối:** 2026-11-19.

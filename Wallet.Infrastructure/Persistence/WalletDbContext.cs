@@ -36,6 +36,9 @@ public class WalletDbContext : DbContext, IWalletDbContext
     public DbSet<JournalLine> JournalLines => Set<JournalLine>();
     public DbSet<ReconciliationRun> ReconciliationRuns => Set<ReconciliationRun>();
     public DbSet<ReconciliationFinding> ReconciliationFindings => Set<ReconciliationFinding>();
+    public DbSet<OrderSettlement> OrderSettlements => Set<OrderSettlement>();
+    public DbSet<PlatformSubsidyBudget> PlatformSubsidyBudgets => Set<PlatformSubsidyBudget>();
+    public DbSet<PlatformSubsidyReservation> PlatformSubsidyReservations => Set<PlatformSubsidyReservation>();
 
     public Task LockOrderPaymentAsync(Guid orderId, CancellationToken cancellationToken)
     {
@@ -124,6 +127,38 @@ public class WalletDbContext : DbContext, IWalletDbContext
     {
         return WithdrawalRequests
             .FromSqlRaw(BuildLockQuery<WithdrawalRequest>(nameof(WithdrawalRequest.Id)), withdrawalId)
+            .SingleOrDefaultAsync(cancellationToken);
+    }
+
+    public Task<OrderEscrow?> LockOrderEscrowByOrderIdAsync(Guid orderId, CancellationToken cancellationToken)
+    {
+        if (Database.CurrentTransaction is null)
+            throw new InvalidOperationException("Order escrow lock requires a transaction.");
+        return OrderEscrows.FromSqlRaw(BuildLockQuery<OrderEscrow>(nameof(OrderEscrow.OrderId)), orderId)
+            .SingleOrDefaultAsync(cancellationToken);
+    }
+
+    public Task<AuctionDepositEscrow?> LockDepositEscrowByOrderIdAsync(Guid orderId, CancellationToken cancellationToken)
+    {
+        if (Database.CurrentTransaction is null)
+            throw new InvalidOperationException("Deposit escrow lock requires a transaction.");
+        return AuctionDepositEscrows.FromSqlRaw(BuildLockQuery<AuctionDepositEscrow>(nameof(AuctionDepositEscrow.OrderId)), orderId)
+            .SingleOrDefaultAsync(cancellationToken);
+    }
+
+    public Task<AuctionDepositEscrow?> LockDepositEscrowByHoldIdAsync(Guid holdId, CancellationToken cancellationToken)
+    {
+        if (Database.CurrentTransaction is null)
+            throw new InvalidOperationException("Deposit escrow lock requires a transaction.");
+        return AuctionDepositEscrows.FromSqlRaw(BuildLockQuery<AuctionDepositEscrow>(nameof(AuctionDepositEscrow.HoldId)), holdId)
+            .SingleOrDefaultAsync(cancellationToken);
+    }
+
+    public Task<PlatformSubsidyBudget?> LockSubsidyBudgetAsync(Guid budgetId, CancellationToken cancellationToken)
+    {
+        if (Database.CurrentTransaction is null)
+            throw new InvalidOperationException("Subsidy budget lock requires a transaction.");
+        return PlatformSubsidyBudgets.FromSqlRaw(BuildLockQuery<PlatformSubsidyBudget>(nameof(PlatformSubsidyBudget.Id)), budgetId)
             .SingleOrDefaultAsync(cancellationToken);
     }
 

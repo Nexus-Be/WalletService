@@ -35,6 +35,11 @@ public sealed class ReleaseFeatureTests
     [InlineData(ReleaseFeature.LegacyCommerceCredits, "Production", "true", 0)]
     [InlineData(ReleaseFeature.LegacyCommerceCredits, "Development", "false", 503)]
     [InlineData(ReleaseFeature.LegacyCommerceCredits, "Production", "invalid", 500)]
+    [InlineData(ReleaseFeature.OrderSettlementV2, "Production", null, 503)]
+    [InlineData(ReleaseFeature.OrderSettlementV2, "Development", null, 0)]
+    [InlineData(ReleaseFeature.OrderSettlementV2, "Production", "true", 0)]
+    [InlineData(ReleaseFeature.OrderSettlementV2, "Development", "false", 503)]
+    [InlineData(ReleaseFeature.OrderSettlementV2, "Production", "invalid", 500)]
     [InlineData(ReleaseFeature.LegacyCommerceSettlement, "Production", null, 503)]
     [InlineData(ReleaseFeature.LegacyCommerceSettlement, "Development", null, 0)]
     [InlineData(ReleaseFeature.LegacyCommerceSettlement, "Production", "true", 0)]
@@ -112,6 +117,13 @@ public sealed class ReleaseFeatureTests
             var attribute = typeof(WalletsController).GetMethod(name)!.GetCustomAttributes<ReleaseFeatureAttribute>().Single();
             Assert.Equal(ReleaseFeature.LegacyCommerceSettlement, attribute.Feature);
         }
+        // The V2 payout and the subsidy hold are gated; releasing a subsidy is a recovery action and is not.
+        foreach (var name in new[] { nameof(WalletsController.SettleOrderPayout), nameof(WalletsController.HoldPlatformSubsidy) })
+        {
+            Assert.Equal(ReleaseFeature.OrderSettlementV2,
+                typeof(WalletsController).GetMethod(name)!.GetCustomAttributes<ReleaseFeatureAttribute>().Single().Feature);
+        }
+        Assert.Null(typeof(WalletsController).GetMethod(nameof(WalletsController.ReleasePlatformSubsidy))!.GetCustomAttribute<ReleaseFeatureAttribute>());
         Assert.NotNull(typeof(WalletsController).GetMethod(nameof(WalletsController.RefundOrder))!
             .GetCustomAttribute<ReleaseFeatureAttribute>());
         Assert.NotNull(typeof(WalletsController).GetMethod(nameof(WalletsController.RefundSubOrder))!
@@ -132,6 +144,7 @@ public sealed class ReleaseFeatureTests
             ReleaseFeature.Withdrawals => "ReleaseFeatures:WithdrawalsEnabled",
             ReleaseFeature.AuctionOrderCapture => "ReleaseFeatures:AuctionOrderCaptureEnabled",
             ReleaseFeature.LegacyCommerceCredits => "ReleaseFeatures:LegacyCommerceCreditsEnabled",
+            ReleaseFeature.OrderSettlementV2 => "ReleaseFeatures:OrderSettlementV2Enabled",
             ReleaseFeature.LegacyCommerceSettlement => "ReleaseFeatures:LegacyCommerceSettlementEnabled",
             _ => throw new ArgumentOutOfRangeException(nameof(feature))
         };

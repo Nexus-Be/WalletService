@@ -22,6 +22,10 @@ using Wallet.Application.Features.AdminWallets.Queries.ListAdminWithdrawals;
 using Wallet.Application.Features.AdminWallets.Queries.ListStripeReconciliationRequired;
 using Wallet.Application.Features.AdminWallets.Queries.ListWalletLedger;
 using Wallet.Application.Features.Ledger.Commands.BackfillJournal;
+using Wallet.Application.Features.Subsidies.Commands.ApproveSubsidyBudget;
+using Wallet.Application.Features.Subsidies.Commands.CloseSubsidyBudget;
+using Wallet.Application.Features.Subsidies.Commands.CreateSubsidyBudget;
+using Wallet.Application.Features.Subsidies.Queries.ListSubsidyBudgets;
 using Wallet.Application.Features.Ledger.Commands.RunReconciliation;
 using Wallet.Application.Features.Ledger.Commands.SetShadowLedger;
 using Wallet.Application.Features.Ledger.Commands.UpdateReconciliationFinding;
@@ -184,6 +188,46 @@ public sealed class AdminWalletsController : ControllerBase
     {
         if (!this.EnsureAdmin(out var authError)) return authError;
         return Ok(await _sender.Send(new GetTrialBalanceQuery(), cancellationToken));
+    }
+
+    /// <summary>Lists platform subsidy budgets with what is reserved, used and still available. Admin only.</summary>
+    [HttpGet("subsidy-budgets")]
+    [ProducesResponseType(typeof(PagedData<SubsidyBudgetResult>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListSubsidyBudgets(
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 20, CancellationToken cancellationToken = default)
+    {
+        if (!this.EnsureAdmin(out var authError)) return authError;
+        return Ok(await _sender.Send(new ListSubsidyBudgetsQuery(page, pageSize), cancellationToken));
+    }
+
+    /// <summary>Proposes a platform subsidy budget. It cannot be used until a different admin approves it. Admin only.</summary>
+    [HttpPost("subsidy-budgets")]
+    [ProducesResponseType(typeof(SubsidyBudgetResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> CreateSubsidyBudget([FromBody] CreateSubsidyBudgetCommand command, CancellationToken cancellationToken)
+    {
+        if (!this.EnsureAdmin(out var authError)) return authError;
+        if (!this.TryGetUserId(out var adminId, out var idError)) return idError;
+        return Ok(await _sender.Send(command with { AdminUserId = adminId }, cancellationToken));
+    }
+
+    /// <summary>Approves a pending subsidy budget. The approver must differ from the creator. Admin only.</summary>
+    [HttpPost("subsidy-budgets/{budgetId:guid}/approve")]
+    [ProducesResponseType(typeof(SubsidyBudgetResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ApproveSubsidyBudget(Guid budgetId, CancellationToken cancellationToken)
+    {
+        if (!this.EnsureAdmin(out var authError)) return authError;
+        if (!this.TryGetUserId(out var adminId, out var idError)) return idError;
+        return Ok(await _sender.Send(new ApproveSubsidyBudgetCommand { BudgetId = budgetId, AdminUserId = adminId }, cancellationToken));
+    }
+
+    /// <summary>Stops a subsidy budget from taking new reservations. Admin only.</summary>
+    [HttpPost("subsidy-budgets/{budgetId:guid}/close")]
+    [ProducesResponseType(typeof(SubsidyBudgetResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> CloseSubsidyBudget(Guid budgetId, CancellationToken cancellationToken)
+    {
+        if (!this.EnsureAdmin(out var authError)) return authError;
+        if (!this.TryGetUserId(out var adminId, out var idError)) return idError;
+        return Ok(await _sender.Send(new CloseSubsidyBudgetCommand { BudgetId = budgetId, AdminUserId = adminId }, cancellationToken));
     }
 
     /// <summary>Switches the shadow ledger on or off. Repeating the same switch changes nothing. Also the emergency off switch. Admin only.</summary>

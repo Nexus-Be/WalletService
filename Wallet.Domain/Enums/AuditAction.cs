@@ -41,5 +41,10 @@ public enum AuditAction
     LedgerShadowSwitch = 36,
     LedgerBackfill = 37,
     ReconciliationRun = 38,
-    ReconciliationFindingUpdate = 39
+    ReconciliationFindingUpdate = 39,
+    SettlementConflict = 40,
+    SubsidyBudgetCreate = 41,
+    SubsidyBudgetApprove = 42,
+    SubsidyHold = 43,
+    SubsidyRelease = 44
 }

@@ -697,6 +697,223 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Wallet.Domain.Entities.OrderSettlement", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BusinessType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("DepositEscrowAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<Guid?>("EscrowReleaseTransactionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<decimal>("OrderEscrowAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<Guid>("ParentOrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("PayloadFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<int>("PayloadVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("PlatformFeeAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<Guid>("SellerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("SellerReceiveAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<Guid>("SellerWalletId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("ShippingAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<Guid>("SubOrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("SubsidyAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<Guid?>("SubsidyTransactionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SubOrderId");
+
+                    b.HasIndex("BusinessType", "ParentOrderId", "SubOrderId")
+                        .IsUnique();
+
+                    b.ToTable("OrderSettlements", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_OrderSettlements_Amounts", "\"SellerReceiveAmount\" >= 0 AND \"PlatformFeeAmount\" >= 0 AND \"ShippingAmount\" >= 0 AND \"SubsidyAmount\" >= 0 AND \"OrderEscrowAmount\" >= 0 AND \"DepositEscrowAmount\" >= 0");
+
+                            t.HasCheckConstraint("CK_OrderSettlements_Identity", "\"OrderEscrowAmount\" + \"DepositEscrowAmount\" + \"SubsidyAmount\" = \"SellerReceiveAmount\" + \"PlatformFeeAmount\" + \"ShippingAmount\"");
+                        });
+                });
+
+            modelBuilder.Entity("Wallet.Domain.Entities.PlatformSubsidyBudget", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("ApprovedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ApprovedByAdminId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedByAdminId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("DailyLimit")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EvidenceRef")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.Property<decimal>("PerOrderCap")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("ReservedAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("TotalLimit")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("UsedAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("PlatformSubsidyBudgets", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_PlatformSubsidyBudgets_Approval", "(\"Status\" = 0 AND \"ApprovedByAdminId\" IS NULL) OR (\"Status\" IN (1, 2) AND \"ApprovedByAdminId\" IS NOT NULL AND \"ApprovedByAdminId\" <> \"CreatedByAdminId\")");
+
+                            t.HasCheckConstraint("CK_PlatformSubsidyBudgets_Limits", "\"TotalLimit\" > 0 AND \"DailyLimit\" > 0 AND \"PerOrderCap\" > 0 AND \"DailyLimit\" <= \"TotalLimit\" AND \"PerOrderCap\" <= \"DailyLimit\"");
+
+                            t.HasCheckConstraint("CK_PlatformSubsidyBudgets_Usage", "\"ReservedAmount\" >= 0 AND \"UsedAmount\" >= 0 AND \"ReservedAmount\" + \"UsedAmount\" <= \"TotalLimit\"");
+                        });
+                });
+
+            modelBuilder.Entity("Wallet.Domain.Entities.PlatformSubsidyReservation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<Guid>("BudgetId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ReleaseReason")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset?>("ReleasedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("SubOrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("UsedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SubOrderId")
+                        .IsUnique();
+
+                    b.HasIndex("BudgetId", "CreatedAt");
+
+                    b.ToTable("PlatformSubsidyReservations", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_PlatformSubsidyReservations_Amount", "\"Amount\" > 0");
+                        });
+                });
+
             modelBuilder.Entity("Wallet.Domain.Entities.ReconciliationFinding", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1363,6 +1580,15 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                     b.HasOne("Wallet.Domain.Entities.WalletAccount", null)
                         .WithMany()
                         .HasForeignKey("WalletId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Wallet.Domain.Entities.PlatformSubsidyReservation", b =>
+                {
+                    b.HasOne("Wallet.Domain.Entities.PlatformSubsidyBudget", null)
+                        .WithMany()
+                        .HasForeignKey("BudgetId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

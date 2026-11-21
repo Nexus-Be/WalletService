@@ -21,5 +21,6 @@ public enum WalletTransactionType
     AuctionDepositRefund = 16,
     OrderPaymentAdjustmentDebit = 17,
     OrderPaymentAdjustmentRefund = 18,
-    EscrowCancellationRefund = 19
+    EscrowCancellationRefund = 19,
+    PlatformSubsidyCredit = 20
 }

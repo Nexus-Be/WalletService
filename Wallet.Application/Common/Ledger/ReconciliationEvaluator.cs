@@ -97,6 +97,7 @@ public sealed class ReconciliationEvaluator
                 }
             }
 
+            if (wanted.Overlaps(new[] { "I3", "I4" })) await CheckAuctionPayoutsAsync(cutoff, wanted, findings, cancellationToken);
             if (wanted.Contains("I7")) await CheckI7Async(cutoff, findings, cancellationToken);
             if (wanted.Contains("I8")) await CheckI8Async(findings, cancellationToken);
             if (wanted.Contains("I9")) await CheckI9Async(findings, cancellationToken);
@@ -185,6 +186,10 @@ public sealed class ReconciliationEvaluator
 
         var byRef = txs.GroupBy(tx => tx.ReferenceId!.Value).ToDictionary(group => group.Key, group => group.ToList());
         var escrows = (await _context.OrderEscrows.AsNoTracking().Where(escrow => orderIds.Contains(escrow.OrderId)).ToListAsync(ct)).ToDictionary(escrow => escrow.OrderId);
+        // Protocol V2 payouts: one durable allocation per sub-order says how much left the order escrow and where it went.
+        var settlements = await _context.OrderSettlements.AsNoTracking().Where(item => orderIds.Contains(item.ParentOrderId)).ToListAsync(ct);
+        var settlementsByParent = settlements.GroupBy(item => item.ParentOrderId).ToDictionary(group => group.Key, group => group.ToList());
+        var settlementBySub = settlements.GroupBy(item => item.SubOrderId).ToDictionary(group => group.Key, group => group.First());
 
         foreach (var order in walletOrders)
         {
@@ -221,8 +226,14 @@ public sealed class ReconciliationEvaluator
                 }
                 else
                 {
-                    var released = order.SubOrders.Sum(sub => byRef.TryGetValue(sub.SubOrderId, out var subTxs)
+                    // What left the escrow: for a V2 sub-order the seller part, the platform fee and the shipping allocation (OrderEscrowAmount),
+                    // for a legacy sub-order only its EscrowRelease. The subsidy is paid from the budget, not from the escrow.
+                    var v2 = settlementsByParent.TryGetValue(order.OrderId, out var v2List) ? v2List : new List<OrderSettlement>();
+                    var v2Subs = v2.Select(item => item.SubOrderId).ToHashSet();
+                    var releasedV2 = v2.Sum(item => item.OrderEscrowAmount);
+                    var releasedV1 = order.SubOrders.Where(sub => !v2Subs.Contains(sub.SubOrderId)).Sum(sub => byRef.TryGetValue(sub.SubOrderId, out var subTxs)
                         ? subTxs.Where(tx => tx.Type == WalletTransactionType.EscrowRelease).Sum(tx => tx.Amount) : 0m);
+                    var released = releasedV1 + releasedV2;
                     var returned = orderTxs.Where(tx => tx.Type is WalletTransactionType.RefundCredit or WalletTransactionType.EscrowCancellationRefund).Sum(tx => tx.Amount);
                     var adjustments = orderTxs.Where(tx => tx.Type == WalletTransactionType.OrderPaymentAdjustmentDebit).Sum(tx => tx.Amount)
                         - orderTxs.Where(tx => tx.Type == WalletTransactionType.OrderPaymentAdjustmentRefund).Sum(tx => tx.Amount);
@@ -234,7 +245,17 @@ public sealed class ReconciliationEvaluator
                     var expectedRemaining = escrow.OriginalAmount - released - returned;
                     if (Math.Abs(escrow.RemainingAmount - expectedRemaining) > Tolerance)
                     {
-                        findings.Add(Finding("I3", "I3_REMAINING_MISMATCH", "High", order.OrderId.ToString(), "wallet-service", expectedRemaining, escrow.RemainingAmount, "Escrow remaining amount does not equal original minus payouts and refunds."));
+                        // The legacy payout route paid the seller without reducing the parent escrow (G-1). That is a known class of old data
+                        // with its own handling, not an unexplained mismatch, so it is reported apart and never auto-corrected.
+                        var legacyNotReduced = escrow.OriginalAmount - releasedV2 - returned;
+                        if (releasedV1 > 0m && Math.Abs(escrow.RemainingAmount - legacyNotReduced) <= Tolerance)
+                        {
+                            findings.Add(Finding("I3", "I3_LEGACY_ESCROW_NOT_REDUCED", "Low", order.OrderId.ToString(), "wallet-service", expectedRemaining, escrow.RemainingAmount, "A legacy payout paid the seller without reducing the order escrow. Old data: classify and review, do not adjust."));
+                        }
+                        else
+                        {
+                            findings.Add(Finding("I3", "I3_REMAINING_MISMATCH", "High", order.OrderId.ToString(), "wallet-service", expectedRemaining, escrow.RemainingAmount, "Escrow remaining amount does not equal original minus payouts and refunds."));
+                        }
                     }
                 }
             }
@@ -244,7 +265,27 @@ public sealed class ReconciliationEvaluator
                 foreach (var sub in order.SubOrders.Where(sub => sub.Status == "Completed" || sub.IsEscrowSettled))
                 {
                     var releases = byRef.TryGetValue(sub.SubOrderId, out var subTxs)
-                        ? subTxs.Where(tx => tx.Type == WalletTransactionType.EscrowRelease).ToList() : new List<WalletTransaction>();
+                        ? subTxs.Where(tx => tx.Type is WalletTransactionType.EscrowRelease or WalletTransactionType.PlatformSubsidyCredit).ToList() : new List<WalletTransaction>();
+                    if (settlementBySub.TryGetValue(sub.SubOrderId, out var allocation))
+                    {
+                        var allocationMismatches = new List<string>();
+                        if (Math.Abs(allocation.SellerReceiveAmount - sub.SellerReceiveAmount) > Tolerance) allocationMismatches.Add($"seller {allocation.SellerReceiveAmount} vs {sub.SellerReceiveAmount}");
+                        if (Math.Abs(allocation.PlatformFeeAmount - sub.PlatformFeeAmount) > Tolerance) allocationMismatches.Add($"fee {allocation.PlatformFeeAmount} vs {sub.PlatformFeeAmount}");
+                        if (Math.Abs(allocation.ShippingAmount - sub.ShippingFeeAmount) > Tolerance) allocationMismatches.Add($"shipping {allocation.ShippingAmount} vs {sub.ShippingFeeAmount}");
+                        if (Math.Abs(allocation.SubsidyAmount - sub.SystemDiscountAmount) > Tolerance) allocationMismatches.Add($"subsidy {allocation.SubsidyAmount} vs {sub.SystemDiscountAmount}");
+                        if (Math.Abs(allocation.OrderEscrowAmount - sub.TotalAmount) > Tolerance) allocationMismatches.Add($"escrow {allocation.OrderEscrowAmount} vs {sub.TotalAmount}");
+                        if (allocationMismatches.Count > 0)
+                        {
+                            findings.Add(Finding("I4", "I4_ALLOCATION_MISMATCH", "High", sub.SubOrderId.ToString(), "wallet-service", sub.SellerReceiveAmount, allocation.SellerReceiveAmount,
+                                "The payout allocation does not match the order figures: " + string.Join("; ", allocationMismatches)));
+                        }
+                    }
+
+                    if (releases.Count == 0 && sub.SellerReceiveAmount == 0m)
+                    {
+                        continue;
+                    }
+
                     if (releases.Count == 0)
                     {
                         findings.Add(Finding("I4", "I4_MISSING_RELEASE", "High", sub.SubOrderId.ToString(), "wallet-service", sub.SellerReceiveAmount, 0m, "A completed sub-order has no seller payout."));
@@ -526,6 +567,60 @@ public sealed class ReconciliationEvaluator
         }
 
         return results;
+    }
+
+    // ---- I3 and I4 for auction payouts (protocol V2). Read from the wallet's own allocation records: the seller credit must equal what the
+    // allocation says, and the order escrow must equal its original amount minus what the allocations took and what was returned.
+    private async Task CheckAuctionPayoutsAsync(DateTimeOffset cutoff, HashSet<string> wanted, List<ReconciliationFinding> findings, CancellationToken ct)
+    {
+        var settlements = await _context.OrderSettlements.AsNoTracking()
+            .Where(item => item.BusinessType == "AuctionPayout" && item.CreatedAt <= cutoff).ToListAsync(ct);
+        if (settlements.Count == 0) return;
+
+        var orderIds = settlements.Select(item => item.ParentOrderId).Distinct().ToList();
+        var subIds = settlements.Select(item => item.SubOrderId).Distinct().ToList();
+        var refs = orderIds.Concat(subIds).Select(id => (Guid?)id).ToList();
+        var txs = await _context.WalletTransactions.AsNoTracking()
+            .Where(tx => tx.Status == TransactionStatus.Success && tx.ReferenceId != null && refs.Contains(tx.ReferenceId)).ToListAsync(ct);
+        var byRef = txs.GroupBy(tx => tx.ReferenceId!.Value).ToDictionary(group => group.Key, group => group.ToList());
+        var escrows = (await _context.OrderEscrows.AsNoTracking().Where(item => orderIds.Contains(item.OrderId)).ToListAsync(ct)).ToDictionary(item => item.OrderId);
+
+        foreach (var settlement in settlements)
+        {
+            if (wanted.Contains("I4"))
+            {
+                var credited = byRef.TryGetValue(settlement.SubOrderId, out var list)
+                    ? list.Where(tx => tx.Type is WalletTransactionType.EscrowRelease or WalletTransactionType.PlatformSubsidyCredit).Sum(tx => tx.Amount) : 0m;
+                if (Math.Abs(credited - settlement.SellerReceiveAmount) > Tolerance)
+                {
+                    findings.Add(Finding("I4", "I4_AUCTION_AMOUNT_MISMATCH", "High", settlement.SubOrderId.ToString(), "wallet-service", settlement.SellerReceiveAmount, credited,
+                        "The seller credit of an auction payout does not equal its allocation."));
+                }
+            }
+        }
+
+        if (!wanted.Contains("I3")) return;
+        foreach (var group in settlements.GroupBy(item => item.ParentOrderId))
+        {
+            if (!escrows.TryGetValue(group.Key, out var escrow))
+            {
+                if (group.Any(item => item.OrderEscrowAmount > 0m))
+                {
+                    findings.Add(Finding("I3", "I3_MISSING_ESCROW", "High", group.Key.ToString(), "wallet-service", group.Sum(item => item.OrderEscrowAmount), 0m, "An auction payout took money from an order escrow that does not exist."));
+                }
+
+                continue;
+            }
+
+            var orderTxs = byRef.TryGetValue(group.Key, out var orderList) ? orderList : new List<WalletTransaction>();
+            var returned = orderTxs.Where(tx => tx.Type is WalletTransactionType.RefundCredit or WalletTransactionType.EscrowCancellationRefund).Sum(tx => tx.Amount);
+            var expected = escrow.OriginalAmount - group.Sum(item => item.OrderEscrowAmount) - returned;
+            if (Math.Abs(escrow.RemainingAmount - expected) > Tolerance)
+            {
+                findings.Add(Finding("I3", "I3_REMAINING_MISMATCH", "High", group.Key.ToString(), "wallet-service", expected, escrow.RemainingAmount,
+                    "Auction order escrow remaining amount does not equal original minus payout allocations and refunds."));
+            }
+        }
     }
 
     private static ReconciliationFinding Finding(string invariant, string code, string severity, string reference, string source, object expected, object actual, string description) => new()
