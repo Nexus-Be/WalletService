@@ -3,7 +3,7 @@
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **WalletService** (1845 symbols, 2983 relationships, 23 execution flows).
+This project is indexed by GitNexus as **WalletService** (5279 symbols, 15052 relationships, 168 execution flows).
 
 > Index stale? Run `node .gitnexus/run.cjs analyze --index-only` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? Bootstrap with `npx`, `bunx`, or `pnpm dlx` — e.g. `bunx gitnexus@latest analyze` (npm 11 npx crash; #1939).
 
