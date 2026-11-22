@@ -73,7 +73,7 @@ public sealed class P0PostgresRegressionTests
     [DisposablePostgresFact]
     public async Task ListTransactions_WithNonUtcDateOffsets_SucceedsOnPostgres()
     {
-        var (options, ownerId, _) = await Setup();
+        var (options, ownerId, _) = await Setup(buyerBalance: 100_000m);
 
         await using (var context = new WalletDbContext(options))
         {

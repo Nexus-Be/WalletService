@@ -162,8 +162,7 @@ public sealed class AuctionOrderEscrowPostgresTests
         await using var verify = new WalletDbContext(options);
         Assert.Equal(60m, (await verify.OrderEscrows.SingleAsync(item => item.OrderId == orderId)).RemainingAmount);
         Assert.Equal(40m, (await verify.Wallets.SingleAsync(item => item.UserId == sellerId)).Balance);
-        Assert.Equal(1, await verify.AuditLogs.CountAsync(item =>
-            item.Action == AuditAction.OrderEscrowReconciliation));
+        Assert.Equal(1, await ReconciliationAudits(verify, orderId));
     }
 
     [DisposablePostgresFact]
@@ -334,8 +333,7 @@ public sealed class AuctionOrderEscrowPostgresTests
             item.ReferenceId == orderId && item.Type == WalletTransactionType.RefundCredit));
         Assert.Equal(0, await verify.AuditLogs.CountAsync(item =>
             item.Action == AuditAction.OrderRefund && item.EntityId == orderId.ToString()));
-        Assert.Equal(0, await verify.AuditLogs.CountAsync(item =>
-            item.Action == AuditAction.OrderEscrowReconciliation));
+        Assert.Equal(0, await ReconciliationAudits(verify, orderId));
         Assert.Equal(1, await verify.OrderEscrows.IgnoreQueryFilters()
             .CountAsync(item => item.OrderId == orderId));
     }
@@ -472,10 +470,18 @@ public sealed class AuctionOrderEscrowPostgresTests
             item.ReferenceId == orderId && item.Type == WalletTransactionType.EscrowCancellationRefund));
         Assert.Equal(0, await verify.AuditLogs.CountAsync(item =>
             item.Action == AuditAction.OrderEscrowCancel && item.EntityId == orderId.ToString()));
-        Assert.Equal(0, await verify.AuditLogs.CountAsync(item =>
-            item.Action == AuditAction.OrderEscrowReconciliation));
+        Assert.Equal(0, await ReconciliationAudits(verify, orderId));
         Assert.Equal(1, await verify.OrderEscrows.IgnoreQueryFilters()
             .CountAsync(item => item.OrderId == orderId));
+    }
+
+    // The database is shared by every test in the collection, so the audit rows are counted for this order's escrow only.
+    private static async Task<int> ReconciliationAudits(WalletDbContext context, Guid orderId)
+    {
+        var escrowIds = await context.OrderEscrows.IgnoreQueryFilters().Where(item => item.OrderId == orderId)
+            .Select(item => item.Id.ToString()).ToListAsync();
+        return await context.AuditLogs.CountAsync(item =>
+            item.Action == AuditAction.OrderEscrowReconciliation && escrowIds.Contains(item.EntityId));
     }
 
     private static async Task<(DbContextOptions<WalletDbContext> Options, Guid BuyerId, Guid SellerId)> Setup(

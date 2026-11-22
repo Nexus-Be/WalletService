@@ -198,7 +198,10 @@ public sealed class StripeSettlementPostgresTests
         var result = await creation;
         await using var replayContext = new WalletDbContext(options);
         var replay = await StripeDirectPreparation.CreateAsync(replayContext, provider, owner, order, 100000, default);
-        Assert.Equal(result, replay);
+        // The row is read back from PostgreSQL, which keeps microseconds; the in-memory value keeps 100 ns ticks, so the timestamp is
+        // compared with a tolerance and every other field exactly.
+        Assert.Equal(result with { CreatedAt = default }, replay with { CreatedAt = default });
+        Assert.True((result.CreatedAt - replay.CreatedAt).Duration() < TimeSpan.FromMilliseconds(1));
         Assert.Equal(1, provider.Calls);
     }
 

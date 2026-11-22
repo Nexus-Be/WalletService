@@ -29,7 +29,7 @@ public sealed class AuctionHoldWithdrawalRaceTests
         var hold = new CreateHoldCommand(owner, "AUCTION_DEPOSIT", reference, 70000, "VND", null)
             { IdempotencyKey = $"hold:{reference}" };
         var withdrawal = new RequestWithdrawalCommand(70000, "VND", "bank", "123", "Holder")
-            { UserId = owner.ToString(), IdempotencyKey = $"wd:{reference}" };
+            { UserId = owner.ToString(), IdempotencyKey = $"wd-{reference}" };
         await using var a = new WalletDbContext(options);
         await using var b = new WalletDbContext(options);
         var results = await Task.WhenAll(
