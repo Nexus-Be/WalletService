@@ -46,6 +46,12 @@ Body `{ "orderId", "amount" }`. Reserves the subsidy for one sub-order (one rese
 Body `{ "reason" }`. Gives a held subsidy back. Repeating it, or releasing a sub-order that never reserved anything, changes nothing
 (`status` `Released` or `None`). A subsidy already used by a payout returns 409 `SUBSIDY_ALREADY_USED`.
 
+## GET /api/v1/internal/wallets/subsidy-holds/stale
+
+Query `olderThanMinutes` (5 to 10080, default 30) and `limit` (1 to 100, default 50). Returns `[ { subOrderId, orderId, amount, heldSince } ]`
+for reservations that are still `Held` after that time, oldest first. Only Commerce can say whether such a hold belongs to a live sub-order, so
+Wallet never releases them by itself: Commerce releases the ones whose sub-order does not exist (see the runbook).
+
 ## Admin: /api/v1/admin/wallets/subsidy-budgets (admin role only)
 
 * `GET` lists budgets with reserved, used and available amounts.

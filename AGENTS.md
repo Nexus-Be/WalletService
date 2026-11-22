@@ -47,7 +47,7 @@ This project is indexed by GitNexus as **WalletService** (1845 symbols, 2983 rel
 
 # QUY CHUẨN VẬN HÀNH DÀNH CHO AI CODING AGENTS (WALLET SERVICE)
 
-> **Trạng thái triển khai (2026-11-19):** ✅ ĐÃ CHUẨN HÓA — 100% RESTful API, **classic CQRS qua MediatR** (67 use case: 40 Command, 27 Query; `EnsureWalletCommand` được query gọi nội bộ), controller chỉ inject `ISender`, cấm gRPC, bãi bỏ hoàn toàn RabbitMQ, MassTransit, Saga và Outbox/Inbox tables. WalletService là **ngoại lệ duy nhất** của lệnh cấm MediatR toàn hệ thống.
+> **Trạng thái triển khai (2026-11-19):** ✅ ĐÃ CHUẨN HÓA — 100% RESTful API, **classic CQRS qua MediatR** (68 use case: 40 Command, 28 Query; `EnsureWalletCommand` được query gọi nội bộ), controller chỉ inject `ISender`, cấm gRPC, bãi bỏ hoàn toàn RabbitMQ, MassTransit, Saga và Outbox/Inbox tables. WalletService là **ngoại lệ duy nhất** của lệnh cấm MediatR toàn hệ thống.
 > **Nguồn sự thật:** code (`Wallet.sln`, `Wallet.Api/Controllers/Public/`, `Wallet.Application/Features/`).
 > **Cập nhật lần cuối:** 2026-11-19.
 
@@ -58,7 +58,7 @@ This project is indexed by GitNexus as **WalletService** (1845 symbols, 2983 rel
 WalletService là **service duy nhất** dùng MediatR/CQRS. Cấu trúc này từng bị đảo ngược bởi agent khác, nên được đóng băng.
 
 **Bất biến:**
-* Đúng 67 use case tại `Wallet.Application/Features/{Area}/Commands|Queries/{UseCase}/`, đúng 67 file `*Handler.cs` (40 Command, 27 Query).
+* Đúng 68 use case tại `Wallet.Application/Features/{Area}/Commands|Queries/{UseCase}/`, đúng 68 file `*Handler.cs` (40 Command, 28 Query).
 * Đúng 2 controller: `Controllers/Public/WalletsController.cs`, `Controllers/Public/AdminWalletsController.cs`. `CheckoutDirect` và các route `~/api/v1/internal/wallets/...` (bảo vệ bởi `[RequireInternalServiceKey]` / `[RequireAuctionServiceKey]`) nằm trong `WalletsController`. Mỗi controller chỉ inject `ISender` và `ILogger`.
 * `MediatR 12.4.1` trong `Wallet.Application.csproj`; `AddMediatR` + `ValidationBehavior<,>` trong `DependencyInjection.cs`.
 * Handler inject trực tiếp `IWalletDbContext`.

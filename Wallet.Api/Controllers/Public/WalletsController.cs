@@ -32,6 +32,7 @@ using Wallet.Application.Features.Checkout.Commands.SettleSellerOrder;
 using Wallet.Application.Features.Settlements.Commands.SettleOrderPayout;
 using Wallet.Application.Features.Subsidies.Commands.HoldPlatformSubsidy;
 using Wallet.Application.Features.Subsidies.Commands.ReleasePlatformSubsidy;
+using Wallet.Application.Features.Subsidies.Queries.ListStaleSubsidyHolds;
 using Wallet.Application.Features.Checkout.Queries.GetDirectPaymentStatus;
 using Wallet.Application.Features.Holds.Commands.CaptureHold;
 using Wallet.Application.Features.Holds.Commands.CreateHold;
@@ -644,6 +645,17 @@ public sealed class WalletsController : ControllerBase
         [FromBody] ReleasePlatformSubsidyCommand command,
         CancellationToken cancellationToken) =>
         Ok(await _sender.Send(command with { SubOrderId = subOrderId }, cancellationToken));
+
+    /// <summary>Lists subsidy reservations that are still held long after they were taken, over internal service authentication. Commerce uses it to find holds whose sub-order was never saved.</summary>
+    [HttpGet("~/api/v1/internal/wallets/subsidy-holds/stale")]
+    [RequireInternalServiceKey]
+    [ApiExplorerSettings(IgnoreApi = true)]
+    [ProducesResponseType(typeof(IReadOnlyList<StaleSubsidyHoldResult>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListStaleSubsidyHolds(
+        [FromQuery] int olderThanMinutes = 30,
+        [FromQuery] int limit = 50,
+        CancellationToken cancellationToken = default) =>
+        Ok(await _sender.Send(new ListStaleSubsidyHoldsQuery(olderThanMinutes, limit), cancellationToken));
 
     /// <summary>Refunds an order's wallet payment back to the buyer over internal service authentication.</summary>
     [HttpPost("~/api/v1/internal/wallets/orders/{orderId:guid}/refund")]
