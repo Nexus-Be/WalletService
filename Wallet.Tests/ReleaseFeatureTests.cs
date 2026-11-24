@@ -44,6 +44,13 @@ public sealed class ReleaseFeatureTests
     [InlineData(ReleaseFeature.LegacyCommerceSettlement, "Development", null, 0)]
     [InlineData(ReleaseFeature.LegacyCommerceSettlement, "Production", "true", 0)]
     [InlineData(ReleaseFeature.LegacyCommerceSettlement, "Development", "false", 503)]
+    [InlineData(ReleaseFeature.OrderRefund, "Production", null, 503)]
+    [InlineData(ReleaseFeature.OrderRefund, "Staging", null, 503)]
+    [InlineData(ReleaseFeature.OrderRefund, "Development", null, 503)]   // closed by default even in Development
+    [InlineData(ReleaseFeature.OrderRefund, "Production", "true", 0)]
+    [InlineData(ReleaseFeature.OrderRefund, "Development", "true", 0)]
+    [InlineData(ReleaseFeature.OrderRefund, "Development", "false", 503)]
+    [InlineData(ReleaseFeature.OrderRefund, "Production", "invalid", 500)]
     public void Gate_UsesExplicitConfigurationOrEnvironmentDefault(
         ReleaseFeature feature, string environment, string? configured, int expected)
     {
@@ -92,6 +99,41 @@ public sealed class ReleaseFeatureTests
             new Dictionary<string, object?>(), new object());
         new ReleaseFeatureAttribute(ReleaseFeature.LegacyCommerceCredits).OnActionExecuting(refund);
         if (credits == "true") Assert.Null(refund.Result); else Assert.NotNull(refund.Result);
+    }
+
+    [Fact]
+    public void AllFourRefundRoutes_FollowTheDedicatedRefundFlag()
+    {
+        foreach (var name in new[]
+                 {
+                     nameof(WalletsController.RefundOrder), nameof(WalletsController.RefundSubOrder),
+                     nameof(WalletsController.RefundOrderInternal), nameof(WalletsController.RefundSubOrderInternal)
+                 })
+        {
+            var attribute = typeof(WalletsController).GetMethod(name)!.GetCustomAttributes<ReleaseFeatureAttribute>().Single();
+            Assert.Equal(ReleaseFeature.OrderRefund, attribute.Feature);
+        }
+    }
+
+    [Theory]
+    [InlineData("Development", "true")]
+    [InlineData("Production", "true")]
+    public void RefundFlag_NeverFallsBackToTheLegacyFlag(string environment, string legacy)
+    {
+        // Only the legacy flag is open; the refund flag is not configured, so the refund routes stay closed.
+        var services = new ServiceCollection()
+            .AddSingleton<IConfiguration>(new ConfigurationBuilder().AddInMemoryCollection(
+                new Dictionary<string, string?> { ["ReleaseFeatures:LegacyCommerceCreditsEnabled"] = legacy }).Build())
+            .AddSingleton<IWebHostEnvironment>(new TestEnvironment { EnvironmentName = environment })
+            .AddLogging()
+            .BuildServiceProvider();
+        var http = new DefaultHttpContext { RequestServices = services };
+        var context = new ActionExecutingContext(new ActionContext(http, new RouteData(), new ActionDescriptor()), [],
+            new Dictionary<string, object?>(), new object());
+
+        new ReleaseFeatureAttribute(ReleaseFeature.OrderRefund).OnActionExecuting(context);
+
+        Assert.Equal(503, Assert.IsType<ObjectResult>(context.Result).StatusCode);
     }
 
     [Fact]
@@ -146,6 +188,7 @@ public sealed class ReleaseFeatureTests
             ReleaseFeature.LegacyCommerceCredits => "ReleaseFeatures:LegacyCommerceCreditsEnabled",
             ReleaseFeature.OrderSettlementV2 => "ReleaseFeatures:OrderSettlementV2Enabled",
             ReleaseFeature.LegacyCommerceSettlement => "ReleaseFeatures:LegacyCommerceSettlementEnabled",
+            ReleaseFeature.OrderRefund => "ReleaseFeatures:OrderRefundEnabled",
             _ => throw new ArgumentOutOfRangeException(nameof(feature))
         };
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(

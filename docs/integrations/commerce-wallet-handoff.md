@@ -66,8 +66,8 @@ UUID placeholders are nonempty UUIDs.
 | Start direct Stripe payment | `POST /api/v1/wallets/checkout/direct` | `200` | Existing; buyer identity; test mode. |
 | Read direct-payment status | `GET /api/v1/wallets/checkout/direct/{orderId}` | `200` | Existing; owner or admin/staff. |
 | Seller wallet settlement | `POST /api/v1/wallets/sub-orders/{subOrderId}/settle` | `200` | Existing; `LegacyCommerceCredits` gate; escrow change uncommitted. |
-| Refund wallet-funded order | `POST /api/v1/wallets/orders/{orderId}/refund` | `200` | Existing; `LegacyCommerceCredits` gate; escrow change uncommitted. |
-| Refund legacy sub-order | `POST /api/v1/wallets/sub-orders/{subOrderId}/refund` | `200` | Existing; `LegacyCommerceCredits` gate; no automatic parent-payment mapping. |
+| Refund wallet-funded order | `POST /api/v1/wallets/orders/{orderId}/refund` | `200` | Existing; `OrderRefund` gate (off by default everywhere). |
+| Refund sub-order | `POST /api/v1/wallets/sub-orders/{subOrderId}/refund` | `200` | `OrderRefund` gate; body must include `parentOrderId` (else `400 PARENT_ORDER_REQUIRED`, nothing credited); the answer carries `replayed`. One refund per sub-order id. |
 | Cancel direct payment | `POST /api/v1/wallets/checkout/direct/{orderId}/cancel` | **TBD** | Approved direction only; **not implemented**. |
 | Stripe event callback | `POST /api/v1/wallets/stripe/webhooks` | Empty `200` | Existing; anonymous but Stripe signature verified. |
 

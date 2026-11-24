@@ -28,6 +28,17 @@ internal sealed class RefundOrderPaymentCommandHandler
         CancellationToken cancellationToken)
     {
         var buyerId = Guid.Parse(request.UserId);
+
+        // A sub-order refund draws on the parent order's escrow. Without the parent id the payment and the escrow cannot be checked,
+        // so the credit would be created out of nothing; refuse it and let the caller handle the case manually.
+        if (request.IsSubOrder && !request.ParentOrderId.HasValue)
+        {
+            throw new BusinessRuleValidationException(
+                "PARENT_ORDER_REQUIRED",
+                "A sub-order refund must name its parent order.",
+                400);
+        }
+
         var escrowOrderId = request.ParentOrderId ?? request.OrderId;
         var enforceEscrow = !request.IsSubOrder || request.ParentOrderId.HasValue;
 
@@ -76,7 +87,9 @@ internal sealed class RefundOrderPaymentCommandHandler
                     409);
             }
 
-            return Map(existing);
+            // The refund for this order id was already made: answer with that transaction and say so, so the caller can tell a replay
+            // from a credit that was just created.
+            return Map(existing) with { Replayed = true };
         }
 
         OrderEscrow? escrow = null;

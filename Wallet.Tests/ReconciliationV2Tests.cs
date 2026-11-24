@@ -164,6 +164,111 @@ public sealed class ReconciliationV2Tests
         Assert.Equal("High", finding.Severity);
     }
 
+    // ---- G8: a sub-order refund is recorded against the sub-order id but is paid out of the parent escrow.
+
+    private static async Task AddUnsafeSubOrderRefund(TestWalletDbContext db, WalletAccount buyer, Guid subId, decimal amount)
+    {
+        // What the old refund path did when Commerce sent no parent order id: the buyer is credited, the escrow is left whole.
+        buyer.Balance += amount;
+        db.WalletTransactions.Add(new WalletTransaction
+        {
+            Id = Guid.NewGuid(),
+            WalletId = buyer.Id,
+            UserId = buyer.UserId.ToString(),
+            Type = WalletTransactionType.RefundCredit,
+            Amount = amount,
+            Currency = "Vnd",
+            BalanceBefore = buyer.Balance - amount,
+            BalanceAfter = buyer.Balance,
+            ReferenceId = subId,
+            Status = TransactionStatus.Success,
+            Note = "Order refund",
+            CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-5)
+        });
+        await db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task A_sub_order_refund_that_never_reduced_the_escrow_followed_by_a_payout_is_reported_as_paid_out_twice()
+    {
+        using var db = new TestWalletDbContext(nameof(A_sub_order_refund_that_never_reduced_the_escrow_followed_by_a_payout_is_reported_as_paid_out_twice));
+        var buyer = AddWallet(db, 500_000m);
+        var seller = AddWallet(db, 0m);
+        var orderId = Guid.NewGuid();
+        var subId = Guid.NewGuid();
+        await Pay(db, buyer, orderId, 230_000m);
+        await AddUnsafeSubOrderRefund(db, buyer, subId, 230_000m);
+        // Then the order is completed and the seller is paid out of the escrow that still holds the whole payment.
+        await new SettleOrderPayoutCommandHandler(db).Handle(
+            new SettleOrderPayoutCommand("OrderPayout", orderId, subId, seller.UserId.ToString(), 180_000m, 20_000m, 30_000m, 0m, 230_000m, 0m), default);
+        var sources = new Sources();
+        sources.Orders.Add(CompletedOrder(orderId, subId));
+
+        var finding = Assert.Single(await RunAsync(db, sources, "I3"));
+
+        Assert.Equal("I3_OUTFLOW_EXCEEDS_PAYMENT", finding.Code);
+        Assert.Equal("High", finding.Severity);
+    }
+
+    [Fact]
+    public async Task A_sub_order_refund_credited_without_reducing_the_escrow_is_high_even_before_anything_is_paid_out()
+    {
+        using var db = new TestWalletDbContext(nameof(A_sub_order_refund_credited_without_reducing_the_escrow_is_high_even_before_anything_is_paid_out));
+        var buyer = AddWallet(db, 500_000m);
+        var orderId = Guid.NewGuid();
+        var subId = Guid.NewGuid();
+        await Pay(db, buyer, orderId, 230_000m);
+        await AddUnsafeSubOrderRefund(db, buyer, subId, 230_000m);
+        var sources = new Sources();
+        sources.Orders.Add(CompletedOrder(orderId, subId));
+
+        var finding = Assert.Single(await RunAsync(db, sources, "I3"));
+
+        // The total paid out does not exceed the payment yet, but the buyer was credited while the escrow still holds the money.
+        Assert.Equal("I3_REFUND_NOT_REDUCED", finding.Code);
+        Assert.Equal("High", finding.Severity);
+    }
+
+    [Theory]
+    [InlineData(230_000, 0)]        // a full sub-order refund that did reduce the escrow
+    [InlineData(100_000, 130_000)]  // a partial sub-order refund, the rest is still in the escrow
+    public async Task A_sub_order_refund_that_did_reduce_the_escrow_is_not_reported(int refund, int remaining)
+    {
+        using var db = new TestWalletDbContext("g8-valid-" + refund);
+        var buyer = AddWallet(db, 500_000m);
+        var orderId = Guid.NewGuid();
+        var subId = Guid.NewGuid();
+        await Pay(db, buyer, orderId, 230_000m);
+        await new Wallet.Application.Features.Checkout.Commands.RefundOrderPayment.RefundOrderPaymentCommandHandler(db).Handle(
+            new Wallet.Application.Features.Checkout.Commands.RefundOrderPayment.RefundOrderPaymentCommand(buyer.UserId.ToString(), refund, "Sub-order refunded", orderId)
+            {
+                OrderId = subId,
+                IsSubOrder = true
+            }, default);
+        Assert.Equal(remaining, (int)(await db.OrderEscrows.SingleAsync()).RemainingAmount);
+        var sources = new Sources();
+        sources.Orders.Add(CompletedOrder(orderId, subId));
+
+        Assert.Empty(await RunAsync(db, sources, "I3"));
+    }
+
+    [Fact]
+    public async Task A_v2_payout_on_its_own_still_does_not_count_the_seller_part_twice()
+    {
+        using var db = new TestWalletDbContext(nameof(A_v2_payout_on_its_own_still_does_not_count_the_seller_part_twice));
+        var buyer = AddWallet(db, 500_000m);
+        var seller = AddWallet(db, 0m);
+        var orderId = Guid.NewGuid();
+        var subId = Guid.NewGuid();
+        await Pay(db, buyer, orderId, 230_000m);
+        await new SettleOrderPayoutCommandHandler(db).Handle(
+            new SettleOrderPayoutCommand("OrderPayout", orderId, subId, seller.UserId.ToString(), 180_000m, 20_000m, 30_000m, 0m, 230_000m, 0m), default);
+        var sources = new Sources();
+        sources.Orders.Add(CompletedOrder(orderId, subId));
+
+        Assert.Empty(await RunAsync(db, sources, "I3"));
+    }
+
     [Theory]
     [InlineData(AuctionHoldStatus.Released, 0)]   // released before capture
     [InlineData(AuctionHoldStatus.Refunded, 0)]   // captured, then refunded (seller rejected, order cancelled): still a given-back deposit

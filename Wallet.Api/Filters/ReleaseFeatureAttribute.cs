@@ -13,7 +13,13 @@ public enum ReleaseFeature
     /// <summary>Legacy (V1) seller payout route only. Falls back to LegacyCommerceCredits when not configured, so it can be closed without closing the refund routes.</summary>
     LegacyCommerceSettlement,
     /// <summary>Atomic seller payout (protocol V2) and the platform subsidy hold. Off by default outside Development.</summary>
-    OrderSettlementV2
+    OrderSettlementV2,
+    /// <summary>
+    /// The four refund routes (order and sub-order, each on the service route and the internal route). Unlike every other feature it is
+    /// off by default in every environment, Development included, and never falls back to another setting: it is opened only by an
+    /// explicit <c>ReleaseFeatures:OrderRefundEnabled=true</c>, after the refund path has been checked.
+    /// </summary>
+    OrderRefund
 }
 
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
@@ -38,6 +44,7 @@ public sealed class ReleaseFeatureAttribute(ReleaseFeature feature) : Attribute,
             ReleaseFeature.AuctionOrderCapture => "ReleaseFeatures:AuctionOrderCaptureEnabled",
             ReleaseFeature.LegacyCommerceCredits => "ReleaseFeatures:LegacyCommerceCreditsEnabled",
             ReleaseFeature.OrderSettlementV2 => "ReleaseFeatures:OrderSettlementV2Enabled",
+            ReleaseFeature.OrderRefund => "ReleaseFeatures:OrderRefundEnabled",
             ReleaseFeature.LegacyCommerceSettlement =>
                 configuration["ReleaseFeatures:LegacyCommerceSettlementEnabled"] is not null
                     ? "ReleaseFeatures:LegacyCommerceSettlementEnabled"
@@ -45,7 +52,8 @@ public sealed class ReleaseFeatureAttribute(ReleaseFeature feature) : Attribute,
             _ => throw new InvalidOperationException("The release feature is invalid.")
         };
         var configured = configuration[setting];
-        var enabled = environment.IsDevelopment();
+        // Every feature is open in Development unless configured; OrderRefund is the exception and is closed everywhere until it is set to true.
+        var enabled = feature != ReleaseFeature.OrderRefund && environment.IsDevelopment();
         if (configured is not null && !bool.TryParse(configured, out enabled))
         {
             logger.LogError("Release feature setting {Setting} is invalid.", setting);

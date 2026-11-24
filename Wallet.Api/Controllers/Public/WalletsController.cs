@@ -505,7 +505,7 @@ public sealed class WalletsController : ControllerBase
     [HttpPost("orders/{orderId:guid}/refund")]
     [RequireInternalServiceKey]
     [ApiExplorerSettings(IgnoreApi = true)]
-    [ReleaseFeatureAttribute(ReleaseFeature.LegacyCommerceCredits)]
+    [ReleaseFeatureAttribute(ReleaseFeature.OrderRefund)]
     [ProducesResponseType(typeof(WalletOrderTransactionResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> RefundOrder(
@@ -521,7 +521,7 @@ public sealed class WalletsController : ControllerBase
     [HttpPost("sub-orders/{subOrderId:guid}/refund")]
     [RequireInternalServiceKey]
     [ApiExplorerSettings(IgnoreApi = true)]
-    [ReleaseFeatureAttribute(ReleaseFeature.LegacyCommerceCredits)]
+    [ReleaseFeatureAttribute(ReleaseFeature.OrderRefund)]
     [ProducesResponseType(typeof(WalletOrderTransactionResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> RefundSubOrder(
@@ -661,7 +661,7 @@ public sealed class WalletsController : ControllerBase
     [HttpPost("~/api/v1/internal/wallets/orders/{orderId:guid}/refund")]
     [RequireInternalServiceKey]
     [ApiExplorerSettings(IgnoreApi = true)]
-    [ReleaseFeatureAttribute(ReleaseFeature.LegacyCommerceCredits)]
+    [ReleaseFeatureAttribute(ReleaseFeature.OrderRefund)]
     [ProducesResponseType(typeof(WalletOrderTransactionResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> RefundOrderInternal(
@@ -674,7 +674,7 @@ public sealed class WalletsController : ControllerBase
     [HttpPost("~/api/v1/internal/wallets/sub-orders/{subOrderId:guid}/refund")]
     [RequireInternalServiceKey]
     [ApiExplorerSettings(IgnoreApi = true)]
-    [ReleaseFeatureAttribute(ReleaseFeature.LegacyCommerceCredits)]
+    [ReleaseFeatureAttribute(ReleaseFeature.OrderRefund)]
     [ProducesResponseType(typeof(WalletOrderTransactionResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> RefundSubOrderInternal(

@@ -235,6 +235,11 @@ public sealed class ReconciliationEvaluator
                         ? subTxs.Where(tx => tx.Type == WalletTransactionType.EscrowRelease).Sum(tx => tx.Amount) : 0m);
                     var released = releasedV1 + releasedV2;
                     var returned = orderTxs.Where(tx => tx.Type is WalletTransactionType.RefundCredit or WalletTransactionType.EscrowCancellationRefund).Sum(tx => tx.Amount);
+                    // A refund of one sub-order is recorded against the sub-order id, not the parent id, but it is paid out of the same parent
+                    // escrow. Counting only the parent-referenced refunds hid a sub-order refund that was credited without reducing the escrow.
+                    var returnedOnSubOrders = order.SubOrders.Sum(sub => byRef.TryGetValue(sub.SubOrderId, out var subRefundTxs)
+                        ? subRefundTxs.Where(tx => tx.Type is WalletTransactionType.RefundCredit or WalletTransactionType.EscrowCancellationRefund).Sum(tx => tx.Amount) : 0m);
+                    returned += returnedOnSubOrders;
                     var adjustments = orderTxs.Where(tx => tx.Type == WalletTransactionType.OrderPaymentAdjustmentDebit).Sum(tx => tx.Amount)
                         - orderTxs.Where(tx => tx.Type == WalletTransactionType.OrderPaymentAdjustmentRefund).Sum(tx => tx.Amount);
                     if (Math.Abs(escrow.OriginalAmount - (debits[0].Amount + adjustments)) > Tolerance)
@@ -243,7 +248,14 @@ public sealed class ReconciliationEvaluator
                     }
 
                     var expectedRemaining = escrow.OriginalAmount - released - returned;
-                    if (Math.Abs(escrow.RemainingAmount - expectedRemaining) > Tolerance)
+
+                    // What left the escrow (payouts, allocations and refunds taken from it) is more than the buyer paid: money was paid out twice.
+                    // The remaining amount cannot be negative, so this is reported on its own and stays High.
+                    if (expectedRemaining < -Tolerance)
+                    {
+                        findings.Add(Finding("I3", "I3_OUTFLOW_EXCEEDS_PAYMENT", "High", order.OrderId.ToString(), "wallet-service", escrow.OriginalAmount, released + returned, "Payouts, allocations and refunds taken from the order escrow exceed what the buyer paid."));
+                    }
+                    else if (Math.Abs(escrow.RemainingAmount - expectedRemaining) > Tolerance)
                     {
                         // The legacy payout route paid the seller without reducing the parent escrow (G-1). That is a known class of old data
                         // with its own handling, not an unexplained mismatch, so it is reported apart and never auto-corrected.
@@ -251,6 +263,12 @@ public sealed class ReconciliationEvaluator
                         if (releasedV1 > 0m && Math.Abs(escrow.RemainingAmount - legacyNotReduced) <= Tolerance)
                         {
                             findings.Add(Finding("I3", "I3_LEGACY_ESCROW_NOT_REDUCED", "Low", order.OrderId.ToString(), "wallet-service", expectedRemaining, escrow.RemainingAmount, "A legacy payout paid the seller without reducing the order escrow. Old data: classify and review, do not adjust."));
+                        }
+                        else if (returnedOnSubOrders > 0m && Math.Abs(escrow.RemainingAmount - (expectedRemaining + returnedOnSubOrders)) <= Tolerance)
+                        {
+                            // The buyer was credited but the escrow still holds the money, so it can be paid out again. This stays High even when
+                            // the total paid out does not exceed the payment yet, and even for data created before the fix.
+                            findings.Add(Finding("I3", "I3_REFUND_NOT_REDUCED", "High", order.OrderId.ToString(), "wallet-service", expectedRemaining, escrow.RemainingAmount, "A sub-order refund was credited to the buyer without reducing the order escrow."));
                         }
                         else
                         {

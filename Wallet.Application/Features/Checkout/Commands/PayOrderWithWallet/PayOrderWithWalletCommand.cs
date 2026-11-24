@@ -42,4 +42,5 @@ public sealed record WalletOrderTransactionResponse(
     decimal BalanceAfter,
     string Status,
     string? Note,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    bool Replayed = false);

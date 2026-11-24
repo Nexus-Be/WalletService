@@ -14,8 +14,8 @@ These are existing routes. No endpoint or CQRS use case is added.
 |---|---|---|
 | `POST /api/v1/wallets/orders/{orderId:guid}/payment` | Authenticated buyer; controller obtains buyer ID from trusted server identity | `200 OK` |
 | `POST /api/v1/wallets/sub-orders/{subOrderId:guid}/settle` | Existing Commerce caller; `LegacyCommerceCredits` release gate | `200 OK` |
-| `POST /api/v1/wallets/orders/{orderId:guid}/refund` | Existing Commerce caller; `LegacyCommerceCredits` release gate | `200 OK` |
-| `POST /api/v1/wallets/sub-orders/{subOrderId:guid}/refund` | Existing legacy child-operation path; `LegacyCommerceCredits` release gate | `200 OK` |
+| `POST /api/v1/wallets/orders/{orderId:guid}/refund` | Existing Commerce caller; `OrderRefund` release gate (`ReleaseFeatures:OrderRefundEnabled`, off by default everywhere) | `200 OK` |
+| `POST /api/v1/wallets/sub-orders/{subOrderId:guid}/refund` | Child refund; `OrderRefund` release gate; **requires `parentOrderId`** (`400 PARENT_ORDER_REQUIRED` otherwise); the answer carries `replayed` | `200 OK` |
 | `POST /api/v1/wallets/holds/{holdId:guid}/capture` | Auction service key; `AuctionOrderCapture` release gate for `ORDER_PAYMENT` | `200 OK` |
 | `POST /api/v1/wallets/holds/{holdId:guid}/refund-captured` | Auction service key and idempotency key | `200 OK` |
 
