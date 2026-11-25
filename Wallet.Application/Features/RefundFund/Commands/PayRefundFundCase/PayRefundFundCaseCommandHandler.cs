@@ -69,7 +69,7 @@ internal sealed class PayRefundFundCaseCommandHandler : IRequestHandler<PayRefun
         // Reasons that stop the payment without moving money. They are answers, not errors: Commerce keeps the case in NeedsFinance.
         if (request.Amount > options.PerCaseCap)
             return Stopped("PER_CASE_CAP_EXCEEDED", subOrderId, request.Amount, await FundBalanceAsync(cancellationToken));
-        var dayStart = StartOfDay();
+        var dayStart = RefundFundClock.StartOfDayUtc(DateTimeOffset.UtcNow);
         var paidToday = await _context.RefundFundPayouts.AsNoTracking().Where(item => item.CreatedAt >= dayStart).SumAsync(item => (decimal?)item.Amount, cancellationToken) ?? 0m;
         if (paidToday + request.Amount > options.DailyCap)
             return Stopped("DAILY_CAP_EXCEEDED", subOrderId, request.Amount, await FundBalanceAsync(cancellationToken));
@@ -182,11 +182,4 @@ internal sealed class PayRefundFundCaseCommandHandler : IRequestHandler<PayRefun
     private async Task<decimal> FundBalanceAsync(CancellationToken cancellationToken) =>
         await _context.Wallets.AsNoTracking().Where(wallet => wallet.UserId == RefundFundAccount.UserId).Select(wallet => (decimal?)wallet.Balance).FirstOrDefaultAsync(cancellationToken) ?? 0m;
 
-    /// <summary>Midnight of today in Vietnam (UTC+7), as an instant.</summary>
-    private static DateTimeOffset StartOfDay()
-    {
-        var offset = TimeSpan.FromHours(7);
-        var local = DateTimeOffset.UtcNow.ToOffset(offset);
-        return new DateTimeOffset(local.Year, local.Month, local.Day, 0, 0, 0, offset);
-    }
 }

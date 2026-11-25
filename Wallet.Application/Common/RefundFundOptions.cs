@@ -4,6 +4,20 @@ namespace Wallet.Application.Common;
 /// Settings of the refund fund (section "RefundFund"). Off by default in every environment. The caps are in VND and are meant to start low;
 /// the owner changes them in configuration, not in code.
 /// </summary>
+public static class RefundFundClock
+{
+    /// <summary>
+    /// Midnight of today in Vietnam (UTC+7), as an instant in UTC. It must be UTC: PostgreSQL refuses a DateTimeOffset that has another
+    /// offset, which the first QA run of the fund found (the status and the payout failed with 400).
+    /// </summary>
+    public static DateTimeOffset StartOfDayUtc(DateTimeOffset now)
+    {
+        var offset = TimeSpan.FromHours(7);
+        var local = now.ToOffset(offset);
+        return new DateTimeOffset(local.Year, local.Month, local.Day, 0, 0, 0, offset).ToUniversalTime();
+    }
+}
+
 public sealed class RefundFundOptions
 {
     public bool Enabled { get; set; }

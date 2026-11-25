@@ -27,9 +27,7 @@ internal sealed class GetRefundFundStatusQueryHandler : IRequestHandler<GetRefun
         var options = _options.Value;
         var balance = await _context.Wallets.AsNoTracking().Where(wallet => wallet.UserId == RefundFundAccount.UserId)
             .Select(wallet => (decimal?)wallet.Balance).FirstOrDefaultAsync(cancellationToken) ?? 0m;
-        var offset = TimeSpan.FromHours(7);
-        var local = DateTimeOffset.UtcNow.ToOffset(offset);
-        var dayStart = new DateTimeOffset(local.Year, local.Month, local.Day, 0, 0, 0, offset);
+        var dayStart = RefundFundClock.StartOfDayUtc(DateTimeOffset.UtcNow);
         var paidToday = await _context.RefundFundPayouts.AsNoTracking().Where(item => item.CreatedAt >= dayStart)
             .SumAsync(item => (decimal?)item.Amount, cancellationToken) ?? 0m;
         return new RefundFundStatusResult(options.Enabled, balance, options.PerCaseCap, options.DailyCap, options.SecondApprovalThreshold, paidToday,

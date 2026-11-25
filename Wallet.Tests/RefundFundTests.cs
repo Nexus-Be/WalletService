@@ -276,6 +276,17 @@ public sealed class RefundFundTests
         Assert.Equal(1_000_000m, Balance(context, RefundFundAccount.UserId));
     }
 
+    [Theory]
+    [InlineData("2026-11-25T03:00:00+00:00", "2026-11-24T17:00:00+00:00")]   // 10:00 in Vietnam: today started at 00:00 +07 = 17:00 UTC the day before
+    [InlineData("2026-11-25T18:00:00+00:00", "2026-11-25T17:00:00+00:00")]   // 01:00 on the 26th in Vietnam: a new day has started
+    public void The_day_starts_at_midnight_in_Vietnam_and_is_given_in_UTC_which_PostgreSQL_accepts(string now, string expected)
+    {
+        var start = RefundFundClock.StartOfDayUtc(DateTimeOffset.Parse(now));
+
+        Assert.Equal(TimeSpan.Zero, start.Offset);
+        Assert.Equal(DateTimeOffset.Parse(expected), start);
+    }
+
     // ---------------------------------------------------------------- the fund and the ledger
 
     [Fact]
