@@ -36,12 +36,13 @@ When the ledger was never switched on, I10, I11 and I12 are skipped and the run 
 `GET ledger/status`, `GET ledger/journal`, `GET ledger/trial-balance`, `PUT ledger/shadow`, `POST ledger/backfill`, `POST reconciliation/runs`, `GET reconciliation/runs`, `GET reconciliation/runs/{id}`, `GET reconciliation/findings`, `GET reconciliation/findings/{id}`, `PATCH reconciliation/findings/{id}` (status plus required note). All under `/api/v1/admin/wallets/`.
 
 ## Approval of this catalog (owner decision)
-This catalog is the proposal that the reconciliation runs are built from. It has not been approved yet. Only the project owner signs it off; engineering does not mark it approved.
+The project owner decided to sign this catalog in the working session of 25/11/2026, after receiving the evidence pack (`reports/ho_so_duyet_l1_danh_muc_doi_soat_25112026.md`: the I1-I12 runs, the classification of the open QA findings and the scope below). Engineering recorded the decision at the owner's instruction; the owner remains the signer and can change this block.
 
 | Item | Value |
 |---|---|
-| Status | Pending owner approval |
-| Approved by | (to be filled by the owner) |
-| Date | (to be filled by the owner) |
+| Status | Approved with the limits below |
+| Approved by | Project owner (decision given in the working session of 25/11/2026) |
+| Date | 25/11/2026 |
 | Scope reviewed | I1-I12, finding codes, "Unchecked/Partial" rules, switch and epoch rules |
-| Questions for the owner | Are the I4 rule (fee not released separately) and the I12 blind spot (a direct SQL edit of `Balance`) acceptable as written? |
+| Accepted limits | (1) I4 of settlement protocol V2 checks the allocation records in `OrderSettlements`, and the platform fee is not released separately. (2) I12 only checks transactions that go through the application; it does not detect a direct SQL edit of `Balance` and must not be described as an absolute integrity check of the database. |
+| Conditions | When T30 adds a refund source (the refund fund), I3, I4, I5 and the G8 rules must be updated and reviewed again before T30 is switched on. The results are from QA with fake GHN and Stripe; no run on shared-environment data exists yet. |
