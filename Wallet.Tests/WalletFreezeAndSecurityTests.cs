@@ -18,8 +18,11 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Wallet.Api.Controllers;
 using Wallet.Api.Filters;
 using Wallet.Application.Features.AdminWallets.Commands.AdjustWalletBalance;
+using Wallet.Application.Features.AdminWallets.Commands.ProcessWithdrawal;
 using Wallet.Application.Features.Checkout.Commands.AdjustOrderPayment;
+using Wallet.Application.Features.Checkout.Commands.CheckoutDirect;
 using Wallet.Application.Features.Checkout.Commands.PayOrderWithWallet;
+using Wallet.Application.Features.Topups.Commands.TopupStripe;
 using Wallet.Application.Features.Transfers.Commands.Transfer;
 using Wallet.Application.Features.Wallets.Commands.FreezeWallet;
 using Wallet.Application.Features.Wallets.Commands.UnfreezeWallet;
@@ -111,6 +114,73 @@ public sealed class WalletFreezeAndSecurityTests
                 default));
         Assert.Equal("WALLET_FROZEN", adjustErr.ErrorCode);
         Assert.Equal(403, adjustErr.StatusCode);
+
+        var stripeClient = new FakeStripeCheckoutClient();
+        var topupFrozen = await Assert.ThrowsAsync<BusinessRuleValidationException>(() =>
+            new TopupStripeCommandHandler(context, stripeClient).Handle(
+                new TopupStripeCommand(50_000m) { UserId = frozenUser, IdempotencyKey = "freeze-topup" },
+                default));
+        Assert.Equal("WALLET_FROZEN", topupFrozen.ErrorCode);
+        Assert.Equal(403, topupFrozen.StatusCode);
+
+        var directFrozen = await Assert.ThrowsAsync<BusinessRuleValidationException>(() =>
+            new CheckoutDirectCommandHandler(context, stripeClient).Handle(
+                new CheckoutDirectCommand(Guid.NewGuid().ToString(), 50_000m) { UserId = frozenUser },
+                default));
+        Assert.Equal("WALLET_FROZEN", directFrozen.ErrorCode);
+        Assert.Equal(403, directFrozen.StatusCode);
+
+        // Frozen wallet blocks Approve/Complete withdrawals but permits Reject/Fail so locked or debited funds return safely.
+        frozenWallet.Unfreeze();
+        frozenWallet.LockFunds(200_000m);
+        var pendingForApproveAndReject = new WithdrawalRequest
+        {
+            Id = Guid.NewGuid(),
+            WalletId = frozenWallet.Id,
+            Amount = 100_000m,
+            NetAmount = 100_000m,
+            BankName = "VCB",
+            BankAccountNumber = "1234567890",
+            BankAccountHolder = "Frozen User",
+            Status = WithdrawalStatus.Pending
+        };
+        var approvedForCompleteAndFail = new WithdrawalRequest
+        {
+            Id = Guid.NewGuid(),
+            WalletId = frozenWallet.Id,
+            Amount = 100_000m,
+            NetAmount = 100_000m,
+            BankName = "VCB",
+            BankAccountNumber = "1234567890",
+            BankAccountHolder = "Frozen User",
+            Status = WithdrawalStatus.Approved
+        };
+        context.WithdrawalRequests.AddRange(pendingForApproveAndReject, approvedForCompleteAndFail);
+        await context.SaveChangesAsync();
+
+        frozenWallet.Freeze();
+        await context.SaveChangesAsync();
+
+        var wdProc = new ProcessWithdrawalCommandHandler(context);
+        var adminId = Guid.NewGuid().ToString();
+        var approveErr = await Assert.ThrowsAsync<BusinessRuleValidationException>(() =>
+            wdProc.Handle(new ProcessWithdrawalCommand("Approve") { WithdrawalId = pendingForApproveAndReject.Id, AdminUserId = adminId }, default));
+        Assert.Equal("WALLET_FROZEN", approveErr.ErrorCode);
+
+        var completeErr = await Assert.ThrowsAsync<BusinessRuleValidationException>(() =>
+            wdProc.Handle(new ProcessWithdrawalCommand("Complete", TransferConfirmed: true, TransferReference: "REF-FRZ-1")
+            { WithdrawalId = approvedForCompleteAndFail.Id, AdminUserId = adminId }, default));
+        Assert.Equal("WALLET_FROZEN", completeErr.ErrorCode);
+
+        var rejected = await wdProc.Handle(
+            new ProcessWithdrawalCommand("Reject", AdminNote: "Account frozen") { WithdrawalId = pendingForApproveAndReject.Id, AdminUserId = adminId },
+            default);
+        Assert.Equal("Rejected", rejected.Status);
+
+        var failed = await wdProc.Handle(
+            new ProcessWithdrawalCommand("Fail", AdminNote: "Returned to frozen wallet") { WithdrawalId = approvedForCompleteAndFail.Id, AdminUserId = adminId },
+            default);
+        Assert.Equal("Failed", failed.Status);
     }
 
     [Fact]

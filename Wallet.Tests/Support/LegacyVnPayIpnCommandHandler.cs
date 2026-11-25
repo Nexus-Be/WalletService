@@ -70,7 +70,8 @@ internal sealed class ProcessVnPayIpnCommandHandler : IRequestHandler<ProcessVnP
 
         await using var dbTransaction = await _context.Database.BeginTransactionAsync(cancellationToken);
 
-        var topup = await _context.LockTopupByReferenceAsync(txnRef, cancellationToken);
+        var topup = await _context.WalletTopups
+            .SingleOrDefaultAsync(t => t.VnpTxnRef == txnRef, cancellationToken);
         if (topup is null)
         {
             return await ProcessDirectPaymentIpnAsync(
@@ -150,9 +151,8 @@ internal sealed class ProcessVnPayIpnCommandHandler : IRequestHandler<ProcessVnP
         Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction dbTransaction,
         CancellationToken cancellationToken)
     {
-        var directPayment = await _context.LockDirectPaymentOrderByReferenceAsync(
-            transactionReference,
-            cancellationToken);
+        var directPayment = await _context.DirectPaymentOrders
+            .SingleOrDefaultAsync(order => order.VnpTxnRef == transactionReference, cancellationToken);
         if (directPayment is null)
             return new VnPayIpnResponse("01", "Order not found");
 

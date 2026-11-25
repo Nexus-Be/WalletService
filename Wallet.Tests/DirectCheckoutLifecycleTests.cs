@@ -4,11 +4,15 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging.Abstractions;
+using Wallet.Application.Features.AdminWallets.Commands.ResolveStripeAttempt;
 using Wallet.Application.Features.Checkout.Commands.CancelDirectPayment;
+using Wallet.Application.Features.Checkout.Commands.CheckoutDirect;
 using Wallet.Application.Features.Checkout.Commands.ExpireDirectPayment;
 using Wallet.Application.Features.Checkout.Commands.PayOrderWithWallet;
 using Wallet.Application.Features.Checkout.Commands.ResumeDirectPayment;
 using Wallet.Application.Features.Stripe;
+using Wallet.Application.Features.Stripe.Commands.ReconcilePendingTopups;
 using Wallet.Application.Interfaces;
 using Wallet.Domain.Entities;
 using Wallet.Domain.Enums;
@@ -233,6 +237,64 @@ public sealed class DirectCheckoutLifecycleTests
         Assert.Equal("Failed", cancelled.Status);
         Assert.Equal("Expired", cancelled.AttemptStatus);
         Assert.False(attempt.BlocksReplacement);
+    }
+
+    [Fact]
+    public async Task StaleCreationPending_PromotedAndAdminResolved_AllowsRetryingSameOrderWithCheckoutDirect()
+    {
+        using var context = new TestWalletDbContext(Guid.NewGuid().ToString());
+        var owner = Guid.NewGuid();
+        var orderId = Guid.NewGuid();
+        AddWallet(context, owner, 500_000m);
+
+        var failingProvider = new FailingCreateProvider();
+        await Assert.ThrowsAsync<Wallet.Application.Common.Exceptions.PaymentProviderUnavailableException>(() =>
+            new CheckoutDirectCommandHandler(context, failingProvider).Handle(
+                new CheckoutDirectCommand(orderId.ToString(), 100_000m) { UserId = owner },
+                default));
+
+        var staleAttempt = context.StripePaymentAttempts.Single();
+        Assert.Equal(StripePaymentAttemptStatus.CreationPending, staleAttempt.Status);
+        staleAttempt.CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-20);
+        await context.SaveChangesAsync();
+
+        var provider = new LifecycleProvider(context);
+        var promoted = await new ReconcilePendingTopupsCommandHandler(
+                context,
+                provider,
+                NullLogger<ReconcilePendingTopupsCommandHandler>.Instance)
+            .Handle(new ReconcilePendingTopupsCommand(), default);
+        Assert.Equal(1, promoted);
+        Assert.Equal(StripePaymentAttemptStatus.ReconciliationRequired, staleAttempt.Status);
+
+        await new ResolveStripeAttemptCommandHandler(context).Handle(
+            new ResolveStripeAttemptCommand("Failed", "Session creation never finished")
+            {
+                AttemptId = staleAttempt.Id,
+                AdminUserId = Guid.NewGuid().ToString()
+            },
+            default);
+        Assert.False(staleAttempt.BlocksReplacement);
+
+        var retried = await new CheckoutDirectCommandHandler(context, provider).Handle(
+            new CheckoutDirectCommand(orderId.ToString(), 100_000m) { UserId = owner },
+            default);
+        Assert.Equal("Pending", retried.Status);
+        Assert.Equal(orderId.ToString(), retried.OrderId);
+        Assert.NotEmpty(retried.PaymentUrl);
+        Assert.Equal(2, context.StripePaymentAttempts.Count());
+    }
+
+    private sealed class FailingCreateProvider : IStripeCheckoutClient
+    {
+        public Task<StripeCheckoutSession> CreateSessionAsync(StripeCheckoutRequest request, CancellationToken cancellationToken) =>
+            throw new Wallet.Application.Common.Exceptions.PaymentProviderUnavailableException(new System.Net.Http.HttpRequestException("Simulated timeout"));
+
+        public Task<StripeSessionSnapshot> GetSessionAsync(string sessionId, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<StripePaymentIntentSnapshot> GetPaymentIntentAsync(string paymentIntentId, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
     }
 
     private static WalletAccount AddWallet(TestWalletDbContext context, Guid userId, decimal balance)

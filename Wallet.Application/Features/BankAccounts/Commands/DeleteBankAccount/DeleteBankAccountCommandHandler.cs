@@ -40,6 +40,8 @@ internal sealed class DeleteBankAccountCommandHandler(IWalletDbContext context)
 
         if (walletId is Guid wId)
         {
+            var targetBankNameLower = target.BankName.Trim().ToLower();
+            var targetAccountNumber = target.AccountNumber.Trim();
             var inUse = await context.WithdrawalRequests
                 .AsNoTracking()
                 .AnyAsync(
@@ -49,8 +51,8 @@ internal sealed class DeleteBankAccountCommandHandler(IWalletDbContext context)
                              item.Status == WithdrawalStatus.Processing) &&
                             (item.BankAccountId == target.Id ||
                              (item.BankAccountId == null &&
-                              item.BankName == target.BankName &&
-                              item.BankAccountNumber == target.AccountNumber)),
+                              item.BankName.ToLower() == targetBankNameLower &&
+                              item.BankAccountNumber == targetAccountNumber)),
                     cancellationToken);
 
             if (inUse)

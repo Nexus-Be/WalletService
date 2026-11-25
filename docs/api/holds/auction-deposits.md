@@ -55,8 +55,12 @@ committed. All service routes in the table require this key.
   `availableBalance` and `createdAt`. A new hold returns `201`; an equivalent
   existing reference returns `200`. The reference pair is globally unique.
 - Release accepts `reason` and returns `holdId`, `status`, `releasedAt` and
-  `availableBalance`. Valid reasons are `AUCTION_ENDED_NOT_WINNER`,
-  `AUCTION_CANCELLED`, `AUCTION_FAILED` and `ADMIN_FORCE_CANCEL`.
+  `availableBalance`. `reason` must be a non-empty `SCREAMING_SNAKE_CASE` code
+  (`1..128` ASCII uppercase letters, digits, or `_`, starting with an uppercase
+  letter), covering `AUCTION_ENDED_NOT_WINNER`, `AUCTION_CANCELLED`,
+  `AUCTION_FAILED`, `ADMIN_FORCE_CANCEL`, `BUYER_WITHDRAWN`, `AUCTION_SETTLED`,
+  `SECOND_CHANCE_EXPIRED`, `LATE_AUTHORIZATION`, `RECONCILED_CLOSED_AUCTION`,
+  and `AMOUNT_MISMATCH`.
 - Capture accepts `purpose`, optional `orderId`, and `transfers` containing
   `toType`, `toOwnerId` and positive whole-VND `amount`. `FORFEIT` permits
   `SELLER_WALLET` and `PLATFORM` recipients; `ORDER_PAYMENT` requires an order

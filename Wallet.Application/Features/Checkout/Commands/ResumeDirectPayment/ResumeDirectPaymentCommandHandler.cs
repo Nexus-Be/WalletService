@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Wallet.Application.Common.Extensions;
 using Wallet.Application.Interfaces;
 using Wallet.Domain.Enums;
 using Wallet.Domain.Exceptions;
@@ -35,6 +36,11 @@ internal sealed class ResumeDirectPaymentCommandHandler(
             .ThenByDescending(item => item.Id)
             .FirstOrDefaultAsync(cancellationToken)
             ?? throw new EntityNotFoundException("PAYMENT_NOT_FOUND", "DirectPayment", request.OrderId);
+
+        var wallet = await context.Wallets
+            .AsNoTracking()
+            .SingleOrDefaultAsync(w => w.UserId == request.UserId, cancellationToken);
+        wallet?.EnsureActive();
 
         if (order.Status != TopupStatus.Pending ||
             attempt.Status != StripePaymentAttemptStatus.AwaitingPayment ||

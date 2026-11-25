@@ -1,7 +1,10 @@
 namespace Wallet.Application.Features.Stripe;
 
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Wallet.Application.Interfaces;
+using Wallet.Domain.Entities;
 
 internal enum StripeWebhookProcessingOutcome
 {
@@ -22,13 +25,48 @@ internal static class StripeWebhookProcessing
         IStripeCheckoutClient provider,
         ReadOnlyMemory<byte> payload,
         string signature,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ILogger? logger = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(verifier);
         ArgumentNullException.ThrowIfNull(provider);
 
         var verified = verifier.Verify(payload, signature);
+        if (verified.EventType is "payment_intent.payment_failed" or
+            "charge.refunded" or
+            "charge.dispute.created" or
+            "charge.dispute.closed")
+        {
+            var alreadyRecorded = await context.StripeWebhookEvents
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .AnyAsync(item => item.ProviderEventId == verified.EventId, cancellationToken);
+            if (alreadyRecorded)
+            {
+                return StripeWebhookProcessingOutcome.DuplicateEvent;
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            context.StripeWebhookEvents.Add(new StripeWebhookEvent
+            {
+                Id = Guid.NewGuid(),
+                ProviderEventId = verified.EventId,
+                EventType = verified.EventType,
+                PaymentAttemptId = null,
+                Outcome = "AuditedIgnored",
+                ReceivedAt = now,
+                ProcessedAt = now
+            });
+            await context.SaveChangesAsync(cancellationToken);
+
+            logger?.LogWarning(
+                "Audited Stripe webhook event {EventType} ({EventId}) requiring operator awareness.",
+                verified.EventType,
+                verified.EventId);
+            return StripeWebhookProcessingOutcome.Ignored;
+        }
+
         if (verified.EventType is not ("checkout.session.completed" or
             "checkout.session.async_payment_succeeded" or "checkout.session.async_payment_failed" or
             "checkout.session.expired"))

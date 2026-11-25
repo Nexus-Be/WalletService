@@ -116,8 +116,6 @@ internal sealed class AdjustOrderPaymentCommandHandler(IWalletDbContext context)
                 409);
         }
 
-        wallet.EnsureActive();
-
         var now = DateTimeOffset.UtcNow;
         var balanceBefore = wallet.Balance;
         var escrowOriginalBefore = escrow.OriginalAmount;
@@ -127,6 +125,8 @@ internal sealed class AdjustOrderPaymentCommandHandler(IWalletDbContext context)
 
         if (request.DeltaAmount > 0m)
         {
+            wallet.EnsureActive();
+
             if (wallet.AvailableBalance < request.DeltaAmount)
             {
                 throw new InsufficientBalanceException(wallet.AvailableBalance, request.DeltaAmount);
@@ -155,7 +155,21 @@ internal sealed class AdjustOrderPaymentCommandHandler(IWalletDbContext context)
             escrow.RemainingAmount -= refundAmount;
             if (escrow.RemainingAmount == 0m)
             {
-                escrow.Status = OrderEscrowStatus.Settled;
+                var hasSettlement = await context.WalletTransactions
+                    .AsNoTracking()
+                    .AnyAsync(
+                        t => t.ReferenceId == request.OrderId &&
+                             t.Type == WalletTransactionType.EscrowRelease &&
+                             t.Status == TransactionStatus.Success,
+                        cancellationToken)
+                    || await context.AuditLogs
+                        .AsNoTracking()
+                        .AnyAsync(
+                            a => a.Action == AuditAction.OrderSettlement &&
+                                 a.EntityId == request.OrderId.ToString(),
+                            cancellationToken);
+
+                escrow.Status = hasSettlement ? OrderEscrowStatus.Settled : OrderEscrowStatus.Refunded;
             }
             escrow.UpdatedAt = now;
             txType = WalletTransactionType.OrderPaymentAdjustmentRefund;

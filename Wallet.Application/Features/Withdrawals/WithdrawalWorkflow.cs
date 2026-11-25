@@ -1,6 +1,8 @@
 namespace Wallet.Application.Features.Withdrawals;
 
 using System;
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Globalization;
 using System.Linq;
 using System.Security.Cryptography;
@@ -24,6 +26,12 @@ internal static class WithdrawalWorkflow
     internal const int MaxReasonLength = 500;
     internal const int MaxReferenceLength = 100;
     internal const int MaxIdempotencyKeyLength = 100;
+    internal const int MinBankNameLength = 2;
+    internal const int MaxBankNameLength = 150;
+    internal const int MinAccountNumberLength = 4;
+    internal const int MaxAccountNumberLength = 100;
+    internal const int MinAccountHolderLength = 2;
+    internal const int MaxAccountHolderLength = 255;
 
     internal static bool TryParse(string? value, out WithdrawalAction action) =>
         value.TryToEnum(out action);
@@ -102,4 +110,38 @@ internal static class WithdrawalWorkflow
         !string.IsNullOrEmpty(key) &&
         key.Length <= MaxIdempotencyKeyLength &&
         key.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_');
+
+    internal static IEnumerable<ValidationResult> ValidateManualBankDetails(
+        string? bankName,
+        string? accountNumber,
+        string? accountHolderName,
+        string bankMemberName,
+        string bankDisplayName)
+    {
+        var trimmedBank = bankName?.Trim() ?? string.Empty;
+        if (trimmedBank.Length < MinBankNameLength || trimmedBank.Length > MaxBankNameLength)
+        {
+            yield return new ValidationResult(
+                $"{bankDisplayName} must be between {MinBankNameLength} and {MaxBankNameLength} characters.",
+                new[] { bankMemberName });
+        }
+
+        var trimmedAccount = accountNumber?.Trim() ?? string.Empty;
+        if (trimmedAccount.Length < MinAccountNumberLength ||
+            trimmedAccount.Length > MaxAccountNumberLength ||
+            !trimmedAccount.All(char.IsAsciiLetterOrDigit))
+        {
+            yield return new ValidationResult(
+                $"Account number must be between {MinAccountNumberLength} and {MaxAccountNumberLength} ASCII letters or digits.",
+                new[] { "AccountNumber" });
+        }
+
+        var trimmedHolder = accountHolderName?.Trim() ?? string.Empty;
+        if (trimmedHolder.Length < MinAccountHolderLength || trimmedHolder.Length > MaxAccountHolderLength)
+        {
+            yield return new ValidationResult(
+                $"Account holder name must be between {MinAccountHolderLength} and {MaxAccountHolderLength} characters.",
+                new[] { "AccountHolderName" });
+        }
+    }
 }

@@ -82,16 +82,6 @@ public sealed class TestWalletDbContext : IWalletDbContext, IDisposable
     public Task<StripePaymentAttempt?> LockStripePaymentAttemptAsync(Guid attemptId, CancellationToken cancellationToken)
         => _inner.StripePaymentAttempts.SingleOrDefaultAsync(attempt => attempt.Id == attemptId, cancellationToken);
 
-    public Task<WalletTopup?> LockTopupByReferenceAsync(string transactionReference, CancellationToken cancellationToken)
-        => _inner.WalletTopups.SingleOrDefaultAsync(t => t.VnpTxnRef == transactionReference, cancellationToken);
-
-    public Task<DirectPaymentOrder?> LockDirectPaymentOrderByReferenceAsync(
-        string transactionReference,
-        CancellationToken cancellationToken)
-        => _inner.DirectPaymentOrders.SingleOrDefaultAsync(
-            order => order.VnpTxnRef == transactionReference,
-            cancellationToken);
-
     public Task<WithdrawalRequest?> LockWithdrawalRequestAsync(Guid withdrawalId, CancellationToken cancellationToken)
         => _inner.WithdrawalRequests.SingleOrDefaultAsync(r => r.Id == withdrawalId, cancellationToken);
 

@@ -11,6 +11,7 @@ using Wallet.Application.Common.Extensions;
 using Wallet.Application.Common.Models;
 using Wallet.Application.Features.Wallets.Queries.GetMyWallet;
 using Wallet.Application.Interfaces;
+using Wallet.Domain.Enums;
 using Wallet.Domain.Exceptions;
 
 internal sealed class ListAdminWalletsQueryHandler(IWalletDbContext context)
@@ -41,6 +42,18 @@ internal sealed class ListAdminWalletsQueryHandler(IWalletDbContext context)
             query = query.Where(item => item.Status == normalizedStatus);
         }
 
+        if (!string.IsNullOrWhiteSpace(request.Currency))
+        {
+            if (!request.Currency.TryToEnum<CurrencyCode>(out var currency))
+            {
+                throw new BusinessRuleValidationException(
+                    "VAL_INVALID_CURRENCY",
+                    "Currency filter must be 'Vnd' or 'Usd'.");
+            }
+
+            query = query.Where(item => item.Currency == currency);
+        }
+
         if (!string.IsNullOrWhiteSpace(request.Search))
         {
             var search = request.Search.Trim();
@@ -48,10 +61,22 @@ internal sealed class ListAdminWalletsQueryHandler(IWalletDbContext context)
             {
                 query = query.Where(item => item.UserId == searchGuid || item.Id == searchGuid);
             }
-            else
+            else if (search.Equals("ACTIVE", StringComparison.OrdinalIgnoreCase) ||
+                     search.Equals("FROZEN", StringComparison.OrdinalIgnoreCase))
             {
                 var upper = search.ToUpperInvariant();
                 query = query.Where(item => item.Status == upper);
+            }
+            else if (search.TryToEnum<CurrencyCode>(out var searchCurrency))
+            {
+                query = query.Where(item => item.Currency == searchCurrency);
+            }
+            else
+            {
+                var lower = search.ToLowerInvariant();
+                query = query.Where(item =>
+                    item.Id.ToString().ToLower().Contains(lower) ||
+                    item.UserId.ToString().ToLower().Contains(lower));
             }
         }
 

@@ -9,19 +9,16 @@ using Wallet.Api.Controllers;
 using Wallet.Application.Common.Validation;
 using Wallet.Application.Features.Checkout.Commands.CheckoutDirect;
 using Wallet.Application.Features.Checkout.Queries.GetDirectPaymentStatus;
-using Wallet.Application.Features.VnPay.Commands.ProcessVnPayIpn;
+using Wallet.Application.Features.Stripe;
+using Wallet.Application.Interfaces;
 using Wallet.Domain.Entities;
 using Wallet.Domain.Enums;
 using Wallet.Domain.Exceptions;
 using Wallet.Tests.Support;
 using Xunit;
-using CheckoutDirectCommand = Wallet.Tests.Support.LegacyCheckout.CheckoutDirectCommand;
-using CheckoutDirectCommandHandler = Wallet.Tests.Support.LegacyCheckout.CheckoutDirectCommandHandler;
 
 public class DirectPaymentStatusTests
 {
-    private const string ReturnUrl = "https://return.test/done";
-
     private static WalletAccount AddWallet(TestWalletDbContext context)
     {
         var wallet = new WalletAccount
@@ -37,37 +34,53 @@ public class DirectPaymentStatusTests
         return wallet;
     }
 
-    private static async Task<(WalletAccount Wallet, Guid OrderId, DirectPaymentOrder Order)> CheckoutAsync(
+    private static async Task<(WalletAccount Wallet, Guid OrderId, DirectPaymentOrder Order, StripePaymentAttempt Attempt)> CheckoutAsync(
         TestWalletDbContext context,
         decimal amount = 80_000m)
     {
         var wallet = AddWallet(context);
         var orderId = Guid.NewGuid();
-        await new CheckoutDirectCommandHandler(context, new FakeVnPayService()).Handle(
-            new CheckoutDirectCommand(orderId.ToString(), amount, null, ReturnUrl) { UserId = wallet.UserId.ToString() },
+        await new CheckoutDirectCommandHandler(context, new FakeStripeCheckoutClient()).Handle(
+            new CheckoutDirectCommand(orderId.ToString(), amount) { UserId = wallet.UserId },
             default);
-        return (wallet, orderId, context.DirectPaymentOrders.Single(o => o.OrderId == orderId));
+        var order = context.DirectPaymentOrders.Single(o => o.OrderId == orderId);
+        var attempt = context.StripePaymentAttempts.Single(a => a.DirectPaymentOrderId == order.Id);
+        return (wallet, orderId, order, attempt);
     }
 
-    private static Task<VnPayIpnResponse> SettleAsync(
+    private static Task<StripeSettlementOutcome> SettleAsync(
         TestWalletDbContext context,
-        DirectPaymentOrder order,
-        string responseCode,
-        string transactionNo = "14000001") =>
-        new ProcessVnPayIpnCommandHandler(
-                context,
-                new FakeVnPayService(),
-                NullLogger<ProcessVnPayIpnCommandHandler>.Instance)
-            .Handle(
-                new ProcessVnPayIpnCommand(new Dictionary<string, string>
-                {
-                    ["vnp_TxnRef"] = Assert.IsType<string>(order.VnpTxnRef),
-                    ["vnp_ResponseCode"] = responseCode,
-                    ["vnp_Amount"] = (order.Amount * 100).ToString("0"),
-                    ["vnp_CurrCode"] = "VND",
-                    ["vnp_TransactionNo"] = transactionNo
-                }),
-                default);
+        StripePaymentAttempt attempt,
+        bool paid,
+        string paymentIntentId = "pi_test_direct_status")
+    {
+        var amountVnd = decimal.ToInt64(attempt.Amount);
+        var attemptRef = attempt.Id.ToString("D");
+        var session = new StripeSessionSnapshot(
+            attempt.CheckoutSessionId!,
+            "complete",
+            paid ? "paid" : "unpaid",
+            amountVnd,
+            paymentIntentId,
+            attemptRef,
+            attemptRef,
+            false);
+        var intent = new StripePaymentIntentSnapshot(
+            paymentIntentId,
+            paid ? "succeeded" : "canceled",
+            amountVnd,
+            paid ? amountVnd : 0,
+            attemptRef);
+
+        return StripeSettlement.ApplyAsync(
+            context,
+            attempt.Id,
+            $"evt_{Guid.NewGuid():N}",
+            paid ? "checkout.session.completed" : "checkout.session.async_payment_failed",
+            session,
+            intent,
+            default);
+    }
 
     private static GetDirectPaymentStatusQueryHandler Handler(TestWalletDbContext context) => new(context);
 
@@ -78,7 +91,7 @@ public class DirectPaymentStatusTests
     public async Task Status_IsPendingRightAfterCheckout()
     {
         using var context = new TestWalletDbContext(nameof(Status_IsPendingRightAfterCheckout));
-        var (wallet, orderId, _) = await CheckoutAsync(context, 80_000m);
+        var (wallet, orderId, _, _) = await CheckoutAsync(context, 80_000m);
 
         var result = await Handler(context).Handle(Query(orderId, wallet), default);
 
@@ -90,18 +103,52 @@ public class DirectPaymentStatusTests
     }
 
     [Fact]
-    public async Task Status_BecomesSuccessWithGatewayTransactionNoAfterIpn()
+    public async Task Status_BecomesSuccessWithPaymentIntentAfterStripeSettlement()
     {
-        using var context = new TestWalletDbContext(nameof(Status_BecomesSuccessWithGatewayTransactionNoAfterIpn));
-        var (wallet, orderId, order) = await CheckoutAsync(context);
+        using var context = new TestWalletDbContext(nameof(Status_BecomesSuccessWithPaymentIntentAfterStripeSettlement));
+        var (wallet, orderId, _, attempt) = await CheckoutAsync(context);
 
-        var ipn = await SettleAsync(context, order, "00", "777");
+        var outcome = await SettleAsync(context, attempt, paid: true, paymentIntentId: "pi_test_777");
         var result = await Handler(context).Handle(Query(orderId, wallet), default);
 
-        Assert.Equal("00", ipn.ResponseCode);
+        Assert.Equal(StripeSettlementOutcome.Settled, outcome);
         Assert.Equal("Success", result.Status);
-        Assert.Equal("777", result.GatewayTransactionNo);
+        Assert.Equal("pi_test_777", result.GatewayTransactionNo);
         Assert.Equal(500_000m, wallet.Balance);
+    }
+
+    [Fact]
+    public async Task LegacyVnPayDirectOrder_ReadsPersistedVnpTransactionNo()
+    {
+        using var context = new TestWalletDbContext(nameof(LegacyVnPayDirectOrder_ReadsPersistedVnpTransactionNo));
+        var wallet = AddWallet(context);
+        var orderId = Guid.NewGuid();
+        context.DirectPaymentOrders.Add(new DirectPaymentOrder
+        {
+            Id = Guid.NewGuid(),
+            OrderId = orderId,
+            Amount = 80_000m,
+            VnpTxnRef = "DIRECT-LEGACY-1",
+            VnpTransactionNo = "14000777",
+            Status = TopupStatus.Success
+        });
+        context.WalletTransactions.Add(new WalletTransaction
+        {
+            Id = Guid.NewGuid(),
+            WalletId = wallet.Id,
+            UserId = wallet.UserId.ToString(),
+            ReferenceId = orderId,
+            Type = WalletTransactionType.DirectGatewayPayment,
+            Amount = 80_000m,
+            Currency = "Vnd",
+            Status = TransactionStatus.Success
+        });
+        await context.SaveChangesAsync();
+
+        var result = await Handler(context).Handle(Query(orderId, wallet), default);
+
+        Assert.Equal("Success", result.Status);
+        Assert.Equal("14000777", result.GatewayTransactionNo);
     }
 
     [Fact]
@@ -177,14 +224,15 @@ public class DirectPaymentStatusTests
     }
 
     [Fact]
-    public async Task Status_BecomesFailedAfterGatewayFailure()
+    public async Task Status_BecomesFailedAfterStripeFailure()
     {
-        using var context = new TestWalletDbContext(nameof(Status_BecomesFailedAfterGatewayFailure));
-        var (wallet, orderId, order) = await CheckoutAsync(context);
+        using var context = new TestWalletDbContext(nameof(Status_BecomesFailedAfterStripeFailure));
+        var (wallet, orderId, _, attempt) = await CheckoutAsync(context);
 
-        await SettleAsync(context, order, "24");
+        var outcome = await SettleAsync(context, attempt, paid: false, paymentIntentId: "pi_test_canceled");
         var result = await Handler(context).Handle(Query(orderId, wallet), default);
 
+        Assert.Equal(StripeSettlementOutcome.FinalizedFailure, outcome);
         Assert.Equal("Failed", result.Status);
     }
 
@@ -192,7 +240,7 @@ public class DirectPaymentStatusTests
     public async Task Status_OtherUserGetsNotFound_ButPrivilegedCallerCanRead()
     {
         using var context = new TestWalletDbContext(nameof(Status_OtherUserGetsNotFound_ButPrivilegedCallerCanRead));
-        var (_, orderId, _) = await CheckoutAsync(context);
+        var (_, orderId, _, _) = await CheckoutAsync(context);
         var stranger = AddWallet(context);
 
         var exception = await Assert.ThrowsAsync<EntityNotFoundException>(

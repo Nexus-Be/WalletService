@@ -16,7 +16,9 @@ public sealed class ReleaseReasonContractTests
     [InlineData("AUCTION_FAILED")]
     [InlineData("ADMIN_FORCE_CANCEL")]
     [InlineData("BUYER_WITHDRAWN")]
-    public void TheFiveReasonsAuctionSendsAreAccepted(string reason)
+    [InlineData("RESERVE_NOT_MET")]
+    [InlineData("SECOND_CHANCE_EXPIRED")]
+    public void ValidScreamingSnakeCaseReasons_AreAccepted(string reason)
     {
         var command = new ReleaseHoldCommand(reason) { HoldId = System.Guid.NewGuid(), IdempotencyKey = "release-contract-key-1" };
 
@@ -24,10 +26,11 @@ public sealed class ReleaseReasonContractTests
     }
 
     [Theory]
-    [InlineData("RESERVE_NOT_MET")]
-    [InlineData("SECOND_CHANCE_EXPIRED")]
     [InlineData("")]
-    public void AnythingElseIsRefused_SoAuctionMustMapItFirst(string reason)
+    [InlineData("lower_case")]
+    [InlineData("WITH SPACE")]
+    [InlineData("1_STARTS_WITH_DIGIT")]
+    public void NonScreamingSnakeCaseReasons_AreRefused(string reason)
     {
         var command = new ReleaseHoldCommand(reason) { HoldId = System.Guid.NewGuid(), IdempotencyKey = "release-contract-key-1" };
 

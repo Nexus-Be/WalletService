@@ -149,6 +149,55 @@ public sealed class NotificationIntegrationTests
         Assert.Equal("Bank rejected transfer", recorder.Withdrawals[1].DisplayReason);
         Assert.DoesNotContain("SECRET-INTERNAL-LOG", recorder.Withdrawals[1].DisplayReason ?? string.Empty);
         Assert.Single(context.AuditLogs.Where(a => a.Action == AuditAction.NotificationDispatchFailed));
+
+        recorder.ShouldFail = false;
+        wallet.LockFunds(200_000m);
+        var rejectedWithdrawal = new WithdrawalRequest
+        {
+            Id = Guid.NewGuid(),
+            WalletId = wallet.Id,
+            Amount = 100_000m,
+            Fee = 0m,
+            NetAmount = 100_000m,
+            BankName = "VCB",
+            BankAccountNumber = "1234567890",
+            BankAccountHolder = "Seller",
+            Status = WithdrawalStatus.Pending
+        };
+        var completedWithdrawal = new WithdrawalRequest
+        {
+            Id = Guid.NewGuid(),
+            WalletId = wallet.Id,
+            Amount = 100_000m,
+            Fee = 0m,
+            NetAmount = 100_000m,
+            BankName = "VCB",
+            BankAccountNumber = "1234567890",
+            BankAccountHolder = "Seller",
+            Status = WithdrawalStatus.Pending
+        };
+        context.WithdrawalRequests.AddRange(rejectedWithdrawal, completedWithdrawal);
+        await context.SaveChangesAsync();
+
+        await handler.Handle(
+            new ProcessWithdrawalCommand("Reject", AdminNote: "Invalid bank name")
+            { WithdrawalId = rejectedWithdrawal.Id, AdminUserId = adminId },
+            default);
+        await handler.Handle(
+            new ProcessWithdrawalCommand("Approve")
+            { WithdrawalId = completedWithdrawal.Id, AdminUserId = adminId },
+            default);
+        await handler.Handle(
+            new ProcessWithdrawalCommand("Complete", TransferConfirmed: true, TransferReference: "FT-NOTIFY-COMPLETE-1")
+            { WithdrawalId = completedWithdrawal.Id, AdminUserId = adminId },
+            default);
+
+        Assert.Equal(5, recorder.Withdrawals.Count);
+        Assert.Equal($"withdrawal:{rejectedWithdrawal.Id:D}:Rejected", recorder.Withdrawals[2].SourceEventId);
+        Assert.Equal("Rejected", recorder.Withdrawals[2].Status);
+        Assert.Equal($"withdrawal:{completedWithdrawal.Id:D}:Approved", recorder.Withdrawals[3].SourceEventId);
+        Assert.Equal($"withdrawal:{completedWithdrawal.Id:D}:Completed", recorder.Withdrawals[4].SourceEventId);
+        Assert.Equal("Completed", recorder.Withdrawals[4].Status);
     }
 
     [Fact]

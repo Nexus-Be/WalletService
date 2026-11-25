@@ -72,3 +72,5 @@ app.MapGet("/health", async (Wallet.Infrastructure.Persistence.WalletDbContext d
 });
 
 app.Run();
+
+public partial class Program;

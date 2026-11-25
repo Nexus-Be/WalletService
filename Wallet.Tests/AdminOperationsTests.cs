@@ -5,7 +5,10 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging.Abstractions;
+using Wallet.Application.Features.AdminWallets.Commands.AdjustWalletBalance;
+using Wallet.Application.Features.AdminWallets.Commands.ProcessWithdrawal;
 using Wallet.Application.Features.AdminWallets.Commands.ResolveStripeAttempt;
+using Wallet.Application.Features.AdminWallets.Queries.GetWithdrawalHistory;
 using Wallet.Application.Features.AdminWallets.Queries.ListAdminHolds;
 using Wallet.Application.Features.AdminWallets.Queries.ListAdminWallets;
 using Wallet.Application.Features.AdminWallets.Queries.ListStripeReconciliationRequired;
@@ -285,6 +288,182 @@ public sealed class AdminOperationsTests
         Assert.False(resolved.BlocksReplacement);
         Assert.Equal(TopupStatus.Failed, staleDirect.Status);
         Assert.Equal(TransactionStatus.Failed, staleTx.Status);
+    }
+
+    [Fact]
+    public async Task ResolveStripeAttempt_DirectOrderExpiredInvalidStateAndNotFound_WorkAsExpected()
+    {
+        using var context = new TestWalletDbContext(Guid.NewGuid().ToString());
+        var owner = Guid.NewGuid();
+        var orderId = Guid.NewGuid();
+        var wallet = new WalletAccount { Id = Guid.NewGuid(), UserId = owner, Balance = 100_000m, Currency = CurrencyCode.Vnd, Status = "ACTIVE" };
+        var directOrder = new DirectPaymentOrder { Id = Guid.NewGuid(), OrderId = orderId, Amount = 75_000m, Status = TopupStatus.Pending };
+        var directTx = new WalletTransaction
+        {
+            Id = Guid.NewGuid(),
+            WalletId = wallet.Id,
+            UserId = owner.ToString(),
+            Type = WalletTransactionType.DirectGatewayPayment,
+            Amount = 75_000m,
+            Currency = "Vnd",
+            BalanceBefore = 100_000m,
+            BalanceAfter = 100_000m,
+            ReferenceId = orderId,
+            Status = TransactionStatus.Pending
+        };
+        var reconAttempt = new StripePaymentAttempt
+        {
+            Id = Guid.NewGuid(),
+            Purpose = StripePaymentPurpose.DirectOrder,
+            OwnerId = owner,
+            DirectPaymentOrderId = directOrder.Id,
+            Amount = 75_000m,
+            RequestFingerprint = "fp-recon",
+            ProviderIdempotencyKey = "pk-recon",
+            Status = StripePaymentAttemptStatus.ReconciliationRequired,
+            BlocksReplacement = true
+        };
+        var awaitingAttempt = new StripePaymentAttempt
+        {
+            Id = Guid.NewGuid(),
+            Purpose = StripePaymentPurpose.Topup,
+            OwnerId = owner,
+            WalletTopupId = Guid.NewGuid(),
+            Amount = 50_000m,
+            RequestFingerprint = "fp-awaiting",
+            ProviderIdempotencyKey = "pk-awaiting",
+            Status = StripePaymentAttemptStatus.AwaitingPayment,
+            BlocksReplacement = true
+        };
+        context.Wallets.Add(wallet);
+        context.DirectPaymentOrders.Add(directOrder);
+        context.WalletTransactions.Add(directTx);
+        context.StripePaymentAttempts.AddRange(reconAttempt, awaitingAttempt);
+        await context.SaveChangesAsync();
+
+        var handler = new ResolveStripeAttemptCommandHandler(context);
+        var adminId = Guid.NewGuid().ToString();
+
+        var expired = await handler.Handle(
+            new ResolveStripeAttemptCommand("Expired", "Session expired without capture")
+            {
+                AttemptId = reconAttempt.Id,
+                AdminUserId = adminId
+            },
+            default);
+        Assert.Equal("Expired", expired.Status);
+        Assert.Equal(TopupStatus.Expired, directOrder.Status);
+        Assert.Equal(TransactionStatus.Failed, directTx.Status);
+
+        var conflict = await Assert.ThrowsAsync<BusinessRuleValidationException>(() =>
+            handler.Handle(
+                new ResolveStripeAttemptCommand("Failed", "Still awaiting")
+                {
+                    AttemptId = awaitingAttempt.Id,
+                    AdminUserId = adminId
+                },
+                default));
+        Assert.Equal("INVALID_ATTEMPT_STATE", conflict.ErrorCode);
+        Assert.Equal(409, conflict.StatusCode);
+
+        var notFound = await Assert.ThrowsAsync<EntityNotFoundException>(() =>
+            handler.Handle(
+                new ResolveStripeAttemptCommand("Failed", "Missing attempt")
+                {
+                    AttemptId = Guid.NewGuid(),
+                    AdminUserId = adminId
+                },
+                default));
+        Assert.Equal("PAYMENT_ATTEMPT_NOT_FOUND", notFound.ErrorCode);
+    }
+
+    [Fact]
+    public async Task ListAdminWallets_FiltersByUserIdSearchAndPaginates_AndHistoryUnknownThrows404()
+    {
+        using var context = new TestWalletDbContext(Guid.NewGuid().ToString());
+        var u1 = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var u2 = Guid.Parse("22222222-2222-2222-2222-222222222222");
+        var u3 = Guid.Parse("33333333-3333-3333-3333-333333333333");
+        context.Wallets.AddRange(
+            new WalletAccount { Id = Guid.NewGuid(), UserId = u1, Balance = 10_000m, Currency = CurrencyCode.Vnd, Status = "ACTIVE", CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-3) },
+            new WalletAccount { Id = Guid.NewGuid(), UserId = u2, Balance = 20_000m, Currency = CurrencyCode.Vnd, Status = "ACTIVE", CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-2) },
+            new WalletAccount { Id = Guid.NewGuid(), UserId = u3, Balance = 30_000m, Currency = CurrencyCode.Vnd, Status = "ACTIVE", CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-1) });
+        await context.SaveChangesAsync();
+
+        var query = new ListAdminWalletsQueryHandler(context);
+        var byUser = await query.Handle(new ListAdminWalletsQuery(1, 20, UserId: u2), default);
+        Assert.Equal(u2.ToString(), Assert.Single(byUser.Items).UserId);
+
+        var bySearch = await query.Handle(new ListAdminWalletsQuery(1, 20, Search: "22222222"), default);
+        Assert.Equal(u2.ToString(), Assert.Single(bySearch.Items).UserId);
+
+        var pageTwo = await query.Handle(new ListAdminWalletsQuery(Page: 2, PageSize: 1), default);
+        Assert.Equal(3, pageTwo.Pagination.TotalCount);
+        Assert.Equal(3, pageTwo.Pagination.TotalPages);
+        Assert.True(pageTwo.Pagination.HasPreviousPage);
+        Assert.True(pageTwo.Pagination.HasNextPage);
+        Assert.Equal(u2.ToString(), Assert.Single(pageTwo.Items).UserId);
+
+        var historyErr = await Assert.ThrowsAsync<EntityNotFoundException>(() =>
+            new GetWithdrawalHistoryQueryHandler(context).Handle(new GetWithdrawalHistoryQuery(Guid.NewGuid()), default));
+        Assert.Equal("WITHDRAWAL_NOT_FOUND", historyErr.ErrorCode);
+    }
+
+    [Fact]
+    public async Task AdjustWalletBalance_EnforcesAvailableBalanceAgainstLocks_WorksOnFrozenAndValidatesReason()
+    {
+        using var context = new TestWalletDbContext(Guid.NewGuid().ToString());
+        var userId = Guid.NewGuid();
+        var adminId = Guid.NewGuid().ToString();
+        var wallet = new WalletAccount
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            Balance = 100_000m,
+            LockedBalance = 60_000m,
+            Currency = CurrencyCode.Vnd,
+            Status = "FROZEN"
+        };
+        context.Wallets.Add(wallet);
+        await context.SaveChangesAsync();
+
+        var handler = new AdjustWalletBalanceCommandHandler(context);
+
+        // AvailableBalance is 40,000 even though total Balance is 100,000.
+        var insufficient = await Assert.ThrowsAsync<InsufficientBalanceException>(() =>
+            handler.Handle(
+                new AdjustWalletBalanceCommand(50_000m, "Debit", "Fee clawback")
+                {
+                    UserId = userId,
+                    AdminUserId = adminId
+                },
+                default));
+        Assert.Equal("INSUFFICIENT_BALANCE", insufficient.ErrorCode);
+
+        var emptyReasonErr = await Assert.ThrowsAsync<BusinessRuleValidationException>(() =>
+            handler.Handle(
+                new AdjustWalletBalanceCommand(10_000m, "Credit", "   ")
+                {
+                    UserId = userId,
+                    AdminUserId = adminId
+                },
+                default));
+        Assert.Equal("VAL_INVALID_INPUT", emptyReasonErr.ErrorCode);
+
+        // Administrative adjustments can still remediate frozen wallets (chargeback reversal/recovery).
+        var frozenCredit = await handler.Handle(
+            new AdjustWalletBalanceCommand(25_000m, "Credit", "Dispute settled")
+            {
+                UserId = userId,
+                AdminUserId = adminId
+            },
+            default);
+        Assert.Equal(125_000m, frozenCredit.BalanceAfter);
+        Assert.Equal(65_000m, frozenCredit.AvailableBalance);
+
+        var audit = Assert.Single(context.AuditLogs.Where(a => a.Action == AuditAction.BalanceAdjustment));
+        Assert.Contains("\"AdjustmentType\":\"Credit\"", audit.NewValues);
+        Assert.Contains("\"Reason\":\"Dispute settled\"", audit.NewValues);
     }
 
     private sealed class PaidDirectProvider(StripePaymentAttempt attempt) : IStripeCheckoutClient

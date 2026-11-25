@@ -11,10 +11,14 @@ public class DirectPaymentOrderConfiguration : IEntityTypeConfiguration<DirectPa
         builder.HasKey(x => x.Id);
 
         builder.Property(x => x.OrderId).IsRequired();
-        builder.HasIndex(x => x.OrderId).IsUnique();
+        builder.HasIndex(x => x.OrderId)
+            .IsUnique()
+            .HasFilter("\"IsDeleted\" = FALSE");
 
         builder.Property(x => x.VnpTxnRef).HasMaxLength(100);
-        builder.HasIndex(x => x.VnpTxnRef).IsUnique();
+        builder.HasIndex(x => x.VnpTxnRef)
+            .IsUnique()
+            .HasFilter("\"VnpTxnRef\" IS NOT NULL AND \"IsDeleted\" = FALSE");
 
         builder.Property(x => x.VnpTransactionNo).HasMaxLength(100);
         builder.Property(x => x.Amount).HasPrecision(18, 2).IsRequired();

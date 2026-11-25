@@ -43,10 +43,6 @@ public interface IWalletDbContext
     Task<WalletTopup?> LockTopupByIdAsync(Guid topupId, CancellationToken cancellationToken);
     Task<DirectPaymentOrder?> LockDirectPaymentOrderByIdAsync(Guid orderId, CancellationToken cancellationToken);
     Task<StripePaymentAttempt?> LockStripePaymentAttemptAsync(Guid attemptId, CancellationToken cancellationToken);
-    Task<WalletTopup?> LockTopupByReferenceAsync(string transactionReference, CancellationToken cancellationToken);
-    Task<DirectPaymentOrder?> LockDirectPaymentOrderByReferenceAsync(
-        string transactionReference,
-        CancellationToken cancellationToken);
     Task<WithdrawalRequest?> LockWithdrawalRequestAsync(Guid withdrawalId, CancellationToken cancellationToken);
     Task<OrderEscrow?> LockOrderEscrowByOrderIdAsync(Guid orderId, CancellationToken cancellationToken);
     /// <summary>Locks every deposit escrow of an order (a Buy Now order has two: the deposit and the goods hold), oldest first.</summary>

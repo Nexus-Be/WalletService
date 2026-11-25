@@ -1,6 +1,7 @@
 namespace Wallet.Application.Features.BankAccounts;
 
 using System;
+using Wallet.Application.Features.Withdrawals;
 using Wallet.Domain.Entities;
 
 public sealed record BankAccountResponse(
@@ -15,7 +16,7 @@ public sealed record BankAccountResponse(
     internal static BankAccountResponse FromEntity(BankAccount entity) => new(
         entity.Id,
         entity.BankName,
-        entity.AccountNumber,
+        WithdrawalWorkflow.MaskAccount(entity.AccountNumber),
         entity.AccountHolderName,
         entity.IsDefault,
         entity.CreatedAt,

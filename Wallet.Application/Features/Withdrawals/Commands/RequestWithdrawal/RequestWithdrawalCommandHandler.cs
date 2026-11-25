@@ -52,6 +52,13 @@ internal sealed class RequestWithdrawalCommandHandler : IRequestHandler<RequestW
 
         wallet.EnsureActive();
 
+        if (wallet.Currency != CurrencyCode.Vnd)
+        {
+            throw new BusinessRuleValidationException(
+                "VAL_INVALID_CURRENCY",
+                "Withdrawals are only supported for VND wallets.");
+        }
+
         var (bankAccountId, bankName, accountNumber, accountHolder) =
             await ResolveBankDetailsAsync(request, userId.ToString(), cancellationToken);
 
@@ -142,6 +149,17 @@ internal sealed class RequestWithdrawalCommandHandler : IRequestHandler<RequestW
             string userId,
             CancellationToken cancellationToken)
     {
+        var hasManual = !string.IsNullOrWhiteSpace(request.BankCode)
+            || !string.IsNullOrWhiteSpace(request.AccountNumber)
+            || !string.IsNullOrWhiteSpace(request.AccountHolderName);
+
+        if (request.BankAccountId.HasValue && hasManual)
+        {
+            throw new BusinessRuleValidationException(
+                "VAL_INVALID_INPUT",
+                "Cannot specify both a saved bank account ID and manual bank details.");
+        }
+
         if (request.BankAccountId is Guid savedId)
         {
             var account = await _context.BankAccounts
@@ -151,10 +169,6 @@ internal sealed class RequestWithdrawalCommandHandler : IRequestHandler<RequestW
 
             return (account.Id, account.BankName.Trim(), account.AccountNumber.Trim(), account.AccountHolderName.Trim());
         }
-
-        var hasManual = !string.IsNullOrWhiteSpace(request.BankCode)
-            || !string.IsNullOrWhiteSpace(request.AccountNumber)
-            || !string.IsNullOrWhiteSpace(request.AccountHolderName);
 
         if (!hasManual)
         {
@@ -179,6 +193,19 @@ internal sealed class RequestWithdrawalCommandHandler : IRequestHandler<RequestW
             throw new BusinessRuleValidationException(
                 "VAL_INVALID_INPUT",
                 "Bank code, account number, and account holder name are required.");
+        }
+
+        var bankError = WithdrawalWorkflow.ValidateManualBankDetails(
+            request.BankCode,
+            request.AccountNumber,
+            request.AccountHolderName,
+            nameof(RequestWithdrawalCommand.BankCode),
+            "Bank code").FirstOrDefault();
+        if (bankError is not null)
+        {
+            throw new BusinessRuleValidationException(
+                "VAL_INVALID_INPUT",
+                bankError.ErrorMessage ?? "Bank details are invalid.");
         }
 
         return (

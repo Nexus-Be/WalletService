@@ -36,12 +36,19 @@ internal sealed class GetTransactionByIdQueryHandler(IWalletDbContext context)
             {
                 var topup = await context.WalletTopups.AsNoTracking()
                     .Where(item => item.Id == refId && item.WalletId == tx.WalletId)
-                    .Select(item => new { item.Status, item.VnpTransactionNo, item.VnpTxnRef })
+                    .Select(item => new { item.Id, item.Status, item.VnpTransactionNo, item.VnpTxnRef })
                     .FirstOrDefaultAsync(cancellationToken);
                 if (topup is not null)
                 {
                     gatewayStatus = topup.Status.ToString();
-                    gatewayReference = topup.VnpTransactionNo ?? topup.VnpTxnRef;
+                    gatewayReference = topup.VnpTransactionNo
+                        ?? topup.VnpTxnRef
+                        ?? await context.StripePaymentAttempts.AsNoTracking()
+                            .Where(item => item.WalletTopupId == topup.Id)
+                            .OrderByDescending(item => item.Status == StripePaymentAttemptStatus.Successful)
+                            .ThenByDescending(item => item.CreatedAt)
+                            .Select(item => item.PaymentIntentId)
+                            .FirstOrDefaultAsync(cancellationToken);
                 }
             }
             else if (tx.Type == WalletTransactionType.DirectGatewayPayment)
@@ -72,6 +79,18 @@ internal sealed class GetTransactionByIdQueryHandler(IWalletDbContext context)
                 {
                     gatewayStatus = withdrawal.Status.ToString();
                     gatewayReference = withdrawal.GatewayReferenceId;
+                }
+            }
+            else if (tx.Type is WalletTransactionType.AuctionHoldCapture or WalletTransactionType.AuctionForfeitCredit or WalletTransactionType.AuctionDepositRefund)
+            {
+                var hold = await context.AuctionHolds.AsNoTracking()
+                    .Where(item => item.Id == refId)
+                    .Select(item => new { item.Status, item.ReferenceId })
+                    .FirstOrDefaultAsync(cancellationToken);
+                if (hold is not null)
+                {
+                    gatewayStatus = hold.Status.ToString();
+                    gatewayReference = hold.ReferenceId;
                 }
             }
         }

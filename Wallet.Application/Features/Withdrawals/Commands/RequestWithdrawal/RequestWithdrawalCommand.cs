@@ -48,33 +48,51 @@ public sealed record RequestWithdrawalCommand(
                 new[] { nameof(BankAccountId) });
         }
 
-        if (BankAccountId is null)
+        var hasAnyManual = !string.IsNullOrWhiteSpace(BankCode)
+            || !string.IsNullOrWhiteSpace(AccountNumber)
+            || !string.IsNullOrWhiteSpace(AccountHolderName);
+
+        if (BankAccountId.HasValue && hasAnyManual)
         {
-            var hasAnyManual = !string.IsNullOrWhiteSpace(BankCode)
-                || !string.IsNullOrWhiteSpace(AccountNumber)
-                || !string.IsNullOrWhiteSpace(AccountHolderName);
-
-            if (hasAnyManual)
+            yield return new ValidationResult(
+                "Cannot specify both a saved bank account ID and manual bank details.",
+                new[] { nameof(BankAccountId) });
+        }
+        else if (BankAccountId is null && hasAnyManual)
+        {
+            if (string.IsNullOrWhiteSpace(BankCode))
             {
-                if (string.IsNullOrWhiteSpace(BankCode))
-                {
-                    yield return new ValidationResult(
-                        "Bank code is required.",
-                        new[] { nameof(BankCode) });
-                }
+                yield return new ValidationResult(
+                    "Bank code is required.",
+                    new[] { nameof(BankCode) });
+            }
 
-                if (string.IsNullOrWhiteSpace(AccountNumber))
-                {
-                    yield return new ValidationResult(
-                        "Account number is required.",
-                        new[] { nameof(AccountNumber) });
-                }
+            if (string.IsNullOrWhiteSpace(AccountNumber))
+            {
+                yield return new ValidationResult(
+                    "Account number is required.",
+                    new[] { nameof(AccountNumber) });
+            }
 
-                if (string.IsNullOrWhiteSpace(AccountHolderName))
+            if (string.IsNullOrWhiteSpace(AccountHolderName))
+            {
+                yield return new ValidationResult(
+                    "Account holder name is required.",
+                    new[] { nameof(AccountHolderName) });
+            }
+
+            if (!string.IsNullOrWhiteSpace(BankCode) &&
+                !string.IsNullOrWhiteSpace(AccountNumber) &&
+                !string.IsNullOrWhiteSpace(AccountHolderName))
+            {
+                foreach (var error in WithdrawalWorkflow.ValidateManualBankDetails(
+                    BankCode,
+                    AccountNumber,
+                    AccountHolderName,
+                    nameof(BankCode),
+                    "Bank code"))
                 {
-                    yield return new ValidationResult(
-                        "Account holder name is required.",
-                        new[] { nameof(AccountHolderName) });
+                    yield return error;
                 }
             }
         }

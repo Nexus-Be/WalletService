@@ -64,19 +64,23 @@ internal sealed class ResolveStripeAttemptCommandHandler(IWalletDbContext contex
 
         var now = DateTimeOffset.UtcNow;
         var oldStatus = attempt.Status;
+        var oldBlocksReplacement = attempt.BlocksReplacement;
+        var parentStatus = targetStatus == StripePaymentAttemptStatus.Expired
+            ? TopupStatus.Expired
+            : TopupStatus.Failed;
         attempt.Status = targetStatus;
         attempt.BlocksReplacement = false;
         attempt.UpdatedAt = now;
 
         if (topup is not null && topup.Status == TopupStatus.Pending)
         {
-            topup.Status = TopupStatus.Failed;
+            topup.Status = parentStatus;
             topup.UpdatedAt = now;
         }
 
         if (directOrder is not null && directOrder.Status == TopupStatus.Pending)
         {
-            directOrder.Status = TopupStatus.Failed;
+            directOrder.Status = parentStatus;
             directOrder.UpdatedAt = now;
 
             var pendingDirectTxs = await context.WalletTransactions
@@ -96,7 +100,7 @@ internal sealed class ResolveStripeAttemptCommandHandler(IWalletDbContext contex
             AuditAction.StripeAttemptResolve,
             nameof(StripePaymentAttempt),
             attempt.Id.ToString(),
-            oldValues: new { Status = oldStatus.ToString(), BlocksReplacement = true },
+            oldValues: new { Status = oldStatus.ToString(), BlocksReplacement = oldBlocksReplacement },
             newValues: new { Status = attempt.Status.ToString(), attempt.BlocksReplacement, Reason = reason },
             userId: adminGuid.ToString());
 

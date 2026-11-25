@@ -288,9 +288,11 @@ public sealed class WalletsController : ControllerBase
     /// <summary>Transfers balance between wallet accounts.</summary>
     [HttpPost("transfers")]
     [RequireRole]
+    [ProducesResponseType(typeof(TransferResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Transfer(
         [FromBody] TransferCommand command,
-        CancellationToken cancellationToken)
+        [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey = null,
+        CancellationToken cancellationToken = default)
     {
         if (!this.TryGetUserId(out var userGuid, out var authError))
         {
@@ -302,7 +304,13 @@ public sealed class WalletsController : ControllerBase
             userGuid,
             command.RecipientUserId,
             command.Amount);
-        var result = await _sender.Send(command with { SenderUserId = userGuid.ToString() }, cancellationToken);
+        var result = await _sender.Send(
+            command with
+            {
+                SenderUserId = userGuid.ToString(),
+                IdempotencyKey = string.IsNullOrWhiteSpace(idempotencyKey) ? null : idempotencyKey.Trim()
+            },
+            cancellationToken);
         return Ok(result);
     }
 
@@ -315,6 +323,8 @@ public sealed class WalletsController : ControllerBase
         [FromQuery] string? type = null,
         [FromQuery] DateTimeOffset? fromDate = null,
         [FromQuery] DateTimeOffset? toDate = null,
+        [FromQuery] string? status = null,
+        [FromQuery] Guid? referenceId = null,
         CancellationToken cancellationToken = default)
     {
         if (!this.TryGetUserId(out var userGuid, out var authError))
@@ -324,7 +334,10 @@ public sealed class WalletsController : ControllerBase
 
         _logger.LogInformation("Querying transactions for user: '{UserId}', page: {Page}", userGuid, page);
         var result = await _sender.Send(
-            new ListTransactionsQuery(page, pageSize, type, fromDate, toDate) { UserId = userGuid.ToString() },
+            new ListTransactionsQuery(page, pageSize, type, fromDate, toDate, status, referenceId)
+            {
+                UserId = userGuid.ToString()
+            },
             cancellationToken);
         return Ok(result);
     }
@@ -529,9 +542,16 @@ public sealed class WalletsController : ControllerBase
     public async Task<IActionResult> RefundOrder(
         Guid orderId,
         [FromBody] RefundOrderPaymentCommand command,
-        CancellationToken cancellationToken)
+        [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey = null,
+        CancellationToken cancellationToken = default)
     {
-        var result = await _sender.Send(command with { OrderId = orderId }, cancellationToken);
+        var result = await _sender.Send(
+            command with
+            {
+                OrderId = orderId,
+                IdempotencyKey = string.IsNullOrWhiteSpace(idempotencyKey) ? null : idempotencyKey.Trim()
+            },
+            cancellationToken);
         return Ok(result);
     }
 
@@ -545,10 +565,16 @@ public sealed class WalletsController : ControllerBase
     public async Task<IActionResult> RefundSubOrder(
         Guid subOrderId,
         [FromBody] RefundOrderPaymentCommand command,
-        CancellationToken cancellationToken)
+        [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey = null,
+        CancellationToken cancellationToken = default)
     {
         var result = await _sender.Send(
-            command with { OrderId = subOrderId, IsSubOrder = true },
+            command with
+            {
+                OrderId = subOrderId,
+                IsSubOrder = true,
+                IdempotencyKey = string.IsNullOrWhiteSpace(idempotencyKey) ? null : idempotencyKey.Trim()
+            },
             cancellationToken);
         return Ok(result);
     }
@@ -577,7 +603,7 @@ public sealed class WalletsController : ControllerBase
     [ApiExplorerSettings(IgnoreApi = true)]
     [ProducesResponseType(typeof(WalletResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetUserWalletInternal(Guid userId, CancellationToken cancellationToken) =>
-        Ok(await _sender.Send(new GetMyWalletQuery(userId.ToString()), cancellationToken));
+        Ok(await _sender.Send(new GetMyWalletQuery(userId.ToString()) { AutoCreate = false }, cancellationToken));
 
     /// <summary>Freezes a user's wallet during an open purchase dispute.</summary>
     [HttpPost("~/api/v1/internal/wallets/freeze-purchase")]
@@ -685,8 +711,15 @@ public sealed class WalletsController : ControllerBase
     public async Task<IActionResult> RefundOrderInternal(
         Guid orderId,
         [FromBody] RefundOrderPaymentCommand command,
-        CancellationToken cancellationToken) =>
-        Ok(await _sender.Send(command with { OrderId = orderId }, cancellationToken));
+        [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey = null,
+        CancellationToken cancellationToken = default) =>
+        Ok(await _sender.Send(
+            command with
+            {
+                OrderId = orderId,
+                IdempotencyKey = string.IsNullOrWhiteSpace(idempotencyKey) ? null : idempotencyKey.Trim()
+            },
+            cancellationToken));
 
     /// <summary>Refunds a sub-order's wallet payment back to the buyer over internal service authentication.</summary>
     [HttpPost("~/api/v1/internal/wallets/sub-orders/{subOrderId:guid}/refund")]
@@ -698,8 +731,16 @@ public sealed class WalletsController : ControllerBase
     public async Task<IActionResult> RefundSubOrderInternal(
         Guid subOrderId,
         [FromBody] RefundOrderPaymentCommand command,
-        CancellationToken cancellationToken) =>
-        Ok(await _sender.Send(command with { OrderId = subOrderId, IsSubOrder = true }, cancellationToken));
+        [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey = null,
+        CancellationToken cancellationToken = default) =>
+        Ok(await _sender.Send(
+            command with
+            {
+                OrderId = subOrderId,
+                IsSubOrder = true,
+                IdempotencyKey = string.IsNullOrWhiteSpace(idempotencyKey) ? null : idempotencyKey.Trim()
+            },
+            cancellationToken));
 
     /// <summary>Expires an unpaid direct Stripe payment when the order expires in CommerceService.</summary>
     [HttpPost("~/api/v1/internal/wallets/checkout/direct/{orderId:guid}/expire")]

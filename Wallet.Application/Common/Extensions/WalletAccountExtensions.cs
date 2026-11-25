@@ -10,7 +10,12 @@ using Wallet.Domain.Exceptions;
 
 internal static class WalletAccountExtensions
 {
-    internal static WalletAccount StageDefaultWallet(this IWalletDbContext context, Guid userId)
+    internal static WalletAccount StageDefaultWallet(this IWalletDbContext context, Guid userId) =>
+        context.StageDefaultWalletWithAudit(userId).Wallet;
+
+    internal static (WalletAccount Wallet, AuditLog AuditLog) StageDefaultWalletWithAudit(
+        this IWalletDbContext context,
+        Guid userId)
     {
         var wallet = new WalletAccount
         {
@@ -22,13 +27,13 @@ internal static class WalletAccountExtensions
             LockedBalance = 0m
         };
         context.Wallets.Add(wallet);
-        context.AddAuditLog(
+        var audit = context.AddAuditLog(
             action: AuditAction.WalletCreate,
             entityName: nameof(WalletAccount),
             entityId: wallet.Id.ToString(),
             newValues: new { wallet.UserId, wallet.Balance, wallet.LockedBalance, wallet.Currency },
             userId: userId.ToString());
-        return wallet;
+        return (wallet, audit);
     }
 
     internal static async Task<WalletAccount> LockOrEnsureWalletByUserIdAsync(
@@ -37,6 +42,13 @@ internal static class WalletAccountExtensions
         CancellationToken cancellationToken)
     {
         var wallet = await context.LockWalletByUserIdAsync(userId, cancellationToken);
+        if (wallet is not null)
+        {
+            return wallet;
+        }
+
+        await context.LockAuctionKeyAsync($"wallet-create:{userId:D}", cancellationToken);
+        wallet = await context.LockWalletByUserIdAsync(userId, cancellationToken);
         if (wallet is not null)
         {
             return wallet;

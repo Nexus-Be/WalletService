@@ -1,18 +1,25 @@
 namespace Wallet.Infrastructure.Payments;
 
-using Microsoft.Extensions.Configuration;
+using System.Net;
 using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 using Stripe;
 using Stripe.Checkout;
 using Wallet.Application.Common.Exceptions;
 using Wallet.Application.Interfaces;
+using Wallet.Domain.Exceptions;
 
 public sealed class StripeCheckoutClient : IStripeCheckoutClient
 {
+    private const int DefaultSessionExpiryMinutes = 30;
+    private const int MinSessionExpiryMinutes = 30;
+    private const int MaxSessionExpiryMinutes = 1440;
+
     private readonly SessionService _sessions;
     private readonly PaymentIntentService _paymentIntents;
     private readonly string _successUrl;
     private readonly string _cancelUrl;
+    private readonly int _sessionExpiryMinutes;
 
     public StripeCheckoutClient(HttpClient httpClient, IConfiguration configuration)
     {
@@ -25,6 +32,9 @@ public sealed class StripeCheckoutClient : IStripeCheckoutClient
         var allowLocalHttp = StripeSettings.IsDevelopment(configuration);
         _successUrl = StripeSettings.RequireReturnUrl(configuration["Stripe:SuccessUrl"], "Stripe success URL", allowLocalHttp);
         _cancelUrl = StripeSettings.RequireReturnUrl(configuration["Stripe:CancelUrl"], "Stripe cancel URL", allowLocalHttp);
+        _sessionExpiryMinutes = int.TryParse(configuration["Stripe:SessionExpiryMinutes"], out var configuredMinutes)
+            ? Math.Clamp(configuredMinutes, MinSessionExpiryMinutes, MaxSessionExpiryMinutes)
+            : DefaultSessionExpiryMinutes;
         var stripeHttp = new SystemNetHttpClient(httpClient, maxNetworkRetries: 0);
         // Test hook for an isolated QA stack: point the SDK at a fake Stripe server. Accepted only in Development, never with a live key
         // (a sk_test_ key is already required above), so a production or shared environment cannot be redirected by configuration.
@@ -57,12 +67,14 @@ public sealed class StripeCheckoutClient : IStripeCheckoutClient
             request.IdempotencyKey.Any(char.IsWhiteSpace))
             throw new ArgumentException("Provider idempotency key is invalid.", nameof(request));
 
+        var expiresAt = request.ExpiresAt ?? DateTimeOffset.UtcNow.AddMinutes(_sessionExpiryMinutes);
         var metadata = new Dictionary<string, string> { ["attempt_id"] = request.AttemptId.ToString() };
         var options = new SessionCreateOptions
         {
             Mode = "payment",
-            SuccessUrl = AddTopupContext(_successUrl, request.TopupId),
-            CancelUrl = AddTopupContext(_cancelUrl, request.TopupId),
+            SuccessUrl = AddReturnContext(_successUrl, request.TopupId, request.OrderId),
+            CancelUrl = AddReturnContext(_cancelUrl, request.TopupId, request.OrderId),
+            ExpiresAt = expiresAt.UtcDateTime,
             ClientReferenceId = request.AttemptId.ToString(),
             Metadata = metadata,
             AfterExpiration = new SessionAfterExpirationOptions
@@ -157,6 +169,17 @@ public sealed class StripeCheckoutClient : IStripeCheckoutClient
         }
         catch (StripeException exception)
         {
+            if (exception.HttpStatusCode is HttpStatusCode.BadRequest
+                or HttpStatusCode.PaymentRequired
+                or HttpStatusCode.NotFound
+                or HttpStatusCode.UnprocessableEntity)
+            {
+                throw new BusinessRuleValidationException(
+                    "STRIPE_REQUEST_REJECTED",
+                    "The payment provider rejected the payment request.",
+                    400);
+            }
+
             throw new PaymentProviderUnavailableException(exception);
         }
         catch (HttpRequestException exception)
@@ -200,20 +223,44 @@ public sealed class StripeCheckoutClient : IStripeCheckoutClient
         };
     }
 
-    private static string AddTopupContext(string returnUrl, Guid? topupId)
+    private static string AddReturnContext(string returnUrl, Guid? topupId, Guid? orderId)
     {
-        if (topupId is null) return returnUrl;
-        if (topupId == Guid.Empty) throw new ArgumentException("Topup ID must not be empty.", nameof(topupId));
+        if (topupId is not null)
+        {
+            if (topupId == Guid.Empty) throw new ArgumentException("Topup ID must not be empty.", nameof(topupId));
+            return ReplaceReturnQueryParams(
+                returnUrl,
+                ("kind", "topup"),
+                ("transactionId", topupId.Value.ToString("D")));
+        }
+
+        if (orderId is not null)
+        {
+            if (orderId == Guid.Empty) throw new ArgumentException("Order ID must not be empty.", nameof(orderId));
+            return ReplaceReturnQueryParams(
+                returnUrl,
+                ("kind", "direct"),
+                ("orderId", orderId.Value.ToString("D")));
+        }
+
+        return returnUrl;
+    }
+
+    private static string ReplaceReturnQueryParams(string returnUrl, params (string Key, string Value)[] replacements)
+    {
+        var keys = replacements.Select(r => r.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var uri = new UriBuilder(returnUrl);
         var parameters = uri.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries)
             .Where(parameter =>
             {
                 var name = Uri.UnescapeDataString(parameter.Split('=', 2)[0].Replace('+', ' '));
-                return !name.Equals("kind", StringComparison.OrdinalIgnoreCase) &&
-                       !name.Equals("transactionId", StringComparison.OrdinalIgnoreCase);
+                return !keys.Contains(name);
             }).ToList();
-        parameters.Add("kind=topup");
-        parameters.Add($"transactionId={topupId:D}");
+        foreach (var (key, value) in replacements)
+        {
+            parameters.Add($"{key}={value}");
+        }
+
         uri.Query = string.Join("&", parameters);
         return uri.Uri.AbsoluteUri;
     }

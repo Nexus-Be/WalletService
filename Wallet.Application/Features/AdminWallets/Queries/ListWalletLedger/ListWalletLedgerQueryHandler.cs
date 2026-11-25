@@ -7,9 +7,11 @@ using System.Threading.Tasks;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Wallet.Application.Common;
+using Wallet.Application.Common.Extensions;
 using Wallet.Application.Common.Models;
 using Wallet.Application.Interfaces;
 using Wallet.Domain.Enums;
+using Wallet.Domain.Exceptions;
 
 internal sealed class ListWalletLedgerQueryHandler
     : IRequestHandler<ListWalletLedgerQuery, PagedData<AdminWalletLedgerEntry>>
@@ -31,13 +33,34 @@ internal sealed class ListWalletLedgerQueryHandler
         if (request.WalletId.HasValue)
             query = query.Where(transaction => transaction.WalletId == request.WalletId.Value);
 
-        if (!string.IsNullOrWhiteSpace(request.Type) &&
-            Enum.TryParse<WalletTransactionType>(request.Type.Trim(), true, out var type))
-            query = query.Where(transaction => transaction.Type == type);
+        if (request.UserId.HasValue)
+        {
+            var userIdStr = request.UserId.Value.ToString();
+            query = query.Where(transaction => transaction.UserId == userIdStr);
+        }
 
-        if (!string.IsNullOrWhiteSpace(request.Status) &&
-            Enum.TryParse<TransactionStatus>(request.Status.Trim(), true, out var status))
+        if (request.ReferenceId.HasValue)
+            query = query.Where(transaction => transaction.ReferenceId == request.ReferenceId.Value);
+
+        if (!string.IsNullOrWhiteSpace(request.Type))
+        {
+            if (!request.Type.TryToEnum<WalletTransactionType>(out var type))
+            {
+                throw new BusinessRuleValidationException("VAL_INVALID_TYPE", "Transaction type is invalid.");
+            }
+
+            query = query.Where(transaction => transaction.Type == type);
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Status))
+        {
+            if (!request.Status.TryToEnum<TransactionStatus>(out var status))
+            {
+                throw new BusinessRuleValidationException("VAL_INVALID_STATUS", "Transaction status is invalid.");
+            }
+
             query = query.Where(transaction => transaction.Status == status);
+        }
 
         if (request.FromDate.HasValue)
         {
@@ -62,12 +85,13 @@ internal sealed class ListWalletLedgerQueryHandler
                 transaction.WalletId,
                 transaction.Type.ToString(),
                 transaction.Amount,
-                transaction.Currency ?? "VND",
+                transaction.Currency ?? "Vnd",
                 transaction.BalanceBefore,
                 transaction.BalanceAfter,
                 transaction.Status.ToString(),
                 transaction.ReferenceId,
-                transaction.CreatedAt))
+                transaction.CreatedAt,
+                transaction.UserId ?? string.Empty))
             .ToListAsync(cancellationToken);
 
         return new PagedData<AdminWalletLedgerEntry>(

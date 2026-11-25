@@ -43,6 +43,11 @@ public sealed class GlobalExceptionHandlerMiddleware
                 "VAL_INVALID_SIGNATURE",
                 "Invalid webhook signature",
                 "Stripe webhook signature is invalid."),
+            StripeWebhookVersionException => (
+                StatusCodes.Status400BadRequest,
+                "VAL_UNSUPPORTED_WEBHOOK_VERSION",
+                "Unsupported webhook version",
+                "Stripe webhook API version is not supported."),
             PaymentProviderUnavailableException providerException => (
                 StatusCodes.Status503ServiceUnavailable,
                 "PAYMENT_PROVIDER_UNAVAILABLE",

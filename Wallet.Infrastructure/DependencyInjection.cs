@@ -55,9 +55,6 @@ public static class DependencyInjection
         services.AddScoped<global::Wallet.Application.Common.Ledger.IReconciliationSourceClient, Services.HttpReconciliationSourceClient>();
         services.AddScoped<global::Wallet.Application.Common.Ledger.JournalPoster>();
 
-        // Identity propagation delegating handler for outgoing inter-service HTTP requests
-        services.AddTransient<Services.Common.IdentityPropagationHandler>();
-
         return services;
     }
 

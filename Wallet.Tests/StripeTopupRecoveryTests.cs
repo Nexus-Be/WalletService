@@ -83,7 +83,7 @@ public sealed class StripeTopupRecoveryTests
     }
 
     [Fact]
-    public async Task Reconciliation_RejectsMismatchedProviderSession()
+    public async Task Reconciliation_IsolatesMismatchedProviderSessionWithoutAbortingBatch()
     {
         using var context = new TestWalletDbContext(Guid.NewGuid().ToString());
         var (_, attempt) = await Seed(context, Guid.NewGuid(), DateTimeOffset.UtcNow.AddMinutes(-3));
@@ -91,13 +91,13 @@ public sealed class StripeTopupRecoveryTests
         var handler = new ReconcilePendingTopupsCommandHandler(
             context, provider, NullLogger<ReconcilePendingTopupsCommandHandler>.Instance);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            handler.Handle(new ReconcilePendingTopupsCommand(), default));
+        var processed = await handler.Handle(new ReconcilePendingTopupsCommand(), default);
+        Assert.Equal(0, processed);
         Assert.Empty(context.WalletTransactions);
     }
 
     [Fact]
-    public async Task Reconciliation_RotatesAfterProviderFailure()
+    public async Task Reconciliation_RotatesAfterProviderFailureWithinSingleBatch()
     {
         using var context = new TestWalletDbContext(Guid.NewGuid().ToString());
         var (_, first) = await Seed(context, Guid.NewGuid(), DateTimeOffset.UtcNow.AddMinutes(-4));
@@ -109,11 +109,9 @@ public sealed class StripeTopupRecoveryTests
         var handler = new ReconcilePendingTopupsCommandHandler(
             context, provider, NullLogger<ReconcilePendingTopupsCommandHandler>.Instance);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            handler.Handle(new ReconcilePendingTopupsCommand(), default));
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            handler.Handle(new ReconcilePendingTopupsCommand(), default));
+        var processed = await handler.Handle(new ReconcilePendingTopupsCommand(), default);
 
+        Assert.Equal(0, processed);
         Assert.Equal(new[] { first.CheckoutSessionId, second.CheckoutSessionId }, provider.Sessions);
     }
 
