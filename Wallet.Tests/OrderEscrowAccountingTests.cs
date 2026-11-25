@@ -102,9 +102,9 @@ public sealed class OrderEscrowAccountingTests
     }
 
     [Fact]
-    public async Task UnmappedMarketplaceChildOperations_KeepTheirLegacyBehavior()
+    public async Task UnmappedSubOrder_PayoutKeepsItsLegacyBehavior_ButRefundWithoutParentIsRefused()
     {
-        using var context = new TestWalletDbContext(nameof(UnmappedMarketplaceChildOperations_KeepTheirLegacyBehavior));
+        using var context = new TestWalletDbContext(nameof(UnmappedSubOrder_PayoutKeepsItsLegacyBehavior_ButRefundWithoutParentIsRefused));
         var buyer = AddWallet(context, balance: 100m);
         var seller = AddWallet(context, balance: 0m);
         var childOrderId = Guid.NewGuid();
@@ -112,20 +112,26 @@ public sealed class OrderEscrowAccountingTests
         await new SettleSellerOrderCommandHandler(context).Handle(
             Settlement(seller.UserId, childOrderId, 40m),
             default);
-        await new RefundOrderPaymentCommandHandler(context).Handle(
-            new RefundOrderPaymentCommand(buyer.UserId.ToString(), 20m)
-            {
-                OrderId = childOrderId,
-                IsSubOrder = true
-            },
-            default);
 
-        Assert.Equal(120m, buyer.Balance);
+        // A sub-order refund that does not name its parent order cannot be checked against the payment or the escrow, so it is
+        // refused and nothing is credited (it used to credit the buyer out of nothing).
+        var refused = await Assert.ThrowsAsync<BusinessRuleValidationException>(() =>
+            new RefundOrderPaymentCommandHandler(context).Handle(
+                new RefundOrderPaymentCommand(buyer.UserId.ToString(), 20m)
+                {
+                    OrderId = childOrderId,
+                    IsSubOrder = true
+                },
+                default));
+        Assert.Equal(400, refused.StatusCode);
+        Assert.Equal("PARENT_ORDER_REQUIRED", refused.ErrorCode);
+
+        Assert.Equal(100m, buyer.Balance);
         Assert.Equal(40m, seller.Balance);
         Assert.Empty(context.OrderEscrows);
         Assert.Single(context.WalletTransactions.Where(item =>
             item.ReferenceId == childOrderId && item.Type == WalletTransactionType.EscrowRelease));
-        Assert.Single(context.WalletTransactions.Where(item =>
+        Assert.Empty(context.WalletTransactions.Where(item =>
             item.ReferenceId == childOrderId && item.Type == WalletTransactionType.RefundCredit));
     }
 
@@ -179,6 +185,43 @@ public sealed class OrderEscrowAccountingTests
         var escrow = context.OrderEscrows.Single(item => item.OrderId == parentOrderId);
         Assert.Equal(0m, escrow.RemainingAmount);
         Assert.Equal(OrderEscrowStatus.Refunded, escrow.Status);
+    }
+
+    [Fact]
+    public async Task SubOrderRefund_SentAgain_IsMarkedAsReplay_AndCreditsOnlyOnce()
+    {
+        using var context = new TestWalletDbContext(nameof(SubOrderRefund_SentAgain_IsMarkedAsReplay_AndCreditsOnlyOnce));
+        var buyer = AddWallet(context, balance: 1000m);
+        var parentOrderId = Guid.NewGuid();
+        var subOrderId = Guid.NewGuid();
+        await new PayOrderWithWalletCommandHandler(context).Handle(Payment(buyer.UserId, parentOrderId, 100m), default);
+
+        RefundOrderPaymentCommand Refund(decimal amount) =>
+            new RefundOrderPaymentCommand(buyer.UserId.ToString(), amount, "Sub-order cancelled", parentOrderId)
+            {
+                OrderId = subOrderId,
+                IsSubOrder = true
+            };
+
+        var first = await new RefundOrderPaymentCommandHandler(context).Handle(Refund(30m), default);
+        Assert.False(first.Replayed);
+        var balanceAfterFirst = buyer.Balance;
+
+        // Same sub-order and same amount: the answer is the transaction that already exists, flagged as a replay, and no second credit.
+        var again = await new RefundOrderPaymentCommandHandler(context).Handle(Refund(30m), default);
+        Assert.True(again.Replayed);
+        Assert.Equal(first.Id, again.Id);
+        Assert.Equal(balanceAfterFirst, buyer.Balance);
+        Assert.Single(context.WalletTransactions.Where(item =>
+            item.ReferenceId == subOrderId && item.Type == WalletTransactionType.RefundCredit));
+        Assert.Equal(70m, context.OrderEscrows.Single(item => item.OrderId == parentOrderId).RemainingAmount);
+
+        // A different amount for the same sub-order is a conflict (one refund per sub-order), never a second credit.
+        var conflict = await Assert.ThrowsAsync<BusinessRuleValidationException>(() =>
+            new RefundOrderPaymentCommandHandler(context).Handle(Refund(10m), default));
+        Assert.Equal(409, conflict.StatusCode);
+        Assert.Equal("REFUND_CONFLICT", conflict.ErrorCode);
+        Assert.Equal(balanceAfterFirst, buyer.Balance);
     }
 
     [Fact]

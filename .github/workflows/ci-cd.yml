@@ -23,8 +23,41 @@ jobs:
           curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" | tar -xz gitleaks
           ./gitleaks detect --source . --no-git --redact --verbose
 
+  tests:
+    runs-on: ubuntu-latest
+
+    # Disposable PostgreSQL for the integration tests that are skipped when WALLET_STRIPE_TEST_DATABASE is not set.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: wallet_it_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Test (unit and PostgreSQL integration)
+        env:
+          WALLET_STRIPE_TEST_DATABASE: "Host=localhost;Port=5432;Database=wallet_it_test;Username=postgres;Password=ci-only-password"
+        run: dotnet test Wallet.sln --nologo --verbosity minimal
+
   build-and-push:
-    needs: secret-scan
+    needs: [secret-scan, tests]
     runs-on: ubuntu-latest
 
     steps:

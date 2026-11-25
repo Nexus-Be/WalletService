@@ -22,6 +22,17 @@ public interface IWalletDbContext
     DbSet<VnpayIpnLog> VnpayIpnLogs { get; }
     DbSet<WithdrawalRequest> WithdrawalRequests { get; }
     DbSet<AuditLog> AuditLogs { get; }
+    DbSet<LedgerSettings> LedgerSettings { get; }
+    DbSet<LedgerPostingPending> LedgerPostingPending { get; }
+    DbSet<LedgerAccount> LedgerAccounts { get; }
+    DbSet<JournalEntry> JournalEntries { get; }
+    DbSet<JournalLine> JournalLines { get; }
+    DbSet<ReconciliationRun> ReconciliationRuns { get; }
+    DbSet<ReconciliationFinding> ReconciliationFindings { get; }
+    DbSet<OrderSettlement> OrderSettlements { get; }
+    DbSet<PlatformSubsidyBudget> PlatformSubsidyBudgets { get; }
+    DbSet<PlatformSubsidyReservation> PlatformSubsidyReservations { get; }
+    DbSet<RefundFundPayout> RefundFundPayouts { get; }
     DatabaseFacade Database { get; }
 
     Task LockOrderPaymentAsync(Guid orderId, CancellationToken cancellationToken);
@@ -33,6 +44,11 @@ public interface IWalletDbContext
     Task<DirectPaymentOrder?> LockDirectPaymentOrderByIdAsync(Guid orderId, CancellationToken cancellationToken);
     Task<StripePaymentAttempt?> LockStripePaymentAttemptAsync(Guid attemptId, CancellationToken cancellationToken);
     Task<WithdrawalRequest?> LockWithdrawalRequestAsync(Guid withdrawalId, CancellationToken cancellationToken);
+    Task<OrderEscrow?> LockOrderEscrowByOrderIdAsync(Guid orderId, CancellationToken cancellationToken);
+    /// <summary>Locks every deposit escrow of an order (a Buy Now order has two: the deposit and the goods hold), oldest first.</summary>
+    Task<IReadOnlyList<AuctionDepositEscrow>> LockDepositEscrowsByOrderIdAsync(Guid orderId, CancellationToken cancellationToken);
+    Task<AuctionDepositEscrow?> LockDepositEscrowByHoldIdAsync(Guid holdId, CancellationToken cancellationToken);
+    Task<PlatformSubsidyBudget?> LockSubsidyBudgetAsync(Guid budgetId, CancellationToken cancellationToken);
     void EnsureNoPendingChanges();
     Task ReloadUnmodifiedAsync<TEntity>(TEntity entity, CancellationToken cancellationToken) where TEntity : class;
 

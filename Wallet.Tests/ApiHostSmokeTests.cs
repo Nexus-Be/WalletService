@@ -136,6 +136,10 @@ public sealed class ApiHostSmokeTests
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment("Testing");
+            builder.UseSetting(
+                "ConnectionStrings:DefaultConnection",
+                "Host=localhost;Port=5440;Database=wallet_smoke_unused;Username=postgres;Password=unused");
+            builder.UseSetting("Swagger:Enabled", "true");
             builder.ConfigureAppConfiguration((_, config) =>
             {
                 config.AddInMemoryCollection(new Dictionary<string, string?>
@@ -197,6 +201,17 @@ public sealed class ApiHostSmokeTests
         public DbSet<VnpayIpnLog> VnpayIpnLogs => inner.VnpayIpnLogs;
         public DbSet<WithdrawalRequest> WithdrawalRequests => inner.WithdrawalRequests;
         public DbSet<AuditLog> AuditLogs => inner.AuditLogs;
+        public DbSet<LedgerSettings> LedgerSettings => inner.LedgerSettings;
+        public DbSet<LedgerPostingPending> LedgerPostingPending => inner.LedgerPostingPending;
+        public DbSet<LedgerAccount> LedgerAccounts => inner.LedgerAccounts;
+        public DbSet<JournalEntry> JournalEntries => inner.JournalEntries;
+        public DbSet<JournalLine> JournalLines => inner.JournalLines;
+        public DbSet<ReconciliationRun> ReconciliationRuns => inner.ReconciliationRuns;
+        public DbSet<ReconciliationFinding> ReconciliationFindings => inner.ReconciliationFindings;
+        public DbSet<OrderSettlement> OrderSettlements => inner.OrderSettlements;
+        public DbSet<PlatformSubsidyBudget> PlatformSubsidyBudgets => inner.PlatformSubsidyBudgets;
+        public DbSet<PlatformSubsidyReservation> PlatformSubsidyReservations => inner.PlatformSubsidyReservations;
+        public DbSet<RefundFundPayout> RefundFundPayouts => inner.RefundFundPayouts;
         public DatabaseFacade Database => inner.Database;
 
         public Task LockOrderPaymentAsync(Guid orderId, CancellationToken cancellationToken) => Task.CompletedTask;
@@ -222,6 +237,19 @@ public sealed class ApiHostSmokeTests
 
         public Task<WithdrawalRequest?> LockWithdrawalRequestAsync(Guid withdrawalId, CancellationToken cancellationToken) =>
             inner.WithdrawalRequests.SingleOrDefaultAsync(r => r.Id == withdrawalId, cancellationToken);
+
+        public Task<OrderEscrow?> LockOrderEscrowByOrderIdAsync(Guid orderId, CancellationToken cancellationToken) =>
+            inner.OrderEscrows.SingleOrDefaultAsync(e => e.OrderId == orderId, cancellationToken);
+
+        public async Task<IReadOnlyList<AuctionDepositEscrow>> LockDepositEscrowsByOrderIdAsync(Guid orderId, CancellationToken cancellationToken) =>
+            (await inner.AuctionDepositEscrows.Where(e => e.OrderId == orderId).ToListAsync(cancellationToken))
+                .OrderBy(e => e.CreatedAt).ThenBy(e => e.Id).ToList();
+
+        public Task<AuctionDepositEscrow?> LockDepositEscrowByHoldIdAsync(Guid holdId, CancellationToken cancellationToken) =>
+            inner.AuctionDepositEscrows.SingleOrDefaultAsync(e => e.HoldId == holdId, cancellationToken);
+
+        public Task<PlatformSubsidyBudget?> LockSubsidyBudgetAsync(Guid budgetId, CancellationToken cancellationToken) =>
+            inner.PlatformSubsidyBudgets.SingleOrDefaultAsync(b => b.Id == budgetId, cancellationToken);
 
         public void EnsureNoPendingChanges() => inner.EnsureNoPendingChanges();
 

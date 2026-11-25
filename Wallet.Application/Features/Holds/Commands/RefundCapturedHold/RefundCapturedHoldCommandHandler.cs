@@ -44,6 +44,8 @@ internal sealed class RefundCapturedHoldCommandHandler(
                 return replay;
             }
 
+            // Shared lock order for everything that can spend an order or deposit escrow: key, order payment lock, hold, escrow row, wallet.
+            await context.LockOrderPaymentAsync(request.OrderId, cancellationToken);
             var hold = await context.LockAuctionHoldAsync(request.HoldId, cancellationToken)
                 ?? throw new EntityNotFoundException("HOLD_NOT_FOUND", nameof(AuctionHold), request.HoldId);
             var original = await context.AuctionHoldOperations.AsNoTracking()
@@ -69,7 +71,8 @@ internal sealed class RefundCapturedHoldCommandHandler(
                 .SingleOrDefaultAsync(item => item.HoldId == hold.Id, cancellationToken);
             if (hold.Status != AuctionHoldStatus.Captured || capture?.Purpose != "ORDER_PAYMENT" || capture.OrderId != request.OrderId)
                 throw new BusinessRuleValidationException("HOLD_NOT_REFUNDABLE", "The hold cannot be refunded for this order.", 409);
-            var escrow = await context.AuctionDepositEscrows.SingleOrDefaultAsync(item => item.HoldId == hold.Id, cancellationToken)
+            // The escrow row is locked before its balance is checked, so a payout that spends the same deposit cannot interleave.
+            var escrow = await context.LockDepositEscrowByHoldIdAsync(hold.Id, cancellationToken)
                 ?? throw new InvalidOperationException("The captured deposit escrow was not found.");
             if (escrow.OrderId != request.OrderId || escrow.RemainingAmount < hold.Amount)
                 throw new BusinessRuleValidationException("ESCROW_INSUFFICIENT", "The deposit escrow has insufficient funds.", 409);

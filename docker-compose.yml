@@ -30,6 +30,13 @@ services:
       NOTIFICATION_SERVICE_URL: "${NOTIFICATION_SERVICE_URL:-http://notification-service:8007}"
       Services__Notification__ServiceKey: "${NOTIFICATION_SERVICE_KEY:-}"
       OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-http://tempo:4317}"
+      # Release gates. Refunds are closed by default because the sub-order refund route used to credit the buyer without checking the
+      # payment or the escrow. LegacyCommerceSettlementEnabled is set on its own so that closing the refunds does not also stop the V1 seller
+      # payout (that route falls back to the legacy credits flag when its own flag is not set). Open the refunds only with
+      # ORDER_REFUND_ENABLED=true, after the refund path has been fixed and checked.
+      ReleaseFeatures__OrderRefundEnabled: "${ORDER_REFUND_ENABLED:-false}"
+      ReleaseFeatures__LegacyCommerceCreditsEnabled: "${LEGACY_COMMERCE_CREDITS_ENABLED:-false}"
+      ReleaseFeatures__LegacyCommerceSettlementEnabled: "${LEGACY_COMMERCE_SETTLEMENT_ENABLED:-true}"
     restart: unless-stopped
 
 networks:

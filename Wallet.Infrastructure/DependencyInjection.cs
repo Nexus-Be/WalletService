@@ -51,6 +51,10 @@ public static class DependencyInjection
             client.Timeout = TimeSpan.FromSeconds(10);
         });
 
+        services.AddHttpClient("reconciliation-source", client => client.Timeout = TimeSpan.FromSeconds(20));
+        services.AddScoped<global::Wallet.Application.Common.Ledger.IReconciliationSourceClient, Services.HttpReconciliationSourceClient>();
+        services.AddScoped<global::Wallet.Application.Common.Ledger.JournalPoster>();
+
         return services;
     }
 

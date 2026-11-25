@@ -35,5 +35,17 @@ public enum AuditAction
     OrderPaymentAdjustment = 30,
     NotificationDispatchFailed = 31,
     OrderEscrowCancel = 32,
-    Transfer = 33
+    Transfer = 33,
+    NotificationQueued = 34,
+    NotificationDelivered = 35,
+    NotificationAbandoned = 36,
+    LedgerShadowSwitch = 37,
+    LedgerBackfill = 38,
+    ReconciliationRun = 39,
+    ReconciliationFindingUpdate = 40,
+    SettlementConflict = 41,
+    SubsidyBudgetCreate = 42,
+    SubsidyBudgetApprove = 43,
+    SubsidyHold = 44,
+    SubsidyRelease = 45
 }

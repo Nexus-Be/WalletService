@@ -45,6 +45,9 @@ internal sealed class CaptureHoldCommandHandler(
                 return replay;
             }
 
+            // Shared lock order for everything that can spend an order or deposit escrow: key, order payment lock, hold, wallets.
+            if (request.Purpose == "ORDER_PAYMENT" && request.OrderId.HasValue)
+                await context.LockOrderPaymentAsync(request.OrderId.Value, cancellationToken);
             var hold = await context.LockAuctionHoldAsync(request.HoldId, cancellationToken)
                 ?? throw new EntityNotFoundException("HOLD_NOT_FOUND", nameof(AuctionHold), request.HoldId);
             var original = await context.AuctionHoldOperations.AsNoTracking()

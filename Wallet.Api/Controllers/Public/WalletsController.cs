@@ -13,6 +13,8 @@ using Wallet.Api.Common;
 using Wallet.Api.Extensions;
 using Wallet.Api.Filters;
 using Wallet.Application.Common.Models;
+using Wallet.Application.Features.Audit.Commands.MarkAuditLogsSynced;
+using Wallet.Application.Features.Audit.Queries.GetUnsyncedAuditLogs;
 using Wallet.Application.Features.BankAccounts;
 using Wallet.Application.Features.BankAccounts.Commands.CreateBankAccount;
 using Wallet.Application.Features.BankAccounts.Commands.DeleteBankAccount;
@@ -27,6 +29,11 @@ using Wallet.Application.Features.Checkout.Commands.PayOrderWithWallet;
 using Wallet.Application.Features.Checkout.Commands.RefundOrderPayment;
 using Wallet.Application.Features.Checkout.Commands.ResumeDirectPayment;
 using Wallet.Application.Features.Checkout.Commands.SettleSellerOrder;
+using Wallet.Application.Features.RefundFund.Commands.PayRefundFundCase;
+using Wallet.Application.Features.Settlements.Commands.SettleOrderPayout;
+using Wallet.Application.Features.Subsidies.Commands.HoldPlatformSubsidy;
+using Wallet.Application.Features.Subsidies.Commands.ReleasePlatformSubsidy;
+using Wallet.Application.Features.Subsidies.Queries.ListStaleSubsidyHolds;
 using Wallet.Application.Features.Checkout.Queries.GetDirectPaymentStatus;
 using Wallet.Application.Features.Holds.Commands.CaptureHold;
 using Wallet.Application.Features.Holds.Commands.CreateHold;
@@ -492,11 +499,28 @@ public sealed class WalletsController : ControllerBase
         return Ok(result);
     }
 
+    /// <summary>
+    /// Refunds a buyer from the refund fund for a sub-order that was already paid out to the seller (wallet payment, whole refund). Commerce
+    /// sends the decision with the approving admins. Answers Refunded, or NeedsFinance with a reason when nothing could be moved.
+    /// </summary>
+    [HttpPost("~/api/v1/internal/wallets/refund-fund/sub-orders/{subOrderId:guid}/payout")]
+    [RequireInternalServiceKey]
+    [ApiExplorerSettings(IgnoreApi = true)]
+    [ProducesResponseType(typeof(RefundFundCaseResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+    public async Task<IActionResult> PayRefundFundCase(
+        Guid subOrderId,
+        [FromBody] PayRefundFundCaseCommand command,
+        CancellationToken cancellationToken)
+    {
+        return Ok(await _sender.Send(command with { SubOrderId = subOrderId }, cancellationToken));
+    }
+
     /// <summary>Legacy protected route that credits the seller's wallet when a sub-order payout is released.</summary>
     [HttpPost("sub-orders/{subOrderId:guid}/settle")]
     [RequireInternalServiceKey]
     [ApiExplorerSettings(IgnoreApi = true)]
-    [ReleaseFeatureAttribute(ReleaseFeature.LegacyCommerceCredits)]
+    [ReleaseFeatureAttribute(ReleaseFeature.LegacyCommerceSettlement)]
     [ProducesResponseType(typeof(WalletOrderTransactionResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> SettleSellerOrder(
@@ -512,7 +536,7 @@ public sealed class WalletsController : ControllerBase
     [HttpPost("orders/{orderId:guid}/refund")]
     [RequireInternalServiceKey]
     [ApiExplorerSettings(IgnoreApi = true)]
-    [ReleaseFeatureAttribute(ReleaseFeature.LegacyCommerceCredits)]
+    [ReleaseFeatureAttribute(ReleaseFeature.OrderRefund)]
     [ProducesResponseType(typeof(WalletOrderTransactionResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> RefundOrder(
@@ -535,7 +559,7 @@ public sealed class WalletsController : ControllerBase
     [HttpPost("sub-orders/{subOrderId:guid}/refund")]
     [RequireInternalServiceKey]
     [ApiExplorerSettings(IgnoreApi = true)]
-    [ReleaseFeatureAttribute(ReleaseFeature.LegacyCommerceCredits)]
+    [ReleaseFeatureAttribute(ReleaseFeature.OrderRefund)]
     [ProducesResponseType(typeof(WalletOrderTransactionResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> RefundSubOrder(
@@ -556,6 +580,22 @@ public sealed class WalletsController : ControllerBase
     }
 
     // ---- Internal Service-to-Service Endpoints (Gateway never exposes /api/v1/internal/*) ----
+
+    /// <summary>Lists audit records that the central log service has not pulled yet, oldest first.</summary>
+    [HttpGet("~/api/v1/internal/audit-logs/unsynced")]
+    [RequireInternalServiceKey]
+    [ApiExplorerSettings(IgnoreApi = true)]
+    [ProducesResponseType(typeof(UnsyncedAuditLogsResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetUnsyncedAuditLogsInternal([FromQuery] int limit = 200, CancellationToken cancellationToken = default) =>
+        Ok(await _sender.Send(new GetUnsyncedAuditLogsQuery(limit), cancellationToken));
+
+    /// <summary>Marks audit records as pulled after the central log service stored them.</summary>
+    [HttpPost("~/api/v1/internal/audit-logs/mark-synced")]
+    [RequireInternalServiceKey]
+    [ApiExplorerSettings(IgnoreApi = true)]
+    [ProducesResponseType(typeof(MarkAuditLogsSyncedResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> MarkAuditLogsSyncedInternal([FromBody] MarkAuditLogsSyncedCommand command, CancellationToken cancellationToken = default) =>
+        Ok(await _sender.Send(command, cancellationToken));
 
     /// <summary>Gets a user's wallet balance, available balance, and freeze status for internal services.</summary>
     [HttpGet("~/api/v1/internal/wallets/{userId:guid}")]
@@ -602,7 +642,7 @@ public sealed class WalletsController : ControllerBase
     [HttpPost("~/api/v1/internal/wallets/sub-orders/{subOrderId:guid}/settle")]
     [RequireInternalServiceKey]
     [ApiExplorerSettings(IgnoreApi = true)]
-    [ReleaseFeatureAttribute(ReleaseFeature.LegacyCommerceCredits)]
+    [ReleaseFeatureAttribute(ReleaseFeature.LegacyCommerceSettlement)]
     [ProducesResponseType(typeof(WalletOrderTransactionResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> SettleSellerOrderInternal(
@@ -611,11 +651,61 @@ public sealed class WalletsController : ControllerBase
         CancellationToken cancellationToken) =>
         Ok(await _sender.Send(command with { SubOrderId = subOrderId }, cancellationToken));
 
+    /// <summary>Atomic seller payout (protocol V2) over internal service authentication: escrow, seller credit, fee and shipping allocation and subsidy use in one transaction.</summary>
+    [HttpPost("~/api/v1/internal/wallets/order-settlements")]
+    [RequireInternalServiceKey]
+    [ApiExplorerSettings(IgnoreApi = true)]
+    [ReleaseFeatureAttribute(ReleaseFeature.OrderSettlementV2)]
+    [ProducesResponseType(typeof(SettleOrderPayoutResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+    public async Task<IActionResult> SettleOrderPayout(
+        [FromBody] SettleOrderPayoutCommand command,
+        CancellationToken cancellationToken) =>
+        Ok(await _sender.Send(command, cancellationToken));
+
+    /// <summary>Reserves the platform-funded voucher subsidy of one sub-order over internal service authentication.</summary>
+    [HttpPost("~/api/v1/internal/wallets/sub-orders/{subOrderId:guid}/subsidy-hold")]
+    [RequireInternalServiceKey]
+    [ApiExplorerSettings(IgnoreApi = true)]
+    [ReleaseFeatureAttribute(ReleaseFeature.OrderSettlementV2)]
+    [ProducesResponseType(typeof(SubsidyReservationResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+    public async Task<IActionResult> HoldPlatformSubsidy(
+        Guid subOrderId,
+        [FromBody] HoldPlatformSubsidyCommand command,
+        CancellationToken cancellationToken) =>
+        Ok(await _sender.Send(command with { SubOrderId = subOrderId }, cancellationToken));
+
+    /// <summary>Gives a held platform subsidy back to the budget over internal service authentication. A recovery action, so it is not gated.</summary>
+    [HttpPost("~/api/v1/internal/wallets/sub-orders/{subOrderId:guid}/subsidy-release")]
+    [RequireInternalServiceKey]
+    [ApiExplorerSettings(IgnoreApi = true)]
+    [ProducesResponseType(typeof(ReleasePlatformSubsidyResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> ReleasePlatformSubsidy(
+        Guid subOrderId,
+        [FromBody] ReleasePlatformSubsidyCommand command,
+        CancellationToken cancellationToken) =>
+        Ok(await _sender.Send(command with { SubOrderId = subOrderId }, cancellationToken));
+
+    /// <summary>Lists subsidy reservations that are still held long after they were taken, over internal service authentication. Commerce uses it to find holds whose sub-order was never saved.</summary>
+    [HttpGet("~/api/v1/internal/wallets/subsidy-holds/stale")]
+    [RequireInternalServiceKey]
+    [ApiExplorerSettings(IgnoreApi = true)]
+    [ProducesResponseType(typeof(IReadOnlyList<StaleSubsidyHoldResult>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListStaleSubsidyHolds(
+        [FromQuery] int olderThanMinutes = 30,
+        [FromQuery] int limit = 50,
+        CancellationToken cancellationToken = default) =>
+        Ok(await _sender.Send(new ListStaleSubsidyHoldsQuery(olderThanMinutes, limit), cancellationToken));
+
     /// <summary>Refunds an order's wallet payment back to the buyer over internal service authentication.</summary>
     [HttpPost("~/api/v1/internal/wallets/orders/{orderId:guid}/refund")]
     [RequireInternalServiceKey]
     [ApiExplorerSettings(IgnoreApi = true)]
-    [ReleaseFeatureAttribute(ReleaseFeature.LegacyCommerceCredits)]
+    [ReleaseFeatureAttribute(ReleaseFeature.OrderRefund)]
     [ProducesResponseType(typeof(WalletOrderTransactionResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> RefundOrderInternal(
@@ -635,7 +725,7 @@ public sealed class WalletsController : ControllerBase
     [HttpPost("~/api/v1/internal/wallets/sub-orders/{subOrderId:guid}/refund")]
     [RequireInternalServiceKey]
     [ApiExplorerSettings(IgnoreApi = true)]
-    [ReleaseFeatureAttribute(ReleaseFeature.LegacyCommerceCredits)]
+    [ReleaseFeatureAttribute(ReleaseFeature.OrderRefund)]
     [ProducesResponseType(typeof(WalletOrderTransactionResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> RefundSubOrderInternal(

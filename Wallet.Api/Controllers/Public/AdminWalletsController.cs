@@ -21,6 +21,23 @@ using Wallet.Application.Features.AdminWallets.Queries.ListAdminWallets;
 using Wallet.Application.Features.AdminWallets.Queries.ListAdminWithdrawals;
 using Wallet.Application.Features.AdminWallets.Queries.ListStripeReconciliationRequired;
 using Wallet.Application.Features.AdminWallets.Queries.ListWalletLedger;
+using Wallet.Application.Features.Ledger.Commands.BackfillJournal;
+using Wallet.Application.Features.RefundFund.Commands.DepositRefundFund;
+using Wallet.Application.Features.RefundFund.Queries.GetRefundFundStatus;
+using Wallet.Application.Features.Subsidies.Commands.ApproveSubsidyBudget;
+using Wallet.Application.Features.Subsidies.Commands.CloseSubsidyBudget;
+using Wallet.Application.Features.Subsidies.Commands.CreateSubsidyBudget;
+using Wallet.Application.Features.Subsidies.Queries.ListSubsidyBudgets;
+using Wallet.Application.Features.Ledger.Commands.RunReconciliation;
+using Wallet.Application.Features.Ledger.Commands.SetShadowLedger;
+using Wallet.Application.Features.Ledger.Commands.UpdateReconciliationFinding;
+using Wallet.Application.Features.Ledger.Queries.GetLedgerStatus;
+using Wallet.Application.Features.Ledger.Queries.GetReconciliationFinding;
+using Wallet.Application.Features.Ledger.Queries.GetReconciliationRun;
+using Wallet.Application.Features.Ledger.Queries.GetTrialBalance;
+using Wallet.Application.Features.Ledger.Queries.ListJournal;
+using Wallet.Application.Features.Ledger.Queries.ListReconciliationFindings;
+using Wallet.Application.Features.Ledger.Queries.ListReconciliationRuns;
 using Wallet.Application.Features.Stripe.Commands.ReconcilePendingTopups;
 using Wallet.Application.Features.Wallets;
 using Wallet.Application.Features.Wallets.Commands.FreezeWallet;
@@ -155,6 +172,173 @@ public sealed class AdminWalletsController : ControllerBase
             new GetWalletReconciliationQuery(page, pageSize, walletId, userId, result),
             cancellationToken);
         return Ok(response);
+    }
+
+    /// <summary>Shows what the shadow ledger covers: switch, epoch, and per wallet the queue, history and I10(b) result. Admin only.</summary>
+    [HttpGet("ledger/status")]
+    [ProducesResponseType(typeof(LedgerStatusResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetLedgerStatus(CancellationToken cancellationToken)
+    {
+        if (!this.EnsureAdmin(out var authError)) return authError;
+        return Ok(await _sender.Send(new GetLedgerStatusQuery(), cancellationToken));
+    }
+
+    /// <summary>Lists shadow ledger journal lines, optionally for one wallet transaction. Read only. Admin only.</summary>
+    [HttpGet("ledger/journal")]
+    [ProducesResponseType(typeof(PagedData<JournalLineResult>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListJournal(
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] Guid? transactionId = null, [FromQuery] Guid? walletId = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!this.EnsureAdmin(out var authError)) return authError;
+        return Ok(await _sender.Send(new ListJournalQuery(page, pageSize, transactionId, walletId), cancellationToken));
+    }
+
+    /// <summary>Totals debits and credits per ledger account. Admin only.</summary>
+    [HttpGet("ledger/trial-balance")]
+    [ProducesResponseType(typeof(TrialBalanceResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetTrialBalance(CancellationToken cancellationToken)
+    {
+        if (!this.EnsureAdmin(out var authError)) return authError;
+        return Ok(await _sender.Send(new GetTrialBalanceQuery(), cancellationToken));
+    }
+
+    /// <summary>The refund fund: whether it is on, its balance, its caps and what it paid today. Admin only.</summary>
+    [HttpGet("refund-fund")]
+    [ProducesResponseType(typeof(RefundFundStatusResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetRefundFundStatus(CancellationToken cancellationToken)
+    {
+        if (!this.EnsureAdmin(out var authError)) return authError;
+        return Ok(await _sender.Send(new GetRefundFundStatusQuery(), cancellationToken));
+    }
+
+    /// <summary>Puts money into the refund fund; the evidence reference points to the real transfer. Admin only.</summary>
+    [HttpPost("refund-fund/deposits")]
+    [ProducesResponseType(typeof(RefundFundDepositResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> DepositRefundFund([FromBody] DepositRefundFundCommand command, CancellationToken cancellationToken)
+    {
+        if (!this.EnsureAdmin(out var authError)) return authError;
+        if (!this.TryGetUserId(out var adminId, out var idError)) return idError;
+        return Ok(await _sender.Send(command with { AdminUserId = adminId }, cancellationToken));
+    }
+
+    /// <summary>Lists platform subsidy budgets with what is reserved, used and still available. Admin only.</summary>
+    [HttpGet("subsidy-budgets")]
+    [ProducesResponseType(typeof(PagedData<SubsidyBudgetResult>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListSubsidyBudgets(
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 20, CancellationToken cancellationToken = default)
+    {
+        if (!this.EnsureAdmin(out var authError)) return authError;
+        return Ok(await _sender.Send(new ListSubsidyBudgetsQuery(page, pageSize), cancellationToken));
+    }
+
+    /// <summary>Proposes a platform subsidy budget. It cannot be used until a different admin approves it. Admin only.</summary>
+    [HttpPost("subsidy-budgets")]
+    [ProducesResponseType(typeof(SubsidyBudgetResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> CreateSubsidyBudget([FromBody] CreateSubsidyBudgetCommand command, CancellationToken cancellationToken)
+    {
+        if (!this.EnsureAdmin(out var authError)) return authError;
+        if (!this.TryGetUserId(out var adminId, out var idError)) return idError;
+        return Ok(await _sender.Send(command with { AdminUserId = adminId }, cancellationToken));
+    }
+
+    /// <summary>Approves a pending subsidy budget. The approver must differ from the creator. Admin only.</summary>
+    [HttpPost("subsidy-budgets/{budgetId:guid}/approve")]
+    [ProducesResponseType(typeof(SubsidyBudgetResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ApproveSubsidyBudget(Guid budgetId, CancellationToken cancellationToken)
+    {
+        if (!this.EnsureAdmin(out var authError)) return authError;
+        if (!this.TryGetUserId(out var adminId, out var idError)) return idError;
+        return Ok(await _sender.Send(new ApproveSubsidyBudgetCommand { BudgetId = budgetId, AdminUserId = adminId }, cancellationToken));
+    }
+
+    /// <summary>Stops a subsidy budget from taking new reservations. Admin only.</summary>
+    [HttpPost("subsidy-budgets/{budgetId:guid}/close")]
+    [ProducesResponseType(typeof(SubsidyBudgetResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> CloseSubsidyBudget(Guid budgetId, CancellationToken cancellationToken)
+    {
+        if (!this.EnsureAdmin(out var authError)) return authError;
+        if (!this.TryGetUserId(out var adminId, out var idError)) return idError;
+        return Ok(await _sender.Send(new CloseSubsidyBudgetCommand { BudgetId = budgetId, AdminUserId = adminId }, cancellationToken));
+    }
+
+    /// <summary>Switches the shadow ledger on or off. Repeating the same switch changes nothing. Also the emergency off switch. Admin only.</summary>
+    [HttpPut("ledger/shadow")]
+    [ProducesResponseType(typeof(SetShadowLedgerResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> SetShadowLedger([FromBody] SetShadowLedgerCommand command, CancellationToken cancellationToken)
+    {
+        if (!this.EnsureAdmin(out var authError)) return authError;
+        if (!this.TryGetUserId(out var adminId, out var idError)) return idError;
+        return Ok(await _sender.Send(command with { AdminUserId = adminId }, cancellationToken));
+    }
+
+    /// <summary>Writes journal entries for older history of wallets whose history is a provable chain. Admin only.</summary>
+    [HttpPost("ledger/backfill")]
+    [ProducesResponseType(typeof(BackfillJournalResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> BackfillJournal([FromBody] BackfillJournalCommand? command, CancellationToken cancellationToken)
+    {
+        if (!this.EnsureAdmin(out var authError)) return authError;
+        if (!this.TryGetUserId(out var adminId, out var idError)) return idError;
+        return Ok(await _sender.Send((command ?? new BackfillJournalCommand()) with { AdminUserId = adminId }, cancellationToken));
+    }
+
+    /// <summary>Runs a reconciliation now. It only reports; it never changes a balance. Admin only.</summary>
+    [HttpPost("reconciliation/runs")]
+    [ProducesResponseType(typeof(ReconciliationRunResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> RunReconciliation([FromBody] RunReconciliationCommand? command, CancellationToken cancellationToken)
+    {
+        if (!this.EnsureAdmin(out var authError)) return authError;
+        if (!this.TryGetUserId(out var adminId, out var idError)) return idError;
+        return Ok(await _sender.Send((command ?? new RunReconciliationCommand()) with { AdminUserId = adminId }, cancellationToken));
+    }
+
+    /// <summary>Lists reconciliation runs, newest first. Admin only.</summary>
+    [HttpGet("reconciliation/runs")]
+    [ProducesResponseType(typeof(PagedData<ReconciliationRunResult>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListReconciliationRuns([FromQuery] int page = 1, [FromQuery] int pageSize = 20, CancellationToken cancellationToken = default)
+    {
+        if (!this.EnsureAdmin(out var authError)) return authError;
+        return Ok(await _sender.Send(new ListReconciliationRunsQuery(page, pageSize), cancellationToken));
+    }
+
+    /// <summary>Gets one reconciliation run. Admin only.</summary>
+    [HttpGet("reconciliation/runs/{id:guid}")]
+    [ProducesResponseType(typeof(ReconciliationRunResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetReconciliationRun(Guid id, CancellationToken cancellationToken)
+    {
+        if (!this.EnsureAdmin(out var authError)) return authError;
+        return Ok(await _sender.Send(new GetReconciliationRunQuery(id), cancellationToken));
+    }
+
+    /// <summary>Lists reconciliation findings. Admin only.</summary>
+    [HttpGet("reconciliation/findings")]
+    [ProducesResponseType(typeof(PagedData<ReconciliationFindingResult>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListReconciliationFindings(
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] string? status = null, [FromQuery] string? invariantCode = null,
+        [FromQuery] string? severity = null, [FromQuery] DateTimeOffset? fromDate = null, [FromQuery] DateTimeOffset? toDate = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!this.EnsureAdmin(out var authError)) return authError;
+        return Ok(await _sender.Send(new ListReconciliationFindingsQuery(page, pageSize, status, invariantCode, severity, fromDate, toDate), cancellationToken));
+    }
+
+    /// <summary>Gets one reconciliation finding. Admin only.</summary>
+    [HttpGet("reconciliation/findings/{id:guid}")]
+    [ProducesResponseType(typeof(ReconciliationFindingResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetReconciliationFinding(Guid id, CancellationToken cancellationToken)
+    {
+        if (!this.EnsureAdmin(out var authError)) return authError;
+        return Ok(await _sender.Send(new GetReconciliationFindingQuery(id), cancellationToken));
+    }
+
+    /// <summary>Changes the status of a finding with a required note. It does not change any balance. Admin only.</summary>
+    [HttpPatch("reconciliation/findings/{id:guid}")]
+    [ProducesResponseType(typeof(ReconciliationFindingResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> UpdateReconciliationFinding(Guid id, [FromBody] UpdateReconciliationFindingCommand command, CancellationToken cancellationToken)
+    {
+        if (!this.EnsureAdmin(out var authError)) return authError;
+        if (!this.TryGetUserId(out var adminId, out var idError)) return idError;
+        return Ok(await _sender.Send(command with { FindingId = id, AdminUserId = adminId }, cancellationToken));
     }
 
     /// <summary>Manually adjusts a wallet balance by administrative action. Admin role required.</summary>

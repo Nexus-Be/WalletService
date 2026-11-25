@@ -37,6 +37,17 @@ public sealed class TestWalletDbContext : IWalletDbContext, IDisposable
     public DbSet<VnpayIpnLog> VnpayIpnLogs => _inner.VnpayIpnLogs;
     public DbSet<WithdrawalRequest> WithdrawalRequests => _inner.WithdrawalRequests;
     public DbSet<AuditLog> AuditLogs => _inner.AuditLogs;
+    public DbSet<LedgerSettings> LedgerSettings => _inner.LedgerSettings;
+    public DbSet<LedgerPostingPending> LedgerPostingPending => _inner.LedgerPostingPending;
+    public DbSet<LedgerAccount> LedgerAccounts => _inner.LedgerAccounts;
+    public DbSet<JournalEntry> JournalEntries => _inner.JournalEntries;
+    public DbSet<JournalLine> JournalLines => _inner.JournalLines;
+    public DbSet<ReconciliationRun> ReconciliationRuns => _inner.ReconciliationRuns;
+    public DbSet<ReconciliationFinding> ReconciliationFindings => _inner.ReconciliationFindings;
+    public DbSet<OrderSettlement> OrderSettlements => _inner.OrderSettlements;
+    public DbSet<PlatformSubsidyBudget> PlatformSubsidyBudgets => _inner.PlatformSubsidyBudgets;
+    public DbSet<PlatformSubsidyReservation> PlatformSubsidyReservations => _inner.PlatformSubsidyReservations;
+    public DbSet<RefundFundPayout> RefundFundPayouts => _inner.RefundFundPayouts;
     public DatabaseFacade Database => _inner.Database;
 
     public Task LockOrderPaymentAsync(Guid orderId, CancellationToken cancellationToken)
@@ -73,6 +84,19 @@ public sealed class TestWalletDbContext : IWalletDbContext, IDisposable
 
     public Task<WithdrawalRequest?> LockWithdrawalRequestAsync(Guid withdrawalId, CancellationToken cancellationToken)
         => _inner.WithdrawalRequests.SingleOrDefaultAsync(r => r.Id == withdrawalId, cancellationToken);
+
+    public Task<OrderEscrow?> LockOrderEscrowByOrderIdAsync(Guid orderId, CancellationToken cancellationToken)
+        => _inner.OrderEscrows.SingleOrDefaultAsync(e => e.OrderId == orderId, cancellationToken);
+
+    public async Task<IReadOnlyList<AuctionDepositEscrow>> LockDepositEscrowsByOrderIdAsync(Guid orderId, CancellationToken cancellationToken)
+        => (await _inner.AuctionDepositEscrows.Where(e => e.OrderId == orderId).ToListAsync(cancellationToken))
+            .OrderBy(e => e.CreatedAt).ThenBy(e => e.Id).ToList();
+
+    public Task<AuctionDepositEscrow?> LockDepositEscrowByHoldIdAsync(Guid holdId, CancellationToken cancellationToken)
+        => _inner.AuctionDepositEscrows.SingleOrDefaultAsync(e => e.HoldId == holdId, cancellationToken);
+
+    public Task<PlatformSubsidyBudget?> LockSubsidyBudgetAsync(Guid budgetId, CancellationToken cancellationToken)
+        => _inner.PlatformSubsidyBudgets.SingleOrDefaultAsync(b => b.Id == budgetId, cancellationToken);
 
     public void EnsureNoPendingChanges() => _inner.EnsureNoPendingChanges();
 

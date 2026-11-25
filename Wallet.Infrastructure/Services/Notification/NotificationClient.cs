@@ -1,4 +1,4 @@
-namespace Wallet.Infrastructure.Services.Notification;
+﻿namespace Wallet.Infrastructure.Services.Notification;
 
 using System;
 using System.Net.Http;
@@ -17,6 +17,7 @@ public sealed class NotificationClient : INotificationClient
     private readonly HttpClient _httpClient;
     private readonly ILogger<NotificationClient> _logger;
     private readonly string? _serviceKey;
+    private readonly bool _sendAuctionDepositEvents;
 
     public NotificationClient(
         HttpClient httpClient,
@@ -25,6 +26,9 @@ public sealed class NotificationClient : INotificationClient
     {
         _httpClient = httpClient;
         _logger = logger;
+        // The auction-deposits route belongs to Auction (its own authentication and contract). Sending it from Wallet as well would
+        // reject the call and, once accepted, notify the bidder twice, so Wallet stays off unless this is switched on explicitly.
+        _sendAuctionDepositEvents = configuration.GetValue<bool>("Services:Notification:SendAuctionDepositEvents");
         var configuredKey = Environment.GetEnvironmentVariable("NOTIFICATION_SERVICE_KEY")
             ?? configuration["NOTIFICATION_SERVICE_KEY"]
             ?? configuration["Services:Notification:ServiceKey"];
@@ -45,8 +49,16 @@ public sealed class NotificationClient : INotificationClient
 
     public Task<NotificationDispatchResult> SendAuctionDepositEventAsync(
         AuctionDepositNotificationEvent payload,
-        CancellationToken cancellationToken = default) =>
-        SendAsync("api/v1/notifications/auction-deposits", payload, cancellationToken);
+        CancellationToken cancellationToken = default)
+    {
+        if (!_sendAuctionDepositEvents)
+        {
+            _logger.LogDebug("[REST Notification] Auction deposit event {SourceEventId} not sent: Auction owns the auction-deposits notification.", payload.SourceEventId);
+            return Task.FromResult(new NotificationDispatchResult(true));
+        }
+
+        return SendAsync("api/v1/notifications/auction-deposits", payload, cancellationToken);
+    }
 
     private async Task<NotificationDispatchResult> SendAsync<TPayload>(
         string route,

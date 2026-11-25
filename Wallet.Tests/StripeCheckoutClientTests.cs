@@ -219,6 +219,40 @@ public sealed class StripeCheckoutClientTests
     }
 
     [Fact]
+    public void ApiBaseOverride_IsRefusedOutsideDevelopment()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Stripe:SecretKey"] = "sk_test_not-a-real-key",
+            ["Stripe:SuccessUrl"] = "https://example.test/success",
+            ["Stripe:CancelUrl"] = "https://example.test/cancel",
+            ["ASPNETCORE_ENVIRONMENT"] = "Production",
+            ["Stripe:ApiBase"] = "http://fake-stripe:12111"
+        }).Build();
+        using var http = new HttpClient();
+
+        Assert.Throws<InvalidOperationException>(() => new StripeCheckoutClient(http, configuration));
+    }
+
+    [Fact]
+    public void ApiBaseOverride_IsAcceptedInDevelopmentForIsolatedTestStacks()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Stripe:SecretKey"] = "sk_test_not-a-real-key",
+            ["Stripe:SuccessUrl"] = "https://example.test/success",
+            ["Stripe:CancelUrl"] = "https://example.test/cancel",
+            ["ASPNETCORE_ENVIRONMENT"] = "Development",
+            ["Stripe:ApiBase"] = "http://fake-stripe:12111"
+        }).Build();
+        using var http = new HttpClient();
+
+        var client = new StripeCheckoutClient(http, configuration);
+
+        Assert.NotNull(client);
+    }
+
+    [Fact]
     public async Task ExpireSession_PostsToExpireEndpointAndReturnsSnapshot()
     {
         var attemptId = Guid.NewGuid();

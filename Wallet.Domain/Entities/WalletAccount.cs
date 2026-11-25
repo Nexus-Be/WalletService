@@ -9,6 +9,10 @@ public class WalletAccount : AuditableEntity<Guid>
     public required Guid UserId { get; set; }
     public decimal Balance { get; set; }
     public decimal LockedBalance { get; set; }
+    /// <summary>The epoch of the shadow ledger this wallet is currently being followed in (0 = never).</summary>
+    public int LedgerEpoch { get; set; }
+    /// <summary>The last LedgerSeq handed out in the current epoch.</summary>
+    public long LedgerSeq { get; set; }
     public required CurrencyCode Currency { get; set; } = CurrencyCode.Vnd;
     public string Status { get; set; } = "ACTIVE";
     public decimal AvailableBalance => Balance - LockedBalance;

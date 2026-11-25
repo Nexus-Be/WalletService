@@ -42,6 +42,17 @@ internal sealed class RefundOrderPaymentCommandHandler
         }
 
         var buyerId = Guid.Parse(request.UserId);
+
+        // A sub-order refund draws on the parent order's escrow. Without the parent id the payment and the escrow cannot be checked,
+        // so the credit would be created out of nothing; refuse it and let the caller handle the case manually.
+        if (request.IsSubOrder && !request.ParentOrderId.HasValue)
+        {
+            throw new BusinessRuleValidationException(
+                "PARENT_ORDER_REQUIRED",
+                "A sub-order refund must name its parent order.",
+                400);
+        }
+
         var escrowOrderId = request.ParentOrderId ?? request.OrderId;
         var enforceEscrow = !request.IsSubOrder || request.ParentOrderId.HasValue;
         var normalizedReason = request.Reason?.Trim() ?? string.Empty;
@@ -104,7 +115,7 @@ internal sealed class RefundOrderPaymentCommandHandler
                 }
 
                 await dbTransaction.CommitAsync(cancellationToken);
-                return Map(existingByKey);
+                return Map(existingByKey) with { Replayed = true };
             }
         }
         else
@@ -127,7 +138,7 @@ internal sealed class RefundOrderPaymentCommandHandler
                 }
 
                 await dbTransaction.CommitAsync(cancellationToken);
-                return Map(existing);
+                return Map(existing) with { Replayed = true };
             }
         }
 

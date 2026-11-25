@@ -583,6 +583,17 @@ public class WalletOperationsEdgeCaseTests
         public DbSet<VnpayIpnLog> VnpayIpnLogs => inner.VnpayIpnLogs;
         public DbSet<WithdrawalRequest> WithdrawalRequests => inner.WithdrawalRequests;
         public DbSet<AuditLog> AuditLogs => inner.AuditLogs;
+        public DbSet<LedgerSettings> LedgerSettings => inner.LedgerSettings;
+        public DbSet<LedgerPostingPending> LedgerPostingPending => inner.LedgerPostingPending;
+        public DbSet<LedgerAccount> LedgerAccounts => inner.LedgerAccounts;
+        public DbSet<JournalEntry> JournalEntries => inner.JournalEntries;
+        public DbSet<JournalLine> JournalLines => inner.JournalLines;
+        public DbSet<ReconciliationRun> ReconciliationRuns => inner.ReconciliationRuns;
+        public DbSet<ReconciliationFinding> ReconciliationFindings => inner.ReconciliationFindings;
+        public DbSet<OrderSettlement> OrderSettlements => inner.OrderSettlements;
+        public DbSet<PlatformSubsidyBudget> PlatformSubsidyBudgets => inner.PlatformSubsidyBudgets;
+        public DbSet<PlatformSubsidyReservation> PlatformSubsidyReservations => inner.PlatformSubsidyReservations;
+        public DbSet<RefundFundPayout> RefundFundPayouts => inner.RefundFundPayouts;
         public DatabaseFacade Database => inner.Database;
 
         public Task LockOrderPaymentAsync(Guid orderId, CancellationToken cancellationToken) => inner.LockOrderPaymentAsync(orderId, cancellationToken);
@@ -600,6 +611,10 @@ public class WalletOperationsEdgeCaseTests
         public Task<DirectPaymentOrder?> LockDirectPaymentOrderByIdAsync(Guid orderId, CancellationToken cancellationToken) => inner.LockDirectPaymentOrderByIdAsync(orderId, cancellationToken);
         public Task<StripePaymentAttempt?> LockStripePaymentAttemptAsync(Guid attemptId, CancellationToken cancellationToken) => inner.LockStripePaymentAttemptAsync(attemptId, cancellationToken);
         public Task<WithdrawalRequest?> LockWithdrawalRequestAsync(Guid withdrawalId, CancellationToken cancellationToken) => inner.LockWithdrawalRequestAsync(withdrawalId, cancellationToken);
+        public Task<OrderEscrow?> LockOrderEscrowByOrderIdAsync(Guid orderId, CancellationToken cancellationToken) => inner.LockOrderEscrowByOrderIdAsync(orderId, cancellationToken);
+        public Task<IReadOnlyList<AuctionDepositEscrow>> LockDepositEscrowsByOrderIdAsync(Guid orderId, CancellationToken cancellationToken) => inner.LockDepositEscrowsByOrderIdAsync(orderId, cancellationToken);
+        public Task<AuctionDepositEscrow?> LockDepositEscrowByHoldIdAsync(Guid holdId, CancellationToken cancellationToken) => inner.LockDepositEscrowByHoldIdAsync(holdId, cancellationToken);
+        public Task<PlatformSubsidyBudget?> LockSubsidyBudgetAsync(Guid budgetId, CancellationToken cancellationToken) => inner.LockSubsidyBudgetAsync(budgetId, cancellationToken);
         public void EnsureNoPendingChanges() => inner.EnsureNoPendingChanges();
         public Task ReloadUnmodifiedAsync<TEntity>(TEntity entity, CancellationToken cancellationToken) where TEntity : class => inner.ReloadUnmodifiedAsync(entity, cancellationToken);
         public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) => inner.SaveChangesAsync(cancellationToken);

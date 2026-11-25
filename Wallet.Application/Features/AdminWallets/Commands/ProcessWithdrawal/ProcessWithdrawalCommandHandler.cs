@@ -211,6 +211,29 @@ internal sealed class ProcessWithdrawalCommandHandler
             },
             userId: adminGuid.ToString());
 
+        WithdrawalNotificationEvent? notification = null;
+        if (withdrawal.Status is WithdrawalStatus.Approved
+            or WithdrawalStatus.Rejected
+            or WithdrawalStatus.Completed
+            or WithdrawalStatus.Failed)
+        {
+            notification = new WithdrawalNotificationEvent(
+                SourceEventId: $"withdrawal:{withdrawal.Id:D}:{withdrawal.Status}",
+                WithdrawalId: withdrawal.Id,
+                RecipientUserId: wallet.UserId,
+                Status: withdrawal.Status.ToString(),
+                ConfirmedAt: withdrawal.CompletedAt ?? withdrawal.ProcessedAt ?? now,
+                DisplayReason: withdrawal.StatusReason,
+                TransactionId: transactionId ?? withdrawal.GatewayReferenceId,
+                TraceId: Activity.Current?.Id);
+
+            // Written in the same SaveChanges as the money change, so a notification that is owed can never be lost.
+            if (_notificationClient is not null)
+            {
+                NotificationDispatchExtensions.QueueWithdrawalEvent(_context, notification);
+            }
+        }
+
         try
         {
             await _context.SaveChangesAsync(cancellationToken);
@@ -225,21 +248,8 @@ internal sealed class ProcessWithdrawalCommandHandler
 
         await transaction.CommitAsync(cancellationToken);
 
-        if (withdrawal.Status is WithdrawalStatus.Approved
-            or WithdrawalStatus.Rejected
-            or WithdrawalStatus.Completed
-            or WithdrawalStatus.Failed)
+        if (notification is not null)
         {
-            var notification = new WithdrawalNotificationEvent(
-                SourceEventId: $"withdrawal:{withdrawal.Id:D}:{withdrawal.Status}",
-                WithdrawalId: withdrawal.Id,
-                RecipientUserId: wallet.UserId,
-                Status: withdrawal.Status.ToString(),
-                ConfirmedAt: withdrawal.CompletedAt ?? withdrawal.ProcessedAt ?? now,
-                DisplayReason: withdrawal.StatusReason,
-                TransactionId: transactionId ?? withdrawal.GatewayReferenceId,
-                TraceId: Activity.Current?.Id);
-
             await NotificationDispatchExtensions.TryDispatchWithdrawalEventAsync(
                 _context,
                 _notificationClient,

@@ -65,8 +65,8 @@ Admin routes require an authorized `x-user-roles` value (`admin` or `staff`, wit
 | `GET` | `/api/v1/wallets/checkout/direct/{orderId}` | Order owner or `admin`/`staff` | Reads direct payment status |
 | `POST` | `/api/v1/wallets/orders/{orderId}/payment` | `X-Internal-Service-Key` + forwarded buyer identity (`IgnoreApi = true`) | Legacy route: debits buyer `AvailableBalance` (`WALLET_FROZEN` guarded) and records escrow (`200`) |
 | `POST` | `/api/v1/wallets/sub-orders/{subOrderId}/settle` | `X-Internal-Service-Key` + `LegacyCommerceCredits` gate (`IgnoreApi = true`) | Legacy route: credits seller from matching wallet-payment escrow (`200`) |
-| `POST` | `/api/v1/wallets/orders/{orderId}/refund` | `X-Internal-Service-Key` + `LegacyCommerceCredits` gate (`IgnoreApi = true`) | Legacy route: refunds remaining wallet-payment escrow (`200`) |
-| `POST` | `/api/v1/wallets/sub-orders/{subOrderId}/refund` | `X-Internal-Service-Key` + `LegacyCommerceCredits` gate (`IgnoreApi = true`) | Legacy route: child refund without original `PurchaseDebit` lookup (`200`) |
+| `POST` | `/api/v1/wallets/orders/{orderId}/refund` | `X-Internal-Service-Key` + `OrderRefund` gate (`IgnoreApi = true`) | Refunds remaining wallet-payment escrow (`200`) |
+| `POST` | `/api/v1/wallets/sub-orders/{subOrderId}/refund` | `X-Internal-Service-Key` + `OrderRefund` gate (`IgnoreApi = true`) | Child refund; `parentOrderId` is required (`400 PARENT_ORDER_REQUIRED`); the answer carries `replayed`. Formerly: child refund without original `PurchaseDebit` lookup (`200`) |
 | `GET` | `/api/v1/admin/wallets` | `admin` or `staff` | Paginated wallet list (`status`, `userId`, `search`) |
 | `GET` | `/api/v1/admin/wallets/{userId}` | `admin` or `staff` | Inspects a user's wallet (`200`) |
 | `POST` | `/api/v1/admin/wallets/{userId}/freeze` | `admin` or `staff` | Freezes a user's wallet (`200`) |
@@ -94,7 +94,7 @@ Hosted on `WalletsController` and excluded from Swagger and public gateway ingre
 - `POST ~/api/v1/internal/wallets/orders/{orderId}/adjust-payment` — idempotent (`Idempotency-Key`) post-order delta debit or refund against escrow.
 - `POST ~/api/v1/internal/wallets/orders/{orderId}/escrow/cancel` — idempotent (`Idempotency-Key`) strict all-or-nothing cancellation of an untouched wallet-payment `OrderEscrow`, returning the full balance to `OrderEscrow.WalletId` (`EscrowCancellationRefund`) and recording an `OrderEscrowCancel` audit entry (see [cancel order escrow](checkout/cancel-order-escrow.md)).
 - `POST ~/api/v1/internal/wallets/checkout/direct/{orderId}/expire` — expires unpaid direct Stripe order payment on Commerce order expiry.
-- `POST ~/api/v1/internal/wallets/sub-orders/{subOrderId}/settle`, `orders/{orderId}/refund`, `sub-orders/{subOrderId}/refund` (`ReleaseFeature.LegacyCommerceCredits` gated).
+- `POST ~/api/v1/internal/wallets/sub-orders/{subOrderId}/settle`, `orders/{orderId}/refund`, `sub-orders/{subOrderId}/refund` (the two refund routes are `ReleaseFeature.OrderRefund` gated; settle stays on its own flag). Refund routes are gated by `ReleaseFeatures:OrderRefundEnabled`, which is **off in every environment, Development included**, and never falls back to `LegacyCommerceCredits`. A sub-order refund must carry `parentOrderId`; without it the route answers `400 PARENT_ORDER_REQUIRED` and credits nothing. The answer of a refund that was already made carries `replayed: true` (one refund per order id; a different amount answers `409 REFUND_CONFLICT`).
 - `~/api/v1/internal/wallets/holds/*` — internal mirror routes for Auction `CreateHold`, `ReleaseHold`, `CaptureHold`, `RefundCapturedHold`, `GetHold`, and `GetHoldByReference`.
 
 Full payload and header details for Commerce, Auction, and Notification integrations are in [Cross-service handover](../integrations/handover-response.md).
