@@ -1,6 +1,6 @@
 # 05 — DANH SÁCH KIỂM CHỨNG & NGHIỆM THU (WALLET SERVICE CHECKLIST)
 
-> **Trạng thái triển khai (2026-11-19):** ✅ CLASSIC CQRS — 68 use case (40 Command, 28 Query), 2 public controllers.
+> **Trạng thái triển khai (2026-11-19):** ✅ CLASSIC CQRS — 71 use case (42 Command, 29 Query), 2 public controllers.
 > **Nguồn sự thật:** code (`Wallet.sln`, `Wallet.Application/Features/`, `Wallet.Tests/`).
 > **Cập nhật lần cuối:** 2026-11-19.
 
@@ -44,7 +44,7 @@
 # 1. Không còn feature service facade
 grep -rn "interface I.*Service\b" --include="*.cs" Wallet.Application Wallet.Api   # kỳ vọng rỗng
 
-# 2. Đủ 68 use case handler (40 Command, 28 Query)
+# 2. Đủ 71 use case handler (42 Command, 29 Query)
 find Wallet.Application/Features -name "*Handler.cs" | wc -l                       # kỳ vọng 60
 
 # 3. MediatR + ValidationBehavior được đăng ký

@@ -32,6 +32,7 @@ public interface IWalletDbContext
     DbSet<OrderSettlement> OrderSettlements { get; }
     DbSet<PlatformSubsidyBudget> PlatformSubsidyBudgets { get; }
     DbSet<PlatformSubsidyReservation> PlatformSubsidyReservations { get; }
+    DbSet<RefundFundPayout> RefundFundPayouts { get; }
     DatabaseFacade Database { get; }
 
     Task LockOrderPaymentAsync(Guid orderId, CancellationToken cancellationToken);

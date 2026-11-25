@@ -22,6 +22,8 @@ using Wallet.Application.Features.AdminWallets.Queries.ListAdminWithdrawals;
 using Wallet.Application.Features.AdminWallets.Queries.ListStripeReconciliationRequired;
 using Wallet.Application.Features.AdminWallets.Queries.ListWalletLedger;
 using Wallet.Application.Features.Ledger.Commands.BackfillJournal;
+using Wallet.Application.Features.RefundFund.Commands.DepositRefundFund;
+using Wallet.Application.Features.RefundFund.Queries.GetRefundFundStatus;
 using Wallet.Application.Features.Subsidies.Commands.ApproveSubsidyBudget;
 using Wallet.Application.Features.Subsidies.Commands.CloseSubsidyBudget;
 using Wallet.Application.Features.Subsidies.Commands.CreateSubsidyBudget;
@@ -188,6 +190,25 @@ public sealed class AdminWalletsController : ControllerBase
     {
         if (!this.EnsureAdmin(out var authError)) return authError;
         return Ok(await _sender.Send(new GetTrialBalanceQuery(), cancellationToken));
+    }
+
+    /// <summary>The refund fund: whether it is on, its balance, its caps and what it paid today. Admin only.</summary>
+    [HttpGet("refund-fund")]
+    [ProducesResponseType(typeof(RefundFundStatusResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetRefundFundStatus(CancellationToken cancellationToken)
+    {
+        if (!this.EnsureAdmin(out var authError)) return authError;
+        return Ok(await _sender.Send(new GetRefundFundStatusQuery(), cancellationToken));
+    }
+
+    /// <summary>Puts money into the refund fund; the evidence reference points to the real transfer. Admin only.</summary>
+    [HttpPost("refund-fund/deposits")]
+    [ProducesResponseType(typeof(RefundFundDepositResult), StatusCodes.Status200OK)]
+    public async Task<IActionResult> DepositRefundFund([FromBody] DepositRefundFundCommand command, CancellationToken cancellationToken)
+    {
+        if (!this.EnsureAdmin(out var authError)) return authError;
+        if (!this.TryGetUserId(out var adminId, out var idError)) return idError;
+        return Ok(await _sender.Send(command with { AdminUserId = adminId }, cancellationToken));
     }
 
     /// <summary>Lists platform subsidy budgets with what is reserved, used and still available. Admin only.</summary>

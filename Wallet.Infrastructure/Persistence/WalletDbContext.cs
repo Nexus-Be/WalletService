@@ -39,6 +39,7 @@ public class WalletDbContext : DbContext, IWalletDbContext
     public DbSet<OrderSettlement> OrderSettlements => Set<OrderSettlement>();
     public DbSet<PlatformSubsidyBudget> PlatformSubsidyBudgets => Set<PlatformSubsidyBudget>();
     public DbSet<PlatformSubsidyReservation> PlatformSubsidyReservations => Set<PlatformSubsidyReservation>();
+    public DbSet<RefundFundPayout> RefundFundPayouts => Set<RefundFundPayout>();
 
     public Task LockOrderPaymentAsync(Guid orderId, CancellationToken cancellationToken)
     {

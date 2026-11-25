@@ -47,6 +47,7 @@ public sealed class TestWalletDbContext : IWalletDbContext, IDisposable
     public DbSet<OrderSettlement> OrderSettlements => _inner.OrderSettlements;
     public DbSet<PlatformSubsidyBudget> PlatformSubsidyBudgets => _inner.PlatformSubsidyBudgets;
     public DbSet<PlatformSubsidyReservation> PlatformSubsidyReservations => _inner.PlatformSubsidyReservations;
+    public DbSet<RefundFundPayout> RefundFundPayouts => _inner.RefundFundPayouts;
     public DatabaseFacade Database => _inner.Database;
 
     public Task LockOrderPaymentAsync(Guid orderId, CancellationToken cancellationToken)

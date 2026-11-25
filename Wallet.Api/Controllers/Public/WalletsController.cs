@@ -29,6 +29,7 @@ using Wallet.Application.Features.Checkout.Commands.PayOrderWithWallet;
 using Wallet.Application.Features.Checkout.Commands.RefundOrderPayment;
 using Wallet.Application.Features.Checkout.Commands.ResumeDirectPayment;
 using Wallet.Application.Features.Checkout.Commands.SettleSellerOrder;
+using Wallet.Application.Features.RefundFund.Commands.PayRefundFundCase;
 using Wallet.Application.Features.Settlements.Commands.SettleOrderPayout;
 using Wallet.Application.Features.Subsidies.Commands.HoldPlatformSubsidy;
 using Wallet.Application.Features.Subsidies.Commands.ReleasePlatformSubsidy;
@@ -483,6 +484,23 @@ public sealed class WalletsController : ControllerBase
             command with { OrderId = orderId, UserId = userId.ToString() },
             cancellationToken);
         return Ok(result);
+    }
+
+    /// <summary>
+    /// Refunds a buyer from the refund fund for a sub-order that was already paid out to the seller (wallet payment, whole refund). Commerce
+    /// sends the decision with the approving admins. Answers Refunded, or NeedsFinance with a reason when nothing could be moved.
+    /// </summary>
+    [HttpPost("~/api/v1/internal/wallets/refund-fund/sub-orders/{subOrderId:guid}/payout")]
+    [RequireInternalServiceKey]
+    [ApiExplorerSettings(IgnoreApi = true)]
+    [ProducesResponseType(typeof(RefundFundCaseResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+    public async Task<IActionResult> PayRefundFundCase(
+        Guid subOrderId,
+        [FromBody] PayRefundFundCaseCommand command,
+        CancellationToken cancellationToken)
+    {
+        return Ok(await _sender.Send(command with { SubOrderId = subOrderId }, cancellationToken));
     }
 
     /// <summary>Legacy protected route that credits the seller's wallet when a sub-order payout is released.</summary>

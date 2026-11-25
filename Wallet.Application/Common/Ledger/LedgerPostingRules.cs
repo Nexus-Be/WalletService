@@ -28,6 +28,8 @@ public static class LedgerPostingRules
         ["BANK_WITHDRAWAL"] = "Withdrawals paid to bank accounts",
         ["ADJUSTMENTS"] = "Manual adjustments by administrators",
         ["TRANSFER_CLEARING"] = "Transfers between wallets",
+        ["REFUND_FUND_FUNDING"] = "Money put into the refund fund from the operating account",
+        ["REFUND_FUND_CLEARING"] = "Refunds paid from the refund fund and what was taken back from sellers",
         ["SUSPENSE"] = "Movements without a known counter account"
     };
 
@@ -44,6 +46,8 @@ public static class LedgerPostingRules
         "WithdrawalDebit" or "WithdrawalReversal" => "BANK_WITHDRAWAL",
         "AdjustmentCredit" or "AdjustmentDebit" => "ADJUSTMENTS",
         "TransferIn" or "TransferOut" => "TRANSFER_CLEARING",
+        "RefundFundDeposit" => "REFUND_FUND_FUNDING",
+        "RefundFundPayout" or "RefundFundRefund" or "SellerRecoveryDebit" or "RefundFundRecovery" => "REFUND_FUND_CLEARING",
         _ => "SUSPENSE"
     };
 

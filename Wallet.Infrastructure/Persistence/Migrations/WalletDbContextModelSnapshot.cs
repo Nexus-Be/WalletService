@@ -785,6 +785,80 @@ namespace Wallet.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Wallet.Domain.Entities.RefundFundPayout", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<Guid>("BuyerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BuyerTransactionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("FirstApproverId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("FundTransactionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("ParentOrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("RecoveryTransactionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("SecondApproverId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("SellerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("SellerRecoveredAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("SellerRecoveryTarget")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("SellerShortfall")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<Guid>("SubOrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("SubOrderId")
+                        .IsUnique();
+
+                    b.ToTable("RefundFundPayouts", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_RefundFundPayouts_Amounts", "\"Amount\" > 0 AND \"SellerRecoveryTarget\" >= 0 AND \"SellerRecoveredAmount\" >= 0 AND \"SellerShortfall\" >= 0 AND \"SellerRecoveredAmount\" <= \"SellerRecoveryTarget\" AND \"SellerRecoveredAmount\" + \"SellerShortfall\" = \"SellerRecoveryTarget\"");
+                        });
+                });
+
             modelBuilder.Entity("Wallet.Domain.Entities.PlatformSubsidyBudget", b =>
                 {
                     b.Property<Guid>("Id")

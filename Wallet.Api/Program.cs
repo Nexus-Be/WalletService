@@ -14,6 +14,7 @@ builder.Services.AddServiceDefaults(builder.Configuration, "wallet-service");
 
 // 2. Application & Infrastructure Dependency Injection
 builder.Services.AddApplicationServices();
+builder.Services.Configure<Wallet.Application.Common.RefundFundOptions>(builder.Configuration.GetSection("RefundFund"));
 builder.Services.AddInfrastructureServices(builder.Configuration);
 builder.Services.AddHostedService<StripeTopupReconciliationWorker>();
 builder.Services.AddHostedService<WithdrawalNotificationRetryWorker>();
