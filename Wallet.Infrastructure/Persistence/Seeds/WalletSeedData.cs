@@ -106,8 +106,27 @@ public static class WalletSeedData
             }
         );
 
-        // 3. Initial Transaction (Buyer payment for SubOrder)
+        // 3. Initial Transactions (TopupVnpay followed by PurchaseDebit for SubOrder)
+        var topupId = Guid.Parse("99999999-4444-4444-4444-444444444410");
+        var topupTxnRef = "VNP-TOPUP-20260101-0001";
         AddMissing(db,
+            new WalletTransaction
+            {
+                Id = Guid.Parse("99999999-4444-4444-4444-444444444400"),
+                WalletId = buyerWalletId,
+                Type = WalletTransactionType.TopupVnpay,
+                Amount = 10000000m,
+                BalanceBefore = 10850000m,
+                BalanceAfter = 20850000m,
+                ReferenceId = topupId,
+                Status = TransactionStatus.Success,
+                UserId = buyerUserId.ToString(),
+                Currency = "VND",
+                Note = $"VNPAY wallet top-up {topupTxnRef}",
+                CreatedAt = seedDate.AddDays(-1),
+                UpdatedAt = seedDate.AddDays(-1),
+                IsDeleted = false
+            },
             new WalletTransaction
             {
                 Id = Guid.Parse("99999999-4444-4444-4444-444444444401"),
@@ -128,11 +147,10 @@ public static class WalletSeedData
         );
 
         // 4. Wallet Topup
-        var topupTxnRef = "VNP-TOPUP-20260101-0001";
         AddMissing(db,
             new WalletTopup
             {
-                Id = Guid.Parse("99999999-4444-4444-4444-444444444410"),
+                Id = topupId,
                 WalletId = buyerWalletId,
                 VnpTxnRef = topupTxnRef,
                 VnpTransactionNo = "14285701",

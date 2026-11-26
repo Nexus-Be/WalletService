@@ -6,7 +6,7 @@ using MediatR;
 using Wallet.Application.Common.Validation;
 
 public sealed record TopupStripeCommand(
-    [Range(10000, 99999999, ErrorMessage = "Topup amount must be between 10,000 and 99,999,999 VND.")]
+    [Range(typeof(decimal), "10000", "99999999", ErrorMessage = "Topup amount must be between 10,000 and 99,999,999 VND.")]
     decimal Amount) : IRequest<TopupStripeResponse>, IRequestValidation
 {
     [JsonIgnore] public Guid UserId { get; init; }

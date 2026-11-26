@@ -255,6 +255,62 @@ public sealed class OrderEscrowAccountingTests
         Assert.Equal("PAYMENT_NOT_FOUND", refundNotFound.ErrorCode);
     }
 
+    [Fact]
+    public async Task SubOrderRefund_RejectsSecondRefundEvenWithDifferentOrMissingIdempotencyKey()
+    {
+        using var context = new TestWalletDbContext(nameof(SubOrderRefund_RejectsSecondRefundEvenWithDifferentOrMissingIdempotencyKey));
+        var buyer = AddWallet(context, balance: 1000m);
+        var parentOrderId = Guid.NewGuid();
+        var subOrderId = Guid.NewGuid();
+        await new PayOrderWithWalletCommandHandler(context).Handle(Payment(buyer.UserId, parentOrderId, 100m), default);
+
+        var handler = new RefundOrderPaymentCommandHandler(context);
+        var first = await handler.Handle(
+            new RefundOrderPaymentCommand(buyer.UserId.ToString(), 40m, "Sub-order refund", parentOrderId)
+            {
+                OrderId = subOrderId,
+                IsSubOrder = true,
+                IdempotencyKey = "sub-refund-k1"
+            },
+            default);
+        Assert.False(first.Replayed);
+
+        var replaySameKey = await handler.Handle(
+            new RefundOrderPaymentCommand(buyer.UserId.ToString(), 40m, "Sub-order refund", parentOrderId)
+            {
+                OrderId = subOrderId,
+                IsSubOrder = true,
+                IdempotencyKey = "sub-refund-k1"
+            },
+            default);
+        Assert.True(replaySameKey.Replayed);
+        Assert.Equal(first.Id, replaySameKey.Id);
+
+        var secondWithDifferentKey = await Assert.ThrowsAsync<BusinessRuleValidationException>(() => handler.Handle(
+            new RefundOrderPaymentCommand(buyer.UserId.ToString(), 40m, "Sub-order refund", parentOrderId)
+            {
+                OrderId = subOrderId,
+                IsSubOrder = true,
+                IdempotencyKey = "sub-refund-k2"
+            },
+            default));
+        Assert.Equal(409, secondWithDifferentKey.StatusCode);
+        Assert.Equal("REFUND_CONFLICT", secondWithDifferentKey.ErrorCode);
+
+        var secondWithoutKey = await Assert.ThrowsAsync<BusinessRuleValidationException>(() => handler.Handle(
+            new RefundOrderPaymentCommand(buyer.UserId.ToString(), 40m, "Sub-order refund", parentOrderId)
+            {
+                OrderId = subOrderId,
+                IsSubOrder = true
+            },
+            default));
+        Assert.Equal(409, secondWithoutKey.StatusCode);
+        Assert.Equal("REFUND_CONFLICT", secondWithoutKey.ErrorCode);
+
+        Assert.Equal(940m, buyer.Balance);
+        Assert.Equal(60m, context.OrderEscrows.Single(item => item.OrderId == parentOrderId).RemainingAmount);
+    }
+
     private static WalletAccount AddWallet(TestWalletDbContext context, decimal balance)
     {
         var wallet = new WalletAccount

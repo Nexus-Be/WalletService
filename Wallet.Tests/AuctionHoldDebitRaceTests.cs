@@ -70,13 +70,4 @@ public sealed class AuctionHoldDebitRaceTests
         try { await action(); return true; }
         catch (InsufficientBalanceException) { return false; }
     }
-
-    private sealed class DisposablePostgresTheoryAttribute : TheoryAttribute
-    {
-        public DisposablePostgresTheoryAttribute()
-        {
-            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WALLET_STRIPE_TEST_DATABASE")))
-                Skip = "Set WALLET_STRIPE_TEST_DATABASE to a disposable PostgreSQL database to run this integration test.";
-        }
-    }
 }

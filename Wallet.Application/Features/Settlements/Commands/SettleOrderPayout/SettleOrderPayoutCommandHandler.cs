@@ -194,7 +194,16 @@ internal sealed class SettleOrderPayoutCommandHandler : IRequestHandler<SettleOr
 
             if (request.SubsidyAmount > 0m)
             {
-                subsidyTransaction = StageCredit(wallet, WalletTransactionType.PlatformSubsidyCredit, request.SubsidyAmount, request.SubOrderId, "Platform-funded voucher subsidy paid to seller");
+                DateTimeOffset? subsidyAt = null;
+                if (releaseTransaction is not null)
+                {
+                    // Ensure subsidy timestamps sort strictly after the escrow release so I8's CreatedAt ordering matches the balance chain.
+                    subsidyAt = DateTimeOffset.UtcNow;
+                    if (subsidyAt.Value <= releaseTransaction.CreatedAt.AddMicroseconds(10))
+                        subsidyAt = releaseTransaction.CreatedAt.AddMicroseconds(10);
+                }
+
+                subsidyTransaction = StageCredit(wallet, WalletTransactionType.PlatformSubsidyCredit, request.SubsidyAmount, request.SubOrderId, "Platform-funded voucher subsidy paid to seller", subsidyAt);
             }
         }
         else
@@ -289,7 +298,7 @@ internal sealed class SettleOrderPayoutCommandHandler : IRequestHandler<SettleOr
         return Map(settlement, isReplay: false);
     }
 
-    private WalletTransaction StageCredit(WalletAccount wallet, WalletTransactionType type, decimal amount, Guid referenceId, string note)
+    private WalletTransaction StageCredit(WalletAccount wallet, WalletTransactionType type, decimal amount, Guid referenceId, string note, DateTimeOffset? createdAt = null)
     {
         var balanceBefore = wallet.Balance;
         wallet.Deposit(amount);
@@ -305,7 +314,7 @@ internal sealed class SettleOrderPayoutCommandHandler : IRequestHandler<SettleOr
             Status = TransactionStatus.Success,
             ReferenceId = referenceId,
             Note = note,
-            CreatedAt = DateTimeOffset.UtcNow
+            CreatedAt = createdAt ?? DateTimeOffset.UtcNow
         };
         _context.WalletTransactions.Add(transaction);
         return transaction;

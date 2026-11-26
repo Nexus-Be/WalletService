@@ -9,7 +9,7 @@ using Wallet.Application.Common.Validation;
 using Wallet.Application.Features.Withdrawals;
 
 public sealed record AdjustWalletBalanceCommand(
-    [Range(0.01, 500000000, ErrorMessage = "Amount must be between 0.01 and 500,000,000.")]
+    [Range(typeof(decimal), "0.01", "500000000", ErrorMessage = "Amount must be between 0.01 and 500,000,000.")]
     [MoneyPrecision]
     decimal Amount,
     [Required(ErrorMessage = "Adjustment type is required.")]

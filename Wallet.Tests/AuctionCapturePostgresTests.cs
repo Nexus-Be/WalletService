@@ -286,13 +286,4 @@ public sealed class AuctionCapturePostgresTests
             Guid.NewGuid().ToString(), 50, "VND", null) { IdempotencyKey = $"hold:{user}" }, default);
         return (options, user, hold.Hold.HoldId);
     }
-
-    private sealed class DisposablePostgresFactAttribute : FactAttribute
-    {
-        public DisposablePostgresFactAttribute()
-        {
-            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WALLET_STRIPE_TEST_DATABASE")))
-                Skip = "Set WALLET_STRIPE_TEST_DATABASE to a disposable PostgreSQL database to run this integration test.";
-        }
-    }
 }

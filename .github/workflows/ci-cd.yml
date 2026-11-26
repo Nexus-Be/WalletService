@@ -29,7 +29,7 @@ jobs:
     # Disposable PostgreSQL for the integration tests that are skipped when WALLET_STRIPE_TEST_DATABASE is not set.
     services:
       postgres:
-        image: postgres:16
+        image: postgres:16-alpine
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: ci-only-password
@@ -37,7 +37,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres"
+          --health-cmd="pg_isready -U postgres -d wallet_it_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
@@ -46,15 +46,21 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up .NET
+      - name: Set up .NET 8
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
 
-      - name: Test (unit and PostgreSQL integration)
+      - name: Verify CQRS Architecture
+        run: ./scripts/verify-wallet-architecture.sh
+
+      - name: Build Solution (Release)
+        run: dotnet build Wallet.sln -c Release
+
+      - name: Run Unit, Host Smoke & PostgreSQL Tests
         env:
           WALLET_STRIPE_TEST_DATABASE: "Host=localhost;Port=5432;Database=wallet_it_test;Username=postgres;Password=ci-only-password"
-        run: dotnet test Wallet.sln --nologo --verbosity minimal
+        run: dotnet test Wallet.sln -c Release --no-build --nologo --verbosity minimal
 
   build-and-push:
     needs: [secret-scan, tests]

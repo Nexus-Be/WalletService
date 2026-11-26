@@ -7,6 +7,7 @@ using Wallet.Application.Common.Validation;
 using Wallet.Application.Features.AdminWallets.Commands.AdjustWalletBalance;
 using Wallet.Application.Features.AdminWallets.Commands.ProcessWithdrawal;
 using Wallet.Application.Features.Checkout.Commands.CheckoutDirect;
+using Wallet.Application.Features.Topups.Commands.TopupStripe;
 using Wallet.Application.Features.Topups.Commands.TopupVnPay;
 using Wallet.Application.Features.Transfers.Commands.Transfer;
 using Wallet.Application.Features.VnPay.Commands.ProcessVnPayIpn;
@@ -117,6 +118,61 @@ public class WalletRequestValidatorTests
         };
         var results = ValidateModel(request);
         Assert.Contains(results, result => result.MemberNames.Contains(nameof(request.Currency)));
+    }
+
+    [Fact]
+    public void RequestWithdrawalCommand_WhenAmountExceedsInt32_DoesNotThrowOverflowExceptionAndRejectsAmount()
+    {
+        var request = new RequestWithdrawalCommand(
+            Amount: 999_999_999_999m,
+            BankCode: "VCB",
+            AccountNumber: "1234567890",
+            AccountHolderName: "Test User")
+        {
+            UserId = Guid.NewGuid().ToString(),
+            IdempotencyKey = "req-wd-overflow"
+        };
+        var results = ValidateModel(request);
+        Assert.Contains(results, result => result.MemberNames.Contains(nameof(request.Amount)));
+    }
+
+    [Fact]
+    public void TransferCommand_WhenAmountExceedsInt32_DoesNotThrowOverflowExceptionAndRejectsAmount()
+    {
+        var request = new TransferCommand(
+            RecipientUserId: Guid.NewGuid().ToString(),
+            Amount: 999_999_999_999m)
+        {
+            SenderUserId = Guid.NewGuid().ToString(),
+            IdempotencyKey = "tf-overflow"
+        };
+        var results = ValidateModel(request);
+        Assert.Contains(results, result => result.MemberNames.Contains(nameof(request.Amount)));
+    }
+
+    [Fact]
+    public void TopupStripeCommand_WhenAmountExceedsInt32_DoesNotThrowOverflowExceptionAndRejectsAmount()
+    {
+        var request = new TopupStripeCommand(Amount: 999_999_999_999m)
+        {
+            UserId = Guid.NewGuid(),
+            IdempotencyKey = "topup-stripe-overflow"
+        };
+        var results = ValidateModel(request);
+        Assert.Contains(results, result => result.MemberNames.Contains(nameof(request.Amount)));
+    }
+
+    [Fact]
+    public void CheckoutDirectCommand_WhenAmountExceedsInt32_DoesNotThrowOverflowExceptionAndRejectsAmount()
+    {
+        var request = new CheckoutDirectCommand(
+            OrderId: Guid.NewGuid().ToString(),
+            Amount: 999_999_999_999m)
+        {
+            UserId = Guid.NewGuid()
+        };
+        var results = ValidateModel(request);
+        Assert.Contains(results, result => result.MemberNames.Contains(nameof(request.Amount)));
     }
 
     [Fact]
