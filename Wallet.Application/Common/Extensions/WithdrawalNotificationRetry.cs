@@ -1,4 +1,4 @@
-﻿namespace Wallet.Application.Common.Extensions;
+namespace Wallet.Application.Common.Extensions;
 
 using System;
 using System.Linq;
@@ -31,93 +31,114 @@ public static class WithdrawalNotificationRetry
         int batchSize,
         CancellationToken cancellationToken)
     {
-        var queued = await context.AuditLogs
-            .AsNoTracking()
-            .Where(a => a.Action == AuditAction.NotificationQueued && a.CreatedAt <= now - FirstAttemptDelay)
-            .OrderBy(a => a.CreatedAt)
-            .Take(batchSize * 4)
-            .ToListAsync(cancellationToken);
-        if (queued.Count == 0)
+        if (batchSize <= 0)
         {
             return 0;
         }
 
-        var entityIds = queued.Select(q => q.EntityId).Distinct().ToList();
-        var related = await context.AuditLogs
-            .AsNoTracking()
-            .Where(a => entityIds.Contains(a.EntityId)
-                && (a.Action == AuditAction.NotificationDelivered
-                    || a.Action == AuditAction.NotificationAbandoned
-                    || a.Action == AuditAction.NotificationDispatchFailed))
-            .ToListAsync(cancellationToken);
-
+        var cutoff = now - FirstAttemptDelay;
+        var scanBatchSize = Math.Max(batchSize * 4, 1);
+        var offset = 0;
         var handled = 0;
-        foreach (var row in queued)
+
+        while (handled < batchSize)
         {
-            if (handled >= batchSize)
+            var queued = await context.AuditLogs
+                .AsNoTracking()
+                .Where(a => a.Action == AuditAction.NotificationQueued && a.CreatedAt <= cutoff)
+                .OrderBy(a => a.CreatedAt)
+                .ThenBy(a => a.Id)
+                .Skip(offset)
+                .Take(scanBatchSize)
+                .ToListAsync(cancellationToken);
+            if (queued.Count == 0)
             {
                 break;
             }
 
-            WithdrawalNotificationEvent? payload;
-            try
-            {
-                using var doc = JsonDocument.Parse(row.NewValues ?? "{}");
-                payload = doc.RootElement.TryGetProperty("Payload", out var p)
-                    ? p.Deserialize<WithdrawalNotificationEvent>(Json)
-                    : null;
-            }
-            catch (JsonException)
-            {
-                payload = null;
-            }
+            offset += queued.Count;
 
-            if (payload is null || string.IsNullOrWhiteSpace(payload.SourceEventId))
-            {
-                continue;
-            }
+            var entityIds = queued.Select(q => q.EntityId).Distinct().ToList();
+            var related = await context.AuditLogs
+                .AsNoTracking()
+                .Where(a => entityIds.Contains(a.EntityId)
+                    && (a.Action == AuditAction.NotificationDelivered
+                        || a.Action == AuditAction.NotificationAbandoned
+                        || a.Action == AuditAction.NotificationDispatchFailed))
+                .ToListAsync(cancellationToken);
 
-            var mine = related.Where(r => r.EntityId == row.EntityId && (r.NewValues ?? string.Empty).Contains(payload.SourceEventId)).ToList();
-            if (mine.Any(r => r.Action is AuditAction.NotificationDelivered or AuditAction.NotificationAbandoned))
+            foreach (var row in queued)
             {
-                continue;
-            }
+                if (handled >= batchSize)
+                {
+                    break;
+                }
 
-            var failures = mine.Where(r => r.Action == AuditAction.NotificationDispatchFailed).ToList();
-            if (failures.Count >= MaxAttempts)
-            {
-                await NotificationDispatchExtensions.MarkDeliveredAsync(
-                    context, AuditAction.NotificationAbandoned, payload.WithdrawalId, payload.RecipientUserId, payload.SourceEventId, cancellationToken);
+                WithdrawalNotificationEvent? payload;
+                try
+                {
+                    using var doc = JsonDocument.Parse(row.NewValues ?? "{}");
+                    payload = doc.RootElement.TryGetProperty("Payload", out var p)
+                        ? p.Deserialize<WithdrawalNotificationEvent>(Json)
+                        : null;
+                }
+                catch (JsonException)
+                {
+                    payload = null;
+                }
+
+                if (payload is null || string.IsNullOrWhiteSpace(payload.SourceEventId))
+                {
+                    continue;
+                }
+
+                var mine = related.Where(r => r.EntityId == row.EntityId && (r.NewValues ?? string.Empty).Contains(payload.SourceEventId)).ToList();
+                if (mine.Any(r => r.Action is AuditAction.NotificationDelivered or AuditAction.NotificationAbandoned))
+                {
+                    continue;
+                }
+
+                var failures = mine.Where(r => r.Action == AuditAction.NotificationDispatchFailed).ToList();
+                if (failures.Count >= MaxAttempts)
+                {
+                    await NotificationDispatchExtensions.MarkDeliveredAsync(
+                        context, AuditAction.NotificationAbandoned, payload.WithdrawalId, payload.RecipientUserId, payload.SourceEventId, cancellationToken);
+                    handled++;
+                    continue;
+                }
+
+                var lastAttemptAt = failures.Count == 0 ? row.CreatedAt : failures.Max(f => f.CreatedAt);
+                var wait = failures.Count == 0 ? FirstAttemptDelay : Backoff(failures.Count);
+                if (now < lastAttemptAt + wait)
+                {
+                    continue;
+                }
+
                 handled++;
-                continue;
+                NotificationDispatchResult result;
+                try
+                {
+                    result = await client.SendWithdrawalEventAsync(payload, cancellationToken);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    result = new NotificationDispatchResult(false, Error: ex.Message);
+                }
+
+                if (result.Succeeded)
+                {
+                    await NotificationDispatchExtensions.MarkDeliveredAsync(
+                        context, AuditAction.NotificationDelivered, payload.WithdrawalId, payload.RecipientUserId, payload.SourceEventId, cancellationToken);
+                }
+                else
+                {
+                    await NotificationDispatchExtensions.RecordWithdrawalFailureAsync(context, payload, result, cancellationToken);
+                }
             }
 
-            var lastAttemptAt = failures.Count == 0 ? row.CreatedAt : failures.Max(f => f.CreatedAt);
-            var wait = failures.Count == 0 ? FirstAttemptDelay : Backoff(failures.Count);
-            if (now < lastAttemptAt + wait)
+            if (queued.Count < scanBatchSize)
             {
-                continue;
-            }
-
-            handled++;
-            NotificationDispatchResult result;
-            try
-            {
-                result = await client.SendWithdrawalEventAsync(payload, cancellationToken);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                result = new NotificationDispatchResult(false, Error: ex.Message);
-            }
-
-            if (result.Succeeded)
-            {
-                await NotificationDispatchExtensions.MarkDeliveredAsync(
-                    context, AuditAction.NotificationDelivered, payload.WithdrawalId, payload.RecipientUserId, payload.SourceEventId, cancellationToken);
-            }
-            else
-            {
-                await NotificationDispatchExtensions.RecordWithdrawalFailureAsync(context, payload, result, cancellationToken);
+                break;
             }
         }
 

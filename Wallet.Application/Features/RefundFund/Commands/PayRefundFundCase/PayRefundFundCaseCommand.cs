@@ -12,9 +12,9 @@ using Wallet.Application.Common.Validation;
 /// </summary>
 public sealed record PayRefundFundCaseCommand(
     Guid ParentOrderId,
-    [NonEmptyGuid(ErrorMessage = "Buyer ID must be a valid UUID.")] string BuyerId,
+    [Required(ErrorMessage = "Buyer ID is required.")] [NonEmptyGuid(ErrorMessage = "Buyer ID must be a valid UUID.")] string BuyerId,
     [Range(0.01, double.MaxValue, ErrorMessage = "Amount must be greater than zero.")] [MoneyPrecision] decimal Amount,
-    [NonEmptyGuid(ErrorMessage = "First approver must be a valid UUID.")] string FirstApproverId,
+    [Required(ErrorMessage = "First approver ID is required.")] [NonEmptyGuid(ErrorMessage = "First approver must be a valid UUID.")] string FirstApproverId,
     string? SecondApproverId)
     : IRequest<RefundFundCaseResult>
 {

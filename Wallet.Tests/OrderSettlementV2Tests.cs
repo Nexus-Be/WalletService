@@ -412,6 +412,18 @@ public sealed class OrderSettlementV2Tests
     }
 
     [Fact]
+    public async Task ListSubsidyBudgets_ReturnsEmptyPageWithoutOverflowForMaxIntPage()
+    {
+        using var context = new TestWalletDbContext(nameof(ListSubsidyBudgets_ReturnsEmptyPageWithoutOverflowForMaxIntPage));
+        await ActiveBudgetAsync(context, total: 60_000m, daily: 40_000m, cap: 25_000m);
+
+        var page = await new ListSubsidyBudgetsQueryHandler(context).Handle(new ListSubsidyBudgetsQuery(int.MaxValue, 20), default);
+
+        Assert.Empty(page.Items);
+        Assert.Equal(1, page.Pagination.TotalCount);
+    }
+
+    [Fact]
     public async Task Hold_EnforcesCapDailyAndTotalLimits_AndIsIdempotentPerSubOrder()
     {
         using var context = new TestWalletDbContext(nameof(Hold_EnforcesCapDailyAndTotalLimits_AndIsIdempotentPerSubOrder));

@@ -5,7 +5,7 @@ All inter-service business communication uses synchronous REST over HTTP/JSON. A
 ## Checkout payment flow
 
 1. Commerce reserves inventory through a synchronous Catalog REST request.
-2. Commerce calls `POST /api/v1/wallets/orders/{orderId}/payment` with the buyer's bearer token and order amount.
+2. Commerce calls `POST /api/v1/wallets/orders/{orderId}/payment` (legacy route) with `X-Internal-Service-Key`, the gateway-forwarded buyer identity headers (`X-User-Id`), and the order amount — or calls `POST /api/v1/internal/wallets/orders/{orderId}/payment` with `X-Internal-Service-Key` and `buyerId` + `amount` in the JSON body.
 3. Wallet atomically debits the wallet and writes a `PurchaseDebit` transaction, then returns the transaction response.
 4. Commerce marks the order paid only after a successful Wallet response.
 5. On a Wallet business failure, Commerce releases the inventory reservation through a synchronous Catalog REST request and returns the failure to its caller.
@@ -23,5 +23,5 @@ No `StockReservedEvent`, `PaymentCompletedEvent`, or `PaymentFailedEvent` is pub
 ## Transport constraints
 
 - Do not add gRPC, RabbitMQ, MassTransit, fire-and-forget messaging, or event-based service communication.
-- Require authenticated bearer identity for wallet operations and forward the buyer's token when an operation is performed on that buyer's behalf.
+- Require `X-Internal-Service-Key` for inter-service payment routes; the legacy `POST /api/v1/wallets/orders/{orderId}/payment` route resolves the buyer from gateway-forwarded identity headers (`X-User-Id`), not bearer-token parsing, while `POST /api/v1/internal/wallets/orders/{orderId}/payment` accepts `buyerId` in the request body.
 - Preserve request cancellation and use bounded HTTP timeouts/retries in service callers. Retries for financial operations must use a stable idempotency key.

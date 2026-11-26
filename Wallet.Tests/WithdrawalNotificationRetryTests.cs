@@ -117,4 +117,64 @@ public sealed class WithdrawalNotificationRetryTests
         Assert.Equal(TimeSpan.FromMinutes(4), WithdrawalNotificationRetry.Backoff(3));
         Assert.Equal(TimeSpan.FromMinutes(60), WithdrawalNotificationRetry.Backoff(12));
     }
+
+    [Fact]
+    public async Task NewerPendingNotificationIsStillRetriedAfterMoreThanEightyTerminalNotifications()
+    {
+        using var db = new TestWalletDbContext(nameof(NewerPendingNotificationIsStillRetriedAfterMoreThanEightyTerminalNotifications));
+        var client = new ScriptedClient();
+        var baseTime = DateTimeOffset.UtcNow.AddHours(-3);
+
+        for (var i = 0; i < 85; i++)
+        {
+            var withdrawalId = Guid.NewGuid();
+            var userId = Guid.NewGuid();
+            var sourceEventId = $"wd-terminal-{i}";
+            var payload = new WithdrawalNotificationEvent(
+                sourceEventId, withdrawalId, userId, "Approved", baseTime.AddSeconds(i), null, null, null);
+            db.AuditLogs.Add(new AuditLog
+            {
+                ServiceName = "wallet-service",
+                Action = AuditAction.NotificationQueued,
+                EntityName = nameof(WithdrawalRequest),
+                EntityId = withdrawalId.ToString(),
+                UserId = userId.ToString(),
+                NewValues = System.Text.Json.JsonSerializer.Serialize(new { SourceEventId = sourceEventId, Payload = payload }),
+                CreatedAt = baseTime.AddSeconds(i)
+            });
+            db.AuditLogs.Add(new AuditLog
+            {
+                ServiceName = "wallet-service",
+                Action = i % 2 == 0 ? AuditAction.NotificationDelivered : AuditAction.NotificationAbandoned,
+                EntityName = nameof(WithdrawalRequest),
+                EntityId = withdrawalId.ToString(),
+                UserId = userId.ToString(),
+                NewValues = System.Text.Json.JsonSerializer.Serialize(new { SourceEventId = sourceEventId }),
+                CreatedAt = baseTime.AddSeconds(i + 1)
+            });
+        }
+
+        var pendingWithdrawalId = Guid.NewGuid();
+        var pendingUserId = Guid.NewGuid();
+        var pendingEventId = "wd-pending-86";
+        var pendingPayload = new WithdrawalNotificationEvent(
+            pendingEventId, pendingWithdrawalId, pendingUserId, "Approved", baseTime.AddMinutes(5), null, null, null);
+        db.AuditLogs.Add(new AuditLog
+        {
+            ServiceName = "wallet-service",
+            Action = AuditAction.NotificationQueued,
+            EntityName = nameof(WithdrawalRequest),
+            EntityId = pendingWithdrawalId.ToString(),
+            UserId = pendingUserId.ToString(),
+            NewValues = System.Text.Json.JsonSerializer.Serialize(new { SourceEventId = pendingEventId, Payload = pendingPayload }),
+            CreatedAt = baseTime.AddMinutes(5)
+        });
+        await db.SaveChangesAsync();
+
+        var handled = await WithdrawalNotificationRetry.RetryPendingAsync(db, client, DateTimeOffset.UtcNow, 20, default);
+
+        Assert.Equal(1, handled);
+        Assert.Single(client.SourceEventIds, pendingEventId);
+        Assert.Contains(db.AuditLogs, a => a.Action == AuditAction.NotificationDelivered && a.EntityId == pendingWithdrawalId.ToString());
+    }
 }

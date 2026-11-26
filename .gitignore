@@ -33,6 +33,7 @@ bld/
 ._*
 Thumbs.db
 ehthumbs.db
+Library/
 
 ## Environment Variables & Secrets (DO NOT COMMIT)
 .env

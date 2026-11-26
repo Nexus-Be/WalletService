@@ -506,4 +506,60 @@ public sealed class ReconciliationV2Tests
         Assert.True(fundRecoveryTx.CreatedAt > fundPayoutTx.CreatedAt);
         Assert.Empty(await RunAsync(db, new Sources(), "I8"));
     }
+
+    [Theory]
+    [InlineData("999", false)]
+    [InlineData("0", false)]
+    [InlineData("Resolved", true)]
+    [InlineData("investigating", true)]
+    public void UpdateReconciliationFindingCommand_RejectsNumericAndUndefinedStatuses(string status, bool expectedValid)
+    {
+        var command = new Wallet.Application.Features.Ledger.Commands.UpdateReconciliationFinding.UpdateReconciliationFindingCommand(status, "Checked by ops");
+        var errors = command.ValidateRequest().ToList();
+        Assert.Equal(expectedValid, errors.Count == 0);
+    }
+
+    [Fact]
+    public async Task UpdateReconciliationFindingHandler_RejectsUndefinedNumericStatus()
+    {
+        using var db = new TestWalletDbContext(nameof(UpdateReconciliationFindingHandler_RejectsUndefinedNumericStatus));
+        var run = new ReconciliationRun { Id = Guid.NewGuid() };
+        var finding = new ReconciliationFinding
+        {
+            Id = Guid.NewGuid(), RunId = run.Id, InvariantCode = "I3", Code = "I3_DRIFT", Severity = "High",
+            ReferenceId = Guid.NewGuid().ToString(), Description = "Drift",
+            Status = ReconciliationFindingStatus.Open
+        };
+        db.ReconciliationRuns.Add(run);
+        db.ReconciliationFindings.Add(finding);
+        await db.SaveChangesAsync();
+
+        var handler = new Wallet.Application.Features.Ledger.Commands.UpdateReconciliationFinding.UpdateReconciliationFindingCommandHandler(db);
+        var ex = await Assert.ThrowsAsync<Wallet.Domain.Exceptions.BusinessRuleValidationException>(() =>
+            handler.Handle(
+                new Wallet.Application.Features.Ledger.Commands.UpdateReconciliationFinding.UpdateReconciliationFindingCommand("999", "Invalid")
+                {
+                    FindingId = finding.Id,
+                    AdminUserId = Guid.NewGuid()
+                },
+                default));
+
+        Assert.Equal("VAL_INVALID_INPUT", ex.ErrorCode);
+    }
+
+    [Fact]
+    public async Task ListReconciliationRuns_ReturnsEmptyPageWithoutOverflowForMaxIntPage()
+    {
+        using var db = new TestWalletDbContext(nameof(ListReconciliationRuns_ReturnsEmptyPageWithoutOverflowForMaxIntPage));
+        db.ReconciliationRuns.Add(new ReconciliationRun { Id = Guid.NewGuid() });
+        await db.SaveChangesAsync();
+
+        var handler = new Wallet.Application.Features.Ledger.Queries.ListReconciliationRuns.ListReconciliationRunsQueryHandler(db);
+        var result = await handler.Handle(
+            new Wallet.Application.Features.Ledger.Queries.ListReconciliationRuns.ListReconciliationRunsQuery(int.MaxValue, 20),
+            default);
+
+        Assert.Empty(result.Items);
+        Assert.Equal(1, result.Pagination.TotalCount);
+    }
 }

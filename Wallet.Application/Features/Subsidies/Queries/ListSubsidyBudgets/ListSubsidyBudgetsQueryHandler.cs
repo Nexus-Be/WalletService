@@ -1,5 +1,6 @@
 namespace Wallet.Application.Features.Subsidies.Queries.ListSubsidyBudgets;
 
+using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -24,8 +25,14 @@ internal sealed class ListSubsidyBudgetsQueryHandler : IRequestHandler<ListSubsi
         var (page, pageSize) = PaginationConstants.Normalize(request.Page, request.PageSize);
         var query = _context.PlatformSubsidyBudgets.AsNoTracking();
         var total = await query.CountAsync(cancellationToken);
+        var offset = (long)(page - 1) * pageSize;
+        if (offset >= total || offset > int.MaxValue)
+        {
+            return new PagedData<SubsidyBudgetResult>(Array.Empty<SubsidyBudgetResult>(), PaginationMetadata.Create(page, pageSize, total));
+        }
+
         var rows = await query.OrderByDescending(item => item.CreatedAt).ThenBy(item => item.Id)
-            .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
+            .Skip((int)offset).Take(pageSize).ToListAsync(cancellationToken);
         return new PagedData<SubsidyBudgetResult>(rows.Select(item => item.ToResult()).ToList(), PaginationMetadata.Create(page, pageSize, total));
     }
 }

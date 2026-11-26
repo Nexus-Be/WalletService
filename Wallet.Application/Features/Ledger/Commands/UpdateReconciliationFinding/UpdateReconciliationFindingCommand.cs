@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Wallet.Application.Common;
+using Wallet.Application.Common.Extensions;
 using Wallet.Application.Common.Ledger;
 using Wallet.Application.Common.Models;
 using Wallet.Application.Common.Validation;
@@ -29,7 +30,7 @@ public sealed record UpdateReconciliationFindingCommand(
 
     public IEnumerable<ValidationResult> ValidateRequest()
     {
-        if (!Enum.TryParse<ReconciliationFindingStatus>(Status, true, out _))
+        if (!Status.TryToEnum<ReconciliationFindingStatus>(out _))
             yield return new ValidationResult("Status must be Open, Investigating, Resolved or Accepted.", new[] { nameof(Status) });
         if (string.IsNullOrWhiteSpace(Note))
             yield return new ValidationResult("A note is required.", new[] { nameof(Note) });

@@ -35,7 +35,13 @@ internal sealed class UpdateReconciliationFindingCommandHandler : IRequestHandle
         var finding = await _context.ReconciliationFindings.FirstOrDefaultAsync(item => item.Id == request.FindingId, cancellationToken)
             ?? throw new DomainException("RECONCILIATION_FINDING_NOT_FOUND", "Reconciliation finding was not found.", 404);
 
-        var next = Enum.Parse<ReconciliationFindingStatus>(request.Status, true);
+        if (!request.Status.TryToEnum<ReconciliationFindingStatus>(out var next))
+        {
+            throw new BusinessRuleValidationException(
+                "VAL_INVALID_INPUT",
+                "Status must be Open, Investigating, Resolved or Accepted.");
+        }
+
         var before = finding.Status;
         finding.Status = next;
         finding.Note = request.Note.Trim();

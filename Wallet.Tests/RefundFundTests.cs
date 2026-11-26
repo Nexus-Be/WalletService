@@ -387,4 +387,20 @@ public sealed class RefundFundTests
 
         Assert.Equal("WALLET_FROZEN", await ErrorCodeAsync(() => PayAsync(context, Case(activeBuyerSale))));
     }
+
+    [Theory]
+    [InlineData("", "11111111-1111-1111-1111-111111111111", nameof(PayRefundFundCaseCommand.BuyerId))]
+    [InlineData("   ", "11111111-1111-1111-1111-111111111111", nameof(PayRefundFundCaseCommand.BuyerId))]
+    [InlineData("11111111-1111-1111-1111-111111111111", "", nameof(PayRefundFundCaseCommand.FirstApproverId))]
+    [InlineData("11111111-1111-1111-1111-111111111111", "   ", nameof(PayRefundFundCaseCommand.FirstApproverId))]
+    public void Blank_buyer_or_first_approver_produces_field_level_validation_error(string buyerId, string firstApproverId, string expectedMember)
+    {
+        var command = new PayRefundFundCaseCommand(Guid.NewGuid(), buyerId, 50_000m, firstApproverId, null);
+        var results = new System.Collections.Generic.List<System.ComponentModel.DataAnnotations.ValidationResult>();
+
+        var valid = Wallet.Application.Common.Validation.RequestValidation.TryValidate(command, results);
+
+        Assert.False(valid);
+        Assert.Contains(results, r => r.MemberNames.Contains(expectedMember));
+    }
 }

@@ -32,8 +32,14 @@ internal sealed class ListReconciliationRunsQueryHandler : IRequestHandler<ListR
         var (page, pageSize) = PaginationConstants.Normalize(request.Page, request.PageSize);
         var query = _context.ReconciliationRuns.AsNoTracking();
         var total = await query.CountAsync(cancellationToken);
+        var offset = (long)(page - 1) * pageSize;
+        if (offset >= total || offset > int.MaxValue)
+        {
+            return new PagedData<ReconciliationRunResult>(Array.Empty<ReconciliationRunResult>(), PaginationMetadata.Create(page, pageSize, total));
+        }
+
         var rows = await query.OrderByDescending(run => run.CreatedAt).ThenByDescending(run => run.Id)
-            .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
+            .Skip((int)offset).Take(pageSize).ToListAsync(cancellationToken);
         return new PagedData<ReconciliationRunResult>(rows.Select(ReconciliationMapping.Map).ToList(), PaginationMetadata.Create(page, pageSize, total));
     }
 }
