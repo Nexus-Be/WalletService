@@ -16,9 +16,9 @@ public static class ObservabilityExtensions
                 t.AddAspNetCoreInstrumentation()
                  .AddHttpClientInstrumentation();
 
-                if (!string.IsNullOrEmpty(otlpEndpoint))
+                if (Uri.TryCreate(otlpEndpoint?.Trim(), UriKind.Absolute, out var otlpUri))
                 {
-                    t.AddOtlpExporter(o => o.Endpoint = new Uri(otlpEndpoint));
+                    t.AddOtlpExporter(o => o.Endpoint = otlpUri);
                 }
             });
 
