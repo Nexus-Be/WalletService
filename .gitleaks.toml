@@ -1,0 +1,23 @@
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+
+  [[rules.allowlists]]
+  description = "Non-secret idempotency key in request validation test"
+  condition = "AND"
+  paths = ['''^Wallet\.Tests/WalletRequestValidatorTests\.cs$''']
+  regexes = ['''^req-boundary-1$''']
+
+  [[rules.allowlists]]
+  description = "Non-secret UUID example in idempotency proposal"
+  condition = "AND"
+  paths = ['''^docs/api/proposals/idempotency-key-and-retry\.md$''']
+  regexes = ['''^8e03978e-40d5-43e8-bc93-6894a57f9324$''']
+
+  [[rules.allowlists]]
+  description = "Non-secret Stripe top-up examples"
+  condition = "AND"
+  paths = ['''^docs/api/(wallet-payments|stripe/api-handover)\.md$''']
+  regexes = ['''^topup-12345678$''']
