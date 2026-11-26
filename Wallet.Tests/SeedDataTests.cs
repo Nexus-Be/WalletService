@@ -1,10 +1,15 @@
 namespace Wallet.Tests;
 
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations.Operations;
+using Wallet.Application.Common.Ledger;
 using Wallet.Infrastructure.Persistence;
 using Wallet.Infrastructure.Persistence.Migrations;
 using Wallet.Infrastructure.Persistence.Seeds;
@@ -78,5 +83,26 @@ public class SeedDataTests
         Assert.Equal(walletCount, context.Wallets.Count());
         Assert.Equal(transactionCount, context.WalletTransactions.Count());
         Assert.Equal(123m, context.Wallets.Single(w => w.Id == wallet.Id).Balance);
+    }
+
+    [Fact]
+    public async Task DevelopmentSeed_PassesWalletOnlyReconciliationInvariantsI7I8I9()
+    {
+        using var context = NewContext(nameof(DevelopmentSeed_PassesWalletOnlyReconciliationInvariantsI7I8I9));
+        WalletSeedData.Seed(context);
+
+        await new ReconciliationEvaluator(context, new NoopReconciliationSourceClient())
+            .RunAsync(new ReconciliationRequest(null, null, new[] { "I7", "I8", "I9" }), null, default);
+
+        Assert.Empty(context.ReconciliationFindings);
+    }
+
+    private sealed class NoopReconciliationSourceClient : IReconciliationSourceClient
+    {
+        public Task<IReadOnlyList<OrderRecon>> GetOrdersAsync(DateTimeOffset? updatedFrom, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<OrderRecon>>(Array.Empty<OrderRecon>());
+
+        public Task<IReadOnlyList<DepositRecon>> GetDepositsAsync(DateTimeOffset? updatedFrom, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<DepositRecon>>(Array.Empty<DepositRecon>());
     }
 }

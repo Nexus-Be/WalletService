@@ -160,9 +160,11 @@ public sealed class AuctionOrderEscrowPostgresTests
         }
 
         await using var verify = new WalletDbContext(options);
-        Assert.Equal(60m, (await verify.OrderEscrows.SingleAsync(item => item.OrderId == orderId)).RemainingAmount);
+        var escrow = await verify.OrderEscrows.SingleAsync(item => item.OrderId == orderId);
+        Assert.Equal(60m, escrow.RemainingAmount);
         Assert.Equal(40m, (await verify.Wallets.SingleAsync(item => item.UserId == sellerId)).Balance);
-        Assert.Equal(1, await ReconciliationAudits(verify, orderId));
+        Assert.Equal(1, await verify.AuditLogs.CountAsync(item =>
+            item.Action == AuditAction.OrderEscrowReconciliation && item.EntityId == escrow.Id.ToString()));
     }
 
     [DisposablePostgresFact]
@@ -333,7 +335,8 @@ public sealed class AuctionOrderEscrowPostgresTests
             item.ReferenceId == orderId && item.Type == WalletTransactionType.RefundCredit));
         Assert.Equal(0, await verify.AuditLogs.CountAsync(item =>
             item.Action == AuditAction.OrderRefund && item.EntityId == orderId.ToString()));
-        Assert.Equal(0, await ReconciliationAudits(verify, orderId));
+        Assert.Equal(0, await verify.AuditLogs.CountAsync(item =>
+            item.Action == AuditAction.OrderEscrowReconciliation && item.UserId == buyerId.ToString()));
         Assert.Equal(1, await verify.OrderEscrows.IgnoreQueryFilters()
             .CountAsync(item => item.OrderId == orderId));
     }
@@ -470,18 +473,55 @@ public sealed class AuctionOrderEscrowPostgresTests
             item.ReferenceId == orderId && item.Type == WalletTransactionType.EscrowCancellationRefund));
         Assert.Equal(0, await verify.AuditLogs.CountAsync(item =>
             item.Action == AuditAction.OrderEscrowCancel && item.EntityId == orderId.ToString()));
-        Assert.Equal(0, await ReconciliationAudits(verify, orderId));
+        Assert.Equal(0, await verify.AuditLogs.CountAsync(item =>
+            item.Action == AuditAction.OrderEscrowReconciliation && item.UserId == buyerId.ToString()));
         Assert.Equal(1, await verify.OrderEscrows.IgnoreQueryFilters()
             .CountAsync(item => item.OrderId == orderId));
     }
 
-    // The database is shared by every test in the collection, so the audit rows are counted for this order's escrow only.
-    private static async Task<int> ReconciliationAudits(WalletDbContext context, Guid orderId)
+    [DisposablePostgresFact]
+    public async Task SubOrderSettlements_WithParentOrderId_EnforceParentEscrowOnPostgres()
     {
-        var escrowIds = await context.OrderEscrows.IgnoreQueryFilters().Where(item => item.OrderId == orderId)
-            .Select(item => item.Id.ToString()).ToListAsync();
-        return await context.AuditLogs.CountAsync(item =>
-            item.Action == AuditAction.OrderEscrowReconciliation && escrowIds.Contains(item.EntityId));
+        var (options, buyerId, seller1Id) = await Setup(1000m);
+        var seller2Id = Guid.NewGuid();
+        var parentOrderId = Guid.NewGuid();
+        var sub1 = Guid.NewGuid();
+        var sub2 = Guid.NewGuid();
+
+        await using (var context = new WalletDbContext(options))
+        {
+            await new PayOrderWithWalletCommandHandler(context).Handle(
+                Payment(buyerId, parentOrderId, 100m),
+                default);
+        }
+
+        await using (var context = new WalletDbContext(options))
+        {
+            var handler = new SettleSellerOrderCommandHandler(context);
+            await handler.Handle(new SettleSellerOrderCommand(seller1Id.ToString(), 60m, parentOrderId) { SubOrderId = sub1 }, default);
+            var replay = await handler.Handle(new SettleSellerOrderCommand(seller1Id.ToString(), 60m, parentOrderId) { SubOrderId = sub1 }, default);
+            Assert.Equal(60m, replay.Amount);
+
+            var overdraw = await Assert.ThrowsAsync<BusinessRuleValidationException>(() =>
+                handler.Handle(new SettleSellerOrderCommand(seller2Id.ToString(), 50m, parentOrderId) { SubOrderId = sub2 }, default));
+            Assert.Equal("ORDER_ESCROW_INSUFFICIENT", overdraw.ErrorCode);
+        }
+
+        await using (var context = new WalletDbContext(options))
+        {
+            await new RefundOrderPaymentCommandHandler(context).Handle(
+                new RefundOrderPaymentCommand(buyerId.ToString(), 40m, "Sub-order 2 refunded", parentOrderId)
+                {
+                    OrderId = sub2,
+                    IsSubOrder = true
+                },
+                default);
+        }
+
+        await using var verify = new WalletDbContext(options);
+        var escrow = await verify.OrderEscrows.SingleAsync(item => item.OrderId == parentOrderId);
+        Assert.Equal(0m, escrow.RemainingAmount);
+        Assert.Equal(OrderEscrowStatus.Refunded, escrow.Status);
     }
 
     private static async Task<(DbContextOptions<WalletDbContext> Options, Guid BuyerId, Guid SellerId)> Setup(
@@ -566,15 +606,4 @@ public sealed class AuctionOrderEscrowPostgresTests
     }
 
     private sealed record AttemptResult(bool Succeeded, string? ErrorCode);
-
-    private sealed class DisposablePostgresFactAttribute : FactAttribute
-    {
-        public DisposablePostgresFactAttribute()
-        {
-            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WALLET_STRIPE_TEST_DATABASE")))
-            {
-                Skip = "Set WALLET_STRIPE_TEST_DATABASE to a disposable PostgreSQL database to run this integration test.";
-            }
-        }
-    }
 }

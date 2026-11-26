@@ -1,6 +1,7 @@
 namespace Wallet.Tests;
 
 using Microsoft.EntityFrameworkCore;
+using Wallet.Application.Common;
 using Wallet.Application.Features.Checkout.Commands.AdjustOrderPayment;
 using Wallet.Application.Features.Checkout.Commands.CancelOrderEscrow;
 using Wallet.Application.Features.Checkout.Commands.PayOrderWithWallet;
@@ -8,6 +9,8 @@ using Wallet.Application.Features.Checkout.Commands.RefundOrderPayment;
 using Wallet.Application.Features.Holds.Commands.CaptureHold;
 using Wallet.Application.Features.Holds.Commands.CreateHold;
 using Wallet.Application.Features.Holds.Commands.RefundCapturedHold;
+using Wallet.Application.Features.RefundFund.Commands.DepositRefundFund;
+using Wallet.Application.Features.RefundFund.Commands.PayRefundFundCase;
 using Wallet.Application.Features.Settlements.Commands.SettleOrderPayout;
 using Wallet.Application.Features.Subsidies.Commands.ApproveSubsidyBudget;
 using Wallet.Application.Features.Subsidies.Commands.CreateSubsidyBudget;
@@ -270,6 +273,121 @@ public sealed class OrderSettlementPostgresTests
         await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
     }
 
+    [DisposablePostgresFact]
+    public async Task ConcurrentRefundFundCases_SameSubOrder_PaysOnceAndReplaysCleanly()
+    {
+        var (options, buyerId, sellerId) = await Setup(buyerBalance: 200_000m);
+        var orderId = Guid.NewGuid();
+        var subOrderId = Guid.NewGuid();
+        var adminA = Guid.NewGuid();
+        await Pay(options, buyerId, orderId, 100_000m);
+
+        decimal alreadyPaidToday;
+        decimal fundBefore;
+        await using (var context = new WalletDbContext(options))
+        {
+            await new SettleOrderPayoutCommandHandler(context).Handle(
+                new SettleOrderPayoutCommand("OrderPayout", orderId, subOrderId, sellerId.ToString(), 95_000m, 5_000m, 0m, 0m, 100_000m, 0m),
+                default);
+            await new DepositRefundFundCommandHandler(context).Handle(
+                new DepositRefundFundCommand(200_000m, "pg-fund-replay") { AdminUserId = adminA },
+                default);
+
+            var dayStart = RefundFundClock.StartOfDayUtc(DateTimeOffset.UtcNow);
+            alreadyPaidToday = await context.RefundFundPayouts.AsNoTracking()
+                .Where(item => item.CreatedAt >= dayStart)
+                .SumAsync(item => (decimal?)item.Amount) ?? 0m;
+            fundBefore = (await context.Wallets.AsNoTracking().SingleAsync(w => w.UserId == RefundFundAccount.UserId)).Balance;
+        }
+
+        var refundOptions = Microsoft.Extensions.Options.Options.Create(new RefundFundOptions
+        {
+            Enabled = true,
+            PerCaseCap = 500_000m,
+            DailyCap = alreadyPaidToday + 500_000m,
+            SecondApprovalThreshold = 200_000m
+        });
+        var command = new PayRefundFundCaseCommand(orderId, buyerId.ToString(), 100_000m, adminA.ToString(), null)
+        {
+            SubOrderId = subOrderId
+        };
+
+        var attempts = await Task.WhenAll(Enumerable.Range(0, 4).Select(_ => Attempt(async () =>
+        {
+            await using var context = new WalletDbContext(options);
+            return await new PayRefundFundCaseCommandHandler(context, refundOptions).Handle(command, default);
+        })));
+
+        Assert.All(attempts, a => Assert.Null(a.Error));
+        Assert.Equal(1, attempts.Count(a => a.Value!.Outcome == "Refunded" && !a.Value.Replayed));
+        Assert.Equal(3, attempts.Count(a => a.Value!.Outcome == "Refunded" && a.Value.Replayed));
+
+        await using var verify = new WalletDbContext(options);
+        Assert.Equal(1, await verify.RefundFundPayouts.CountAsync(item => item.SubOrderId == subOrderId));
+        Assert.Equal(200_000m, (await verify.Wallets.AsNoTracking().SingleAsync(w => w.UserId == buyerId)).Balance);
+        Assert.Equal(0m, (await verify.Wallets.AsNoTracking().SingleAsync(w => w.UserId == sellerId)).Balance);
+        Assert.Equal(fundBefore - 100_000m + 95_000m,
+            (await verify.Wallets.AsNoTracking().SingleAsync(w => w.UserId == RefundFundAccount.UserId)).Balance);
+    }
+
+    [DisposablePostgresFact]
+    public async Task ConcurrentRefundFundCases_DifferentSubOrders_NeverExceedDailyCap()
+    {
+        var (options, buyerId, sellerId) = await Setup(buyerBalance: 300_000m);
+        var orderId = Guid.NewGuid();
+        var sub1 = Guid.NewGuid();
+        var sub2 = Guid.NewGuid();
+        var adminA = Guid.NewGuid();
+        await Pay(options, buyerId, orderId, 200_000m);
+
+        decimal alreadyPaidToday;
+        var dayStart = RefundFundClock.StartOfDayUtc(DateTimeOffset.UtcNow);
+        await using (var context = new WalletDbContext(options))
+        {
+            var settlement = new SettleOrderPayoutCommandHandler(context);
+            await settlement.Handle(
+                new SettleOrderPayoutCommand("OrderPayout", orderId, sub1, sellerId.ToString(), 95_000m, 5_000m, 0m, 0m, 100_000m, 0m),
+                default);
+            await settlement.Handle(
+                new SettleOrderPayoutCommand("OrderPayout", orderId, sub2, sellerId.ToString(), 95_000m, 5_000m, 0m, 0m, 100_000m, 0m),
+                default);
+            await new DepositRefundFundCommandHandler(context).Handle(
+                new DepositRefundFundCommand(250_000m, "pg-fund-cap") { AdminUserId = adminA },
+                default);
+
+            alreadyPaidToday = await context.RefundFundPayouts.AsNoTracking()
+                .Where(item => item.CreatedAt >= dayStart)
+                .SumAsync(item => (decimal?)item.Amount) ?? 0m;
+        }
+
+        var refundOptions = Microsoft.Extensions.Options.Options.Create(new RefundFundOptions
+        {
+            Enabled = true,
+            PerCaseCap = 500_000m,
+            DailyCap = alreadyPaidToday + 150_000m,
+            SecondApprovalThreshold = 200_000m
+        });
+
+        var attempts = await Task.WhenAll(new[] { sub1, sub2 }.Select(subId => Attempt(async () =>
+        {
+            await using var context = new WalletDbContext(options);
+            return await new PayRefundFundCaseCommandHandler(context, refundOptions).Handle(
+                new PayRefundFundCaseCommand(orderId, buyerId.ToString(), 100_000m, adminA.ToString(), null) { SubOrderId = subId },
+                default);
+        })));
+
+        Assert.All(attempts, a => Assert.Null(a.Error));
+        Assert.Single(attempts, a => a.Value!.Outcome == "Refunded");
+        var blocked = Assert.Single(attempts, a => a.Value!.Outcome == "NeedsFinance");
+        Assert.Equal("DAILY_CAP_EXCEEDED", blocked.Value!.Reason);
+
+        await using var verify = new WalletDbContext(options);
+        var paidTodayAfter = await verify.RefundFundPayouts.AsNoTracking()
+            .Where(item => item.CreatedAt >= dayStart)
+            .SumAsync(item => (decimal?)item.Amount) ?? 0m;
+        Assert.Equal(alreadyPaidToday + 100_000m, paidTodayAfter);
+    }
+
     // ---------------------------------------------------------------- helpers
 
     private static async Task<(DbContextOptions<WalletDbContext> Options, Guid BuyerId, Guid SellerId)> Setup(decimal buyerBalance = 1000m)
@@ -327,13 +445,4 @@ public sealed class OrderSettlementPostgresTests
     }
 
     private sealed record AttemptResult<T>(T? Value, Exception? Error);
-
-    private sealed class DisposablePostgresFactAttribute : FactAttribute
-    {
-        public DisposablePostgresFactAttribute()
-        {
-            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WALLET_STRIPE_TEST_DATABASE")))
-                Skip = "Set WALLET_STRIPE_TEST_DATABASE to a disposable PostgreSQL database to run this integration test.";
-        }
-    }
 }

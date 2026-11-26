@@ -83,9 +83,26 @@ internal sealed class PayRefundFundCaseCommandHandler : IRequestHandler<PayRefun
         var fund = locked[RefundFundAccount.UserId];
         var buyer = locked[buyerId] ?? throw new WalletNotFoundException(buyerId.ToString());
         var seller = locked[settlement.SellerId];
+
+        // Re-check under the fund lock so concurrent duplicate requests replay cleanly and concurrent payouts cannot exceed the daily cap.
+        var lockedExisting = await _context.RefundFundPayouts.AsNoTracking()
+            .FirstOrDefaultAsync(item => item.SubOrderId == subOrderId, cancellationToken);
+        if (lockedExisting is not null)
+        {
+            if (lockedExisting.Amount != request.Amount || lockedExisting.ParentOrderId != request.ParentOrderId || lockedExisting.BuyerId != buyerId)
+                throw new BusinessRuleValidationException("REFUND_FUND_CONFLICT", "This sub-order was already refunded from the fund with different details.", 409);
+            return Paid(lockedExisting, fund?.Balance ?? 0m, replayed: true);
+        }
+
+        var lockedDayStart = RefundFundClock.StartOfDayUtc(DateTimeOffset.UtcNow);
+        var lockedPaidToday = await _context.RefundFundPayouts.AsNoTracking()
+            .Where(item => item.CreatedAt >= lockedDayStart)
+            .SumAsync(item => (decimal?)item.Amount, cancellationToken) ?? 0m;
+        if (lockedPaidToday + request.Amount > options.DailyCap)
+            return Stopped("DAILY_CAP_EXCEEDED", subOrderId, request.Amount, fund?.AvailableBalance ?? 0m);
+
         if (fund is null || fund.AvailableBalance < request.Amount)
             return Stopped("FUND_INSUFFICIENT", subOrderId, request.Amount, fund?.AvailableBalance ?? 0m);
-        buyer.EnsureActive();
         fund.EnsureActive();
 
         // The buyer must have paid by wallet, and nothing may already have been refunded for this order or sub-order.
@@ -102,10 +119,10 @@ internal sealed class PayRefundFundCaseCommandHandler : IRequestHandler<PayRefun
         var now = DateTimeOffset.UtcNow;
         var fundBefore = fund.Balance;
         fund.Deduct(request.Amount);
-        var fundTx = NewTx(fund, WalletTransactionType.RefundFundPayout, request.Amount, fundBefore, subOrderId, $"Refund of sub-order {subOrderId} paid from the refund fund");
+        var fundTx = NewTx(fund, WalletTransactionType.RefundFundPayout, request.Amount, fundBefore, subOrderId, $"Refund of sub-order {subOrderId} paid from the refund fund", now);
         var buyerBefore = buyer.Balance;
         buyer.Deposit(request.Amount);
-        var buyerTx = NewTx(buyer, WalletTransactionType.RefundFundRefund, request.Amount, buyerBefore, subOrderId, $"Refund of sub-order {subOrderId} from the refund fund");
+        var buyerTx = NewTx(buyer, WalletTransactionType.RefundFundRefund, request.Amount, buyerBefore, subOrderId, $"Refund of sub-order {subOrderId} from the refund fund", now);
         _context.WalletTransactions.Add(fundTx);
         _context.WalletTransactions.Add(buyerTx);
 
@@ -115,12 +132,21 @@ internal sealed class PayRefundFundCaseCommandHandler : IRequestHandler<PayRefun
         WalletTransaction? recoveryTx = null;
         if (recovered > 0m && seller is not null)
         {
+            // Persist the payout debit before crediting recovery inside the same transaction so the shadow ledger records both fund
+            // movements separately even when full recovery leaves the fund balance unchanged.
+            await _context.SaveChangesAsync(cancellationToken);
+
+            // Keep recovery timestamps strictly later than the payout so I8's CreatedAt ordering matches the balance chain.
+            var recoveryAt = DateTimeOffset.UtcNow;
+            if (recoveryAt <= now.AddMicroseconds(10))
+                recoveryAt = now.AddMicroseconds(10);
+
             var sellerBefore = seller.Balance;
             seller.Deduct(recovered);
-            _context.WalletTransactions.Add(NewTx(seller, WalletTransactionType.SellerRecoveryDebit, recovered, sellerBefore, subOrderId, $"Taken back after the refund of sub-order {subOrderId}"));
+            _context.WalletTransactions.Add(NewTx(seller, WalletTransactionType.SellerRecoveryDebit, recovered, sellerBefore, subOrderId, $"Taken back after the refund of sub-order {subOrderId}", recoveryAt));
             var fundBeforeRecovery = fund.Balance;
             fund.Deposit(recovered);
-            recoveryTx = NewTx(fund, WalletTransactionType.RefundFundRecovery, recovered, fundBeforeRecovery, subOrderId, $"Taken back from the seller after the refund of sub-order {subOrderId}");
+            recoveryTx = NewTx(fund, WalletTransactionType.RefundFundRecovery, recovered, fundBeforeRecovery, subOrderId, $"Taken back from the seller after the refund of sub-order {subOrderId}", recoveryAt);
             _context.WalletTransactions.Add(recoveryTx);
         }
 
@@ -156,7 +182,7 @@ internal sealed class PayRefundFundCaseCommandHandler : IRequestHandler<PayRefun
         return Paid(payout, fund.Balance, replayed: false);
     }
 
-    private static WalletTransaction NewTx(WalletAccount wallet, WalletTransactionType type, decimal amount, decimal balanceBefore, Guid reference, string note) => new()
+    private static WalletTransaction NewTx(WalletAccount wallet, WalletTransactionType type, decimal amount, decimal balanceBefore, Guid reference, string note, DateTimeOffset createdAt) => new()
     {
         Id = Guid.NewGuid(),
         WalletId = wallet.Id,
@@ -169,7 +195,7 @@ internal sealed class PayRefundFundCaseCommandHandler : IRequestHandler<PayRefun
         ReferenceId = reference,
         Status = TransactionStatus.Success,
         Note = note,
-        CreatedAt = DateTimeOffset.UtcNow
+        CreatedAt = createdAt
     };
 
     private static RefundFundCaseResult Paid(RefundFundPayout payout, decimal fundBalance, bool replayed) => new(

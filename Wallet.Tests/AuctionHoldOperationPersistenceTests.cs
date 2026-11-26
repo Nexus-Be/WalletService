@@ -120,15 +120,6 @@ public sealed class AuctionHoldOperationPersistenceTests
         RequestFingerprint = new string('A', 64), ResponseJson = "{}", HttpStatus = 201
     };
 
-    private sealed class DisposablePostgresFactAttribute : FactAttribute
-    {
-        public DisposablePostgresFactAttribute()
-        {
-            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WALLET_STRIPE_TEST_DATABASE")))
-                Skip = "Set WALLET_STRIPE_TEST_DATABASE to a disposable PostgreSQL database to run this integration test.";
-        }
-    }
-
     private static WalletDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<WalletDbContext>()

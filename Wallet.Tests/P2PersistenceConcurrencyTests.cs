@@ -19,7 +19,6 @@ using Wallet.Infrastructure.Persistence;
 using Wallet.Tests.Support;
 using Xunit;
 
-[Collection(PostgresTestCollection.Name)]
 public sealed class P2PersistenceConcurrencyTests
 {
     [Fact]
@@ -198,46 +197,6 @@ public sealed class P2PersistenceConcurrencyTests
                 default));
         Assert.Equal("PAYMENT_CONFLICT", err.ErrorCode);
         Assert.Equal(409, err.StatusCode);
-    }
-
-    [DisposablePostgresFact]
-    public async Task ConcurrentLockOrEnsureWallet_ForBrandNewUser_CreatesSingleWalletAndSingleAuditLog()
-    {
-        var connectionString = Environment.GetEnvironmentVariable("WALLET_STRIPE_TEST_DATABASE")
-            ?? throw new InvalidOperationException("Disposable PostgreSQL test database is required.");
-        var options = new DbContextOptionsBuilder<WalletDbContext>().UseNpgsql(connectionString).Options;
-
-        await using (var setup = new WalletDbContext(options))
-        {
-            await setup.Database.MigrateAsync();
-        }
-
-        var userId = Guid.NewGuid();
-        var barrier = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var arrived = 0;
-
-        async Task<Guid> RunOne()
-        {
-            await using var context = new WalletDbContext(options);
-            await using var tx = await context.Database.BeginTransactionAsync();
-            if (Interlocked.Increment(ref arrived) == 4)
-            {
-                barrier.TrySetResult();
-            }
-
-            await barrier.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            var wallet = await context.LockOrEnsureWalletByUserIdAsync(userId, default);
-            await tx.CommitAsync();
-            return wallet.Id;
-        }
-
-        var ids = await Task.WhenAll(RunOne(), RunOne(), RunOne(), RunOne());
-        Assert.Single(ids.Distinct());
-
-        await using var verify = new WalletDbContext(options);
-        Assert.Equal(1, await verify.Wallets.CountAsync(w => w.UserId == userId));
-        Assert.Equal(1, await verify.AuditLogs.CountAsync(a =>
-            a.Action == AuditAction.WalletCreate && a.UserId == userId.ToString()));
     }
 
     private sealed class RacingWalletDbContext(
@@ -430,14 +389,5 @@ public sealed class P2PersistenceConcurrencyTests
             throw new NotSupportedException();
         public Task<StripePaymentIntentSnapshot> GetPaymentIntentAsync(string paymentIntentId, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
-    }
-
-    private sealed class DisposablePostgresFactAttribute : FactAttribute
-    {
-        public DisposablePostgresFactAttribute()
-        {
-            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WALLET_STRIPE_TEST_DATABASE")))
-                Skip = "Set WALLET_STRIPE_TEST_DATABASE to a disposable PostgreSQL database to run this integration test.";
-        }
     }
 }

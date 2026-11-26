@@ -5,12 +5,14 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using Wallet.Application.Common.Extensions;
 using Wallet.Application.Features.Checkout.Commands.AdjustOrderPayment;
 using Wallet.Application.Features.Checkout.Commands.CancelDirectPayment;
 using Wallet.Application.Features.Checkout.Commands.CheckoutDirect;
 using Wallet.Application.Features.Checkout.Commands.ExpireDirectPayment;
 using Wallet.Application.Features.Checkout.Commands.PayOrderWithWallet;
 using Wallet.Application.Features.Stripe;
+using Wallet.Application.Features.Wallets.Queries.ListTransactions;
 using Wallet.Application.Interfaces;
 using Wallet.Domain.Entities;
 using Wallet.Domain.Enums;
@@ -201,15 +203,80 @@ public sealed class WalletQueriesAndRacesPostgresTests
         Assert.Equal(StripePaymentAttemptStatus.Successful, winningAttempt.Status);
     }
 
-    private static async Task<(DbContextOptions<WalletDbContext> Options, Guid BuyerId)> SetupWalletAsync(decimal balance)
+    [DisposablePostgresFact]
+    public async Task ListTransactions_WithNonUtcDateOffsets_SucceedsOnPostgres()
+    {
+        var (options, ownerId) = await SetupWalletAsync(100_000m);
+
+        await using (var context = new WalletDbContext(options))
+        {
+            var orderId = Guid.NewGuid();
+            await new PayOrderWithWalletCommandHandler(context).Handle(
+                new PayOrderWithWalletCommand(50_000m) { OrderId = orderId, UserId = ownerId.ToString() },
+                default);
+        }
+
+        await using var queryContext = new WalletDbContext(options);
+        var nowVn = DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(7));
+        var result = await new ListTransactionsQueryHandler(queryContext).Handle(
+            new ListTransactionsQuery(1, 10, FromDate: nowVn.AddHours(-1), ToDate: nowVn.AddHours(1))
+            {
+                UserId = ownerId.ToString()
+            },
+            default);
+
+        Assert.Single(result.Items);
+    }
+
+    [DisposablePostgresFact]
+    public async Task ConcurrentLockOrEnsureWallet_ForBrandNewUser_CreatesSingleWalletAndSingleAuditLog()
+    {
+        var options = await GetMigratedOptionsAsync();
+        var userId = Guid.NewGuid();
+        var barrier = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var arrived = 0;
+
+        async Task<Guid> RunOne()
+        {
+            await using var context = new WalletDbContext(options);
+            await using var tx = await context.Database.BeginTransactionAsync();
+            if (Interlocked.Increment(ref arrived) == 4)
+            {
+                barrier.TrySetResult();
+            }
+
+            await barrier.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var wallet = await context.LockOrEnsureWalletByUserIdAsync(userId, default);
+            await tx.CommitAsync();
+            return wallet.Id;
+        }
+
+        var ids = await Task.WhenAll(RunOne(), RunOne(), RunOne(), RunOne());
+        Assert.Single(ids.Distinct());
+
+        await using var verify = new WalletDbContext(options);
+        Assert.Equal(1, await verify.Wallets.CountAsync(w => w.UserId == userId));
+        Assert.Equal(1, await verify.AuditLogs.CountAsync(a =>
+            a.Action == AuditAction.WalletCreate && a.UserId == userId.ToString()));
+    }
+
+    private static async Task<DbContextOptions<WalletDbContext>> GetMigratedOptionsAsync()
     {
         var connectionString = Environment.GetEnvironmentVariable("WALLET_STRIPE_TEST_DATABASE")
             ?? throw new InvalidOperationException("Disposable PostgreSQL test database is required.");
         var options = new DbContextOptionsBuilder<WalletDbContext>().UseNpgsql(connectionString).Options;
-        var buyerId = Guid.NewGuid();
 
         await using var context = new WalletDbContext(options);
         await context.Database.MigrateAsync();
+        return options;
+    }
+
+    private static async Task<(DbContextOptions<WalletDbContext> Options, Guid BuyerId)> SetupWalletAsync(decimal balance)
+    {
+        var options = await GetMigratedOptionsAsync();
+        var buyerId = Guid.NewGuid();
+
+        await using var context = new WalletDbContext(options);
         context.Wallets.Add(new WalletAccount
         {
             Id = Guid.NewGuid(),
@@ -240,16 +307,5 @@ public sealed class WalletQueriesAndRacesPostgresTests
 
         public Task<StripePaymentIntentSnapshot> GetPaymentIntentAsync(string paymentIntentId, CancellationToken token) =>
             throw new NotSupportedException();
-    }
-
-    private sealed class DisposablePostgresFactAttribute : FactAttribute
-    {
-        public DisposablePostgresFactAttribute()
-        {
-            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WALLET_STRIPE_TEST_DATABASE")))
-            {
-                Skip = "Set WALLET_STRIPE_TEST_DATABASE to a disposable PostgreSQL database to run this integration test.";
-            }
-        }
     }
 }
