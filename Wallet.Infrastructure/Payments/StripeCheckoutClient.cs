@@ -11,15 +11,13 @@ using Wallet.Domain.Exceptions;
 
 public sealed class StripeCheckoutClient : IStripeCheckoutClient
 {
-    private const int DefaultSessionExpiryMinutes = 30;
-    private const int MinSessionExpiryMinutes = 30;
-    private const int MaxSessionExpiryMinutes = 1440;
+    /// <summary>Universal checkout time to live for every payment type (Stripe's minimum allowed is 30 minutes).</summary>
+    private const int SessionExpiryMinutes = 30;
 
     private readonly SessionService _sessions;
     private readonly PaymentIntentService _paymentIntents;
     private readonly string _successUrl;
     private readonly string _cancelUrl;
-    private readonly int _sessionExpiryMinutes;
 
     public StripeCheckoutClient(HttpClient httpClient, IConfiguration configuration)
     {
@@ -32,9 +30,6 @@ public sealed class StripeCheckoutClient : IStripeCheckoutClient
         var allowLocalHttp = StripeSettings.IsDevelopment(configuration);
         _successUrl = StripeSettings.RequireReturnUrl(configuration["Stripe:SuccessUrl"], "Stripe success URL", allowLocalHttp);
         _cancelUrl = StripeSettings.RequireReturnUrl(configuration["Stripe:CancelUrl"], "Stripe cancel URL", allowLocalHttp);
-        _sessionExpiryMinutes = int.TryParse(configuration["Stripe:SessionExpiryMinutes"], out var configuredMinutes)
-            ? Math.Clamp(configuredMinutes, MinSessionExpiryMinutes, MaxSessionExpiryMinutes)
-            : DefaultSessionExpiryMinutes;
         var stripeHttp = new SystemNetHttpClient(httpClient, maxNetworkRetries: 0);
         // Test hook for an isolated QA stack: point the SDK at a fake Stripe server. Accepted only in Development, never with a live key
         // (a sk_test_ key is already required above), so a production or shared environment cannot be redirected by configuration.
@@ -67,7 +62,7 @@ public sealed class StripeCheckoutClient : IStripeCheckoutClient
             request.IdempotencyKey.Any(char.IsWhiteSpace))
             throw new ArgumentException("Provider idempotency key is invalid.", nameof(request));
 
-        var expiresAt = request.ExpiresAt ?? DateTimeOffset.UtcNow.AddMinutes(_sessionExpiryMinutes);
+        var expiresAt = request.ExpiresAt ?? DateTimeOffset.UtcNow.AddMinutes(SessionExpiryMinutes);
         var metadata = new Dictionary<string, string> { ["attempt_id"] = request.AttemptId.ToString() };
         var options = new SessionCreateOptions
         {

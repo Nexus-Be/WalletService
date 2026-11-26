@@ -13,7 +13,7 @@
    - Computes fingerprint `SHA256("direct\n{ownerId:D}\n{orderId:D}\n{amount:0}\nVND")`.
    - If an attempt has `BlocksReplacement == true`: replays the existing session URL only if `order.Pending`, `ledger.Pending`, `attempt.AwaitingPayment`, and session is unexpired with matching owner/amount; otherwise `409 PAYMENT_CONFLICT`.
    - If a prior attempt finished cleanly (`Failed`/`Expired`, non-blocking, no `ReconciliationRequired`, order/ledger `Failed`/`Expired`/`Cancelled`), resets order/ledger to `Pending` and stages a fresh `CreationPending` attempt (`ProviderIdempotencyKey = "wallet_direct_{guid:N}"`). Otherwise creates `DirectPaymentOrder(Pending)`, `WalletTransaction(DirectGatewayPayment, Pending, BalanceBefore = BalanceAfter = wallet.Balance)`, `StripePaymentAttempt(CreationPending)`, and `AuditAction.DirectPaymentRequest`.
-   - **External Stripe call (outside Tx):** Creates and validates Stripe Checkout Session (`30`–`1440` min expiry, `Recovery.Enabled = false`).
+   - **External Stripe call (outside Tx):** Creates and validates Stripe Checkout Session (fixed `30` min expiry, `Recovery.Enabled = false`).
    - **Phase 2 Tx:** Locks `DirectPaymentOrder` -> `StripePaymentAttempt`, transitions attempt to `AwaitingPayment` with session correlation & URL.
 3. Returns `200` (`transactionId`, `orderId`, `amount`, `paymentUrl`, `status: "Pending"`, `createdAt`). Wallet `Balance` and `LockedBalance` remain unchanged.
 
