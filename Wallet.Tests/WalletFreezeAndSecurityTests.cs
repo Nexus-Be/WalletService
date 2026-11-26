@@ -307,6 +307,68 @@ public sealed class WalletFreezeAndSecurityTests
         Assert.True(StripeSettings.Validate(devValid));
     }
 
+    [Fact]
+    public void RequireRoleAttribute_DoesNotLetStaffBypassAdminOnlyOrSellerRoutes()
+    {
+        static AuthorizationFilterContext RoleContext(string role)
+        {
+            var http = new DefaultHttpContext
+            {
+                User = new ClaimsPrincipal(new ClaimsIdentity(
+                    new[]
+                    {
+                        new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString()),
+                        new Claim(ClaimTypes.Role, role)
+                    },
+                    "test"))
+            };
+            return new AuthorizationFilterContext(
+                new ActionContext(http, new RouteData(), new ActionDescriptor()),
+                new List<IFilterMetadata>());
+        }
+
+        var adminOnly = new RequireRoleAttribute("admin");
+        var staffAdminCheck = RoleContext("staff");
+        adminOnly.OnAuthorization(staffAdminCheck);
+        Assert.Equal(403, Assert.IsType<ObjectResult>(staffAdminCheck.Result).StatusCode);
+
+        var adminCheck = RoleContext("admin");
+        adminOnly.OnAuthorization(adminCheck);
+        Assert.Null(adminCheck.Result);
+
+        var sellerOnly = new RequireRoleAttribute("seller");
+        var staffSellerCheck = RoleContext("staff");
+        sellerOnly.OnAuthorization(staffSellerCheck);
+        Assert.Equal(403, Assert.IsType<ObjectResult>(staffSellerCheck.Result).StatusCode);
+
+        var sellerCheck = RoleContext("seller");
+        sellerOnly.OnAuthorization(sellerCheck);
+        Assert.Null(sellerCheck.Result);
+
+        var adminOnSellerCheck = RoleContext("admin");
+        sellerOnly.OnAuthorization(adminOnSellerCheck);
+        Assert.Null(adminOnSellerCheck.Result);
+
+        var adminOrStaff = new RequireRoleAttribute("admin", "staff");
+        var staffAllowed = RoleContext("staff");
+        adminOrStaff.OnAuthorization(staffAllowed);
+        Assert.Null(staffAllowed.Result);
+    }
+
+    [Fact]
+    public async Task FreezeWallet_BlocksFreezingRefundFundSystemWallet()
+    {
+        using var context = new TestWalletDbContext(nameof(FreezeWallet_BlocksFreezingRefundFundSystemWallet));
+        var error = await Assert.ThrowsAsync<BusinessRuleValidationException>(() =>
+            new FreezeWalletCommandHandler(context).Handle(
+                new FreezeWalletCommand(RefundFundAccount.UserId, "TEST") { ActorUserId = Guid.NewGuid().ToString() },
+                default));
+
+        Assert.Equal(403, error.StatusCode);
+        Assert.Equal("SYSTEM_WALLET_PROTECTED", error.ErrorCode);
+        Assert.Empty(context.Wallets);
+    }
+
     private static AuthorizationFilterContext CreateAuthContext(string configKey, string? configured, string? provided)
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>

@@ -30,6 +30,14 @@ internal static class WalletFreezeHelper
         var resolvedReason = string.IsNullOrWhiteSpace(reason) ? defaultReason : reason.Trim();
         var targetStatus = freeze ? "FROZEN" : "ACTIVE";
 
+        if (freeze && userId == RefundFundAccount.UserId)
+        {
+            throw new BusinessRuleValidationException(
+                "SYSTEM_WALLET_PROTECTED",
+                "System wallets cannot be frozen.",
+                403);
+        }
+
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
         var wallet = freeze
             ? await context.LockOrEnsureWalletByUserIdAsync(userId, cancellationToken)

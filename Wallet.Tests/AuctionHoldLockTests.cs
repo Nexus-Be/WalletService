@@ -2,8 +2,10 @@ namespace Wallet.Tests;
 
 using Microsoft.EntityFrameworkCore;
 using Wallet.Infrastructure.Persistence;
+using Wallet.Tests.Support;
 using Xunit;
 
+[Collection(PostgresTestCollection.Name)]
 public sealed class AuctionHoldLockTests
 {
     [Fact]
@@ -35,13 +37,4 @@ public sealed class AuctionHoldLockTests
 
     private static WalletDbContext CreateContext(string connectionString) =>
         new(new DbContextOptionsBuilder<WalletDbContext>().UseNpgsql(connectionString).Options);
-
-    private sealed class DisposablePostgresFactAttribute : FactAttribute
-    {
-        public DisposablePostgresFactAttribute()
-        {
-            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WALLET_STRIPE_TEST_DATABASE")))
-                Skip = "Set WALLET_STRIPE_TEST_DATABASE to a disposable PostgreSQL database to run this integration test.";
-        }
-    }
 }

@@ -98,6 +98,7 @@ public sealed class ReconciliationEvaluator
             }
 
             if (wanted.Overlaps(new[] { "I3", "I4" })) await CheckAuctionPayoutsAsync(cutoff, wanted, findings, cancellationToken);
+            if (wanted.Contains("I5")) await CheckRefundFundAsync(cutoff, findings, cancellationToken);
             if (wanted.Contains("I7")) await CheckI7Async(cutoff, findings, cancellationToken);
             if (wanted.Contains("I8")) await CheckI8Async(findings, cancellationToken);
             if (wanted.Contains("I9")) await CheckI9Async(findings, cancellationToken);
@@ -334,7 +335,7 @@ public sealed class ReconciliationEvaluator
                     foreach (var key in new Guid?[] { refund.RefundId, refund.SubOrderId, refund.OrderId, order.OrderId })
                     {
                         if (key.HasValue && byRef.TryGetValue(key.Value, out var list))
-                            candidates.AddRange(list.Where(tx => tx.Type is WalletTransactionType.RefundCredit or WalletTransactionType.EscrowCancellationRefund));
+                            candidates.AddRange(list.Where(tx => tx.Type is WalletTransactionType.RefundCredit or WalletTransactionType.EscrowCancellationRefund or WalletTransactionType.RefundFundRefund));
                     }
 
                     candidates = candidates.GroupBy(tx => tx.Id).Select(group => group.First()).ToList();
@@ -668,6 +669,85 @@ public sealed class ReconciliationEvaluator
             {
                 findings.Add(Finding("I3", "I3_REMAINING_MISMATCH", "High", group.Key.ToString(), "wallet-service", expected, escrow.RemainingAmount,
                     "Auction order escrow remaining amount does not equal original minus payout allocations and refunds."));
+            }
+        }
+    }
+
+    // ---- I5 (supporting): refund fund conservation and payout record integrity
+    private async Task CheckRefundFundAsync(DateTimeOffset cutoff, List<ReconciliationFinding> findings, CancellationToken ct)
+    {
+        var fund = await _context.Wallets.AsNoTracking()
+            .FirstOrDefaultAsync(wallet => wallet.UserId == RefundFundAccount.UserId, ct);
+        var payouts = await _context.RefundFundPayouts.AsNoTracking()
+            .Where(item => item.CreatedAt <= cutoff)
+            .ToListAsync(ct);
+        if (fund is null && payouts.Count == 0)
+            return;
+
+        if (fund is null)
+        {
+            findings.Add(Finding("I5", "I5_REFUND_FUND_BALANCE_MISMATCH", "High", RefundFundAccount.UserId.ToString(), "wallet-service",
+                0m, payouts.Sum(p => p.Amount), "The refund fund wallet does not exist although refund fund payouts are recorded."));
+        }
+        else
+        {
+            var fundTxs = await _context.WalletTransactions.AsNoTracking()
+                .Where(tx => tx.WalletId == fund.Id && tx.Status == TransactionStatus.Success)
+                .ToListAsync(ct);
+            var deposits = fundTxs.Where(tx => tx.Type == WalletTransactionType.RefundFundDeposit).Sum(tx => tx.Amount);
+            var recoveries = fundTxs.Where(tx => tx.Type == WalletTransactionType.RefundFundRecovery).Sum(tx => tx.Amount);
+            var paidOut = fundTxs.Where(tx => tx.Type == WalletTransactionType.RefundFundPayout).Sum(tx => tx.Amount);
+            var expected = deposits + recoveries - paidOut;
+            if (Math.Abs(fund.Balance - expected) > Tolerance)
+            {
+                findings.Add(Finding("I5", "I5_REFUND_FUND_BALANCE_MISMATCH", "High", fund.Id.ToString(), "wallet-service",
+                    expected, fund.Balance, "The refund fund balance does not equal total deposits and recoveries minus payouts."));
+            }
+        }
+
+        if (payouts.Count == 0)
+            return;
+
+        var txIds = payouts.SelectMany(p => p.RecoveryTransactionId.HasValue
+                ? new[] { p.FundTransactionId, p.BuyerTransactionId, p.RecoveryTransactionId.Value }
+                : new[] { p.FundTransactionId, p.BuyerTransactionId })
+            .Distinct()
+            .ToList();
+        var payoutTxs = new Dictionary<Guid, WalletTransaction>();
+        foreach (var chunk in txIds.Chunk(1000))
+        {
+            var rows = await _context.WalletTransactions.AsNoTracking()
+                .Where(tx => tx.Status == TransactionStatus.Success && chunk.Contains(tx.Id))
+                .ToListAsync(ct);
+            foreach (var row in rows)
+                payoutTxs[row.Id] = row;
+        }
+
+        foreach (var payout in payouts)
+        {
+            var fundOk = payoutTxs.TryGetValue(payout.FundTransactionId, out var fundTx)
+                && fundTx.Type == WalletTransactionType.RefundFundPayout
+                && Math.Abs(fundTx.Amount - payout.Amount) <= Tolerance;
+            var buyerOk = payoutTxs.TryGetValue(payout.BuyerTransactionId, out var buyerTx)
+                && buyerTx.Type == WalletTransactionType.RefundFundRefund
+                && Math.Abs(buyerTx.Amount - payout.Amount) <= Tolerance;
+            var recoveryOk = payout.SellerRecoveredAmount == 0m
+                ? payout.RecoveryTransactionId is null
+                : payout.RecoveryTransactionId.HasValue
+                  && payoutTxs.TryGetValue(payout.RecoveryTransactionId.Value, out var recoveryTx)
+                  && recoveryTx.Type == WalletTransactionType.RefundFundRecovery
+                  && Math.Abs(recoveryTx.Amount - payout.SellerRecoveredAmount) <= Tolerance;
+
+            if (!fundOk || !buyerOk || !recoveryOk)
+            {
+                var actualFund = payoutTxs.TryGetValue(payout.FundTransactionId, out var seenFund) ? seenFund.Amount : 0m;
+                var actualBuyer = payoutTxs.TryGetValue(payout.BuyerTransactionId, out var seenBuyer) ? seenBuyer.Amount : 0m;
+                var actualRecovery = payout.RecoveryTransactionId.HasValue && payoutTxs.TryGetValue(payout.RecoveryTransactionId.Value, out var seenRec)
+                    ? seenRec.Amount
+                    : 0m;
+                var actualSummary = $"fund={actualFund}, buyer={actualBuyer}, recovered={actualRecovery}";
+                findings.Add(Finding("I5", "I5_REFUND_FUND_PAYOUT_MISMATCH", "High", payout.SubOrderId.ToString(), "wallet-service",
+                    payout.Amount, actualSummary, "A refund fund payout record does not match its wallet transactions."));
             }
         }
     }

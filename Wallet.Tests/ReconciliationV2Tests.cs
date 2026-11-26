@@ -6,9 +6,12 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using Wallet.Application.Common;
 using Wallet.Application.Common.Ledger;
 using Wallet.Application.Features.Checkout.Commands.PayOrderWithWallet;
 using Wallet.Application.Features.Checkout.Commands.SettleSellerOrder;
+using Wallet.Application.Features.RefundFund.Commands.DepositRefundFund;
+using Wallet.Application.Features.RefundFund.Commands.PayRefundFundCase;
 using Wallet.Application.Features.Settlements.Commands.SettleOrderPayout;
 using Wallet.Domain.Entities;
 using Wallet.Domain.Enums;
@@ -389,5 +392,118 @@ public sealed class ReconciliationV2Tests
         var codes = (await RunAsync(db, new Sources(), "I3", "I4")).Select(f => f.Code).ToList();
         Assert.Contains("I4_AUCTION_AMOUNT_MISMATCH", codes);
         Assert.Contains("I3_REMAINING_MISMATCH", codes);
+    }
+
+    [Fact]
+    public async Task A_refund_fund_case_reconciles_cleanly_under_i3_i4_i5_and_i8()
+    {
+        using var db = new TestWalletDbContext(nameof(A_refund_fund_case_reconciles_cleanly_under_i3_i4_i5_and_i8));
+        var buyer = AddWallet(db, 500_000m);
+        var seller = AddWallet(db, 0m);
+        var adminId = Guid.NewGuid();
+        var orderId = Guid.NewGuid();
+        var subId = Guid.NewGuid();
+        await Pay(db, buyer, orderId, 230_000m);
+        await new SettleOrderPayoutCommandHandler(db).Handle(
+            new SettleOrderPayoutCommand("OrderPayout", orderId, subId, seller.UserId.ToString(), 180_000m, 20_000m, 30_000m, 0m, 230_000m, 0m), default);
+        await new DepositRefundFundCommandHandler(db).Handle(
+            new DepositRefundFundCommand(1_000_000m, "fund-ref-1") { AdminUserId = adminId }, default);
+        var fundOptions = Microsoft.Extensions.Options.Options.Create(new RefundFundOptions { Enabled = true, PerCaseCap = 500_000m, DailyCap = 5_000_000m, SecondApprovalThreshold = 500_000m });
+        var result = await new PayRefundFundCaseCommandHandler(db, fundOptions).Handle(
+            new PayRefundFundCaseCommand(orderId, buyer.UserId.ToString(), 230_000m, adminId.ToString(), null) { SubOrderId = subId }, default);
+        Assert.Equal("Refunded", result.Outcome);
+
+        var payout = await db.RefundFundPayouts.SingleAsync();
+        payout.CreatedAt = payout.CreatedAt.AddMinutes(-10);
+        await db.SaveChangesAsync();
+
+        var sources = new Sources();
+        sources.Orders.Add(new OrderRecon(
+            orderId, buyer.UserId, "Completed", 230_000m, DateTimeOffset.UtcNow.AddMinutes(-10),
+            new[] { new SubOrderRecon(subId, "Completed", "Wallet", 200_000m, 0m, 0m, 0m, 30_000m, 230_000m, 180_000m, 20_000m, true, DateTimeOffset.UtcNow.AddMinutes(-20)) },
+            // Leave both explicit transaction links null so I5 resolves RefundFundRefund via sub-order reference lookup.
+            new[] { new RefundRecon(Guid.NewGuid(), subId, orderId, 230_000m, "Completed", null, null) }));
+
+        Assert.Empty(await RunAsync(db, sources, "I3", "I4", "I5", "I8"));
+    }
+
+    [Fact]
+    public async Task Refund_fund_balance_drift_and_broken_payout_record_are_reported_under_i5()
+    {
+        using var db = new TestWalletDbContext(nameof(Refund_fund_balance_drift_and_broken_payout_record_are_reported_under_i5));
+        var buyer = AddWallet(db, 500_000m);
+        var seller = AddWallet(db, 0m);
+        var adminId = Guid.NewGuid();
+        var orderId = Guid.NewGuid();
+        var subId = Guid.NewGuid();
+        await Pay(db, buyer, orderId, 100_000m);
+        await new SettleOrderPayoutCommandHandler(db).Handle(
+            new SettleOrderPayoutCommand("OrderPayout", orderId, subId, seller.UserId.ToString(), 95_000m, 5_000m, 0m, 0m, 100_000m, 0m), default);
+        await new DepositRefundFundCommandHandler(db).Handle(
+            new DepositRefundFundCommand(500_000m, "fund-ref-2") { AdminUserId = adminId }, default);
+        var fundOptions = Microsoft.Extensions.Options.Options.Create(new RefundFundOptions { Enabled = true, PerCaseCap = 500_000m, DailyCap = 5_000_000m, SecondApprovalThreshold = 200_000m });
+        await new PayRefundFundCaseCommandHandler(db, fundOptions).Handle(
+            new PayRefundFundCaseCommand(orderId, buyer.UserId.ToString(), 100_000m, adminId.ToString(), null) { SubOrderId = subId }, default);
+
+        var fund = await db.Wallets.SingleAsync(w => w.UserId == RefundFundAccount.UserId);
+        var originalBalance = fund.Balance;
+        fund.Balance = originalBalance - 5_000m;
+        var payout = await db.RefundFundPayouts.SingleAsync();
+        payout.CreatedAt = payout.CreatedAt.AddMinutes(-10);
+        await db.SaveChangesAsync();
+
+        var balanceFindings = await RunAsync(db, new Sources(), "I5");
+        var balanceMismatch = Assert.Single(balanceFindings);
+        Assert.Equal("I5_REFUND_FUND_BALANCE_MISMATCH", balanceMismatch.Code);
+        Assert.Equal("High", balanceMismatch.Severity);
+
+        fund.Balance = originalBalance;
+        payout.FundTransactionId = Guid.NewGuid();
+        await db.SaveChangesAsync();
+
+        var allFindings = await RunAsync(db, new Sources(), "I5");
+        var payoutMismatch = Assert.Single(allFindings, f => f.Code == "I5_REFUND_FUND_PAYOUT_MISMATCH");
+        Assert.Equal(subId.ToString(), payoutMismatch.ReferenceId);
+        Assert.Equal("High", payoutMismatch.Severity);
+    }
+
+    [Fact]
+    public async Task Two_step_same_wallet_writes_keep_strictly_increasing_timestamps_for_i8()
+    {
+        using var db = new TestWalletDbContext(nameof(Two_step_same_wallet_writes_keep_strictly_increasing_timestamps_for_i8));
+        var buyer = AddWallet(db, 500_000m);
+        var seller = AddWallet(db, 0m);
+        var adminId = Guid.NewGuid();
+        var orderId = Guid.NewGuid();
+        var subId = Guid.NewGuid();
+        await Pay(db, buyer, orderId, 220_000m);
+
+        var budget = new PlatformSubsidyBudget
+        {
+            Id = Guid.NewGuid(), Name = "promo", TotalLimit = 100_000m, DailyLimit = 50_000m, PerOrderCap = 20_000m, EvidenceRef = "p",
+            Status = SubsidyBudgetStatus.Active, CreatedByAdminId = adminId, ApprovedByAdminId = Guid.NewGuid(), ApprovedAt = DateTimeOffset.UtcNow
+        };
+        db.PlatformSubsidyBudgets.Add(budget);
+        db.PlatformSubsidyReservations.Add(new PlatformSubsidyReservation { Id = Guid.NewGuid(), BudgetId = budget.Id, SubOrderId = subId, OrderId = orderId, Amount = 10_000m });
+        budget.ReservedAmount = 10_000m;
+        await db.SaveChangesAsync();
+
+        await new SettleOrderPayoutCommandHandler(db).Handle(
+            new SettleOrderPayoutCommand("OrderPayout", orderId, subId, seller.UserId.ToString(), 200_000m, 0m, 30_000m, 10_000m, 220_000m, 0m), default);
+
+        var releaseTx = await db.WalletTransactions.AsNoTracking().SingleAsync(t => t.Type == WalletTransactionType.EscrowRelease);
+        var subsidyTx = await db.WalletTransactions.AsNoTracking().SingleAsync(t => t.Type == WalletTransactionType.PlatformSubsidyCredit);
+        Assert.True(subsidyTx.CreatedAt > releaseTx.CreatedAt);
+
+        await new DepositRefundFundCommandHandler(db).Handle(
+            new DepositRefundFundCommand(1_000_000m, "fund-ref-3") { AdminUserId = adminId }, default);
+        var fundOptions = Microsoft.Extensions.Options.Options.Create(new RefundFundOptions { Enabled = true, PerCaseCap = 500_000m, DailyCap = 5_000_000m, SecondApprovalThreshold = 500_000m });
+        await new PayRefundFundCaseCommandHandler(db, fundOptions).Handle(
+            new PayRefundFundCaseCommand(orderId, buyer.UserId.ToString(), 220_000m, adminId.ToString(), null) { SubOrderId = subId }, default);
+
+        var fundPayoutTx = await db.WalletTransactions.AsNoTracking().SingleAsync(t => t.Type == WalletTransactionType.RefundFundPayout);
+        var fundRecoveryTx = await db.WalletTransactions.AsNoTracking().SingleAsync(t => t.Type == WalletTransactionType.RefundFundRecovery);
+        Assert.True(fundRecoveryTx.CreatedAt > fundPayoutTx.CreatedAt);
+        Assert.Empty(await RunAsync(db, new Sources(), "I8"));
     }
 }

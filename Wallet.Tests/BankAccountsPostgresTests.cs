@@ -79,40 +79,52 @@ public sealed class BankAccountsPostgresTests
     }
 
     [DisposablePostgresFact]
-    public async Task SetDefaultBankAccount_BidirectionalIdOrder_NeverViolatesPartialUniqueIndex()
+    public async Task BankAccounts_SwitchDefaultCreateAndDeletePromote_NeverViolateUniqueIndex()
     {
         var (options, userId) = await SetupUserAsync();
-        var ids = new List<Guid>();
 
-        await using (var setup = new WalletDbContext(options))
+        Guid lowerId;
+        Guid higherId;
+        await using (var context = new WalletDbContext(options))
         {
-            var create = new CreateBankAccountCommandHandler(setup);
-            ids.Add((await create.Handle(new CreateBankAccountCommand("VCB", "5000000001", "Seller One", IsDefault: true) { UserId = userId }, default)).Id);
-            ids.Add((await create.Handle(new CreateBankAccountCommand("ACB", "5000000002", "Seller One", IsDefault: false) { UserId = userId }, default)).Id);
-            ids.Add((await create.Handle(new CreateBankAccountCommand("BIDV", "5000000003", "Seller One", IsDefault: false) { UserId = userId }, default)).Id);
-        }
-
-        var sorted = ids.OrderBy(id => id).ToArray();
-        var minId = sorted[0];
-        var midId = sorted[1];
-        var maxId = sorted[2];
-
-        foreach (var targetId in new[] { minId, midId, maxId, minId, maxId })
-        {
-            await using var context = new WalletDbContext(options);
-            var updated = await new SetDefaultBankAccountCommandHandler(context).Handle(
-                new SetDefaultBankAccountCommand(targetId) { UserId = userId },
+            var create = new CreateBankAccountCommandHandler(context);
+            var a = await create.Handle(
+                new CreateBankAccountCommand("VCB", "5000000001", "Seller One", IsDefault: true) { UserId = userId },
                 default);
-            Assert.True(updated.IsDefault);
-            Assert.Equal(targetId, updated.Id);
+            var b = await create.Handle(
+                new CreateBankAccountCommand("ACB", "5000000002", "Seller One", IsDefault: true) { UserId = userId },
+                default);
+            var c = await create.Handle(
+                new CreateBankAccountCommand("TPB", "5000000003", "Seller One", IsDefault: false) { UserId = userId },
+                default);
 
-            await using var check = new WalletDbContext(options);
-            var active = await check.BankAccounts.AsNoTracking()
-                .Where(item => item.UserId == userId.ToString())
-                .ToListAsync();
-            var defaultAccount = Assert.Single(active, item => item.IsDefault);
-            Assert.Equal(targetId, defaultAccount.Id);
+            var sorted = new[] { a.Id, b.Id, c.Id }.OrderBy(id => id).ToArray();
+            lowerId = sorted[0];
+            higherId = sorted[2];
         }
+
+        // Flip default in both UUID directions (lower -> higher and higher -> lower) on real PostgreSQL.
+        await using (var context = new WalletDbContext(options))
+        {
+            var setDefault = new SetDefaultBankAccountCommandHandler(context);
+            await setDefault.Handle(new SetDefaultBankAccountCommand(higherId) { UserId = userId }, default);
+            await setDefault.Handle(new SetDefaultBankAccountCommand(lowerId) { UserId = userId }, default);
+            await setDefault.Handle(new SetDefaultBankAccountCommand(higherId) { UserId = userId }, default);
+        }
+
+        // Deleting the active default must promote a replacement without tripping IX_BankAccounts_UserId_Default.
+        await using (var context = new WalletDbContext(options))
+        {
+            await new DeleteBankAccountCommandHandler(context)
+                .Handle(new DeleteBankAccountCommand(higherId) { UserId = userId }, default);
+        }
+
+        await using var verify = new WalletDbContext(options);
+        var active = await verify.BankAccounts.AsNoTracking()
+            .Where(item => item.UserId == userId.ToString())
+            .ToListAsync();
+        Assert.Equal(2, active.Count);
+        Assert.Single(active, item => item.IsDefault);
     }
 
     private static async Task<(DbContextOptions<WalletDbContext> Options, Guid UserId)> SetupUserAsync()
@@ -134,16 +146,5 @@ public sealed class BankAccountsPostgresTests
         });
         await context.SaveChangesAsync();
         return (options, userId);
-    }
-
-    private sealed class DisposablePostgresFactAttribute : FactAttribute
-    {
-        public DisposablePostgresFactAttribute()
-        {
-            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WALLET_STRIPE_TEST_DATABASE")))
-            {
-                Skip = "Set WALLET_STRIPE_TEST_DATABASE to a disposable PostgreSQL database to run this integration test.";
-            }
-        }
     }
 }
