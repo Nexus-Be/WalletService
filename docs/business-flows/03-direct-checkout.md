@@ -1,47 +1,39 @@
 # Pay an order directly with Stripe
 
-[Business overview](../business-use-cases.md) | [Shared request path](00-shared-request-path.md)
+[Business overview](../business-use-cases.md) | [Shared request path](00-shared-request-path.md) | [Stripe top-up](02-stripe-topup.md) | [Sequence diagram](03-direct-checkout.diagram.md)
 
-**Story:** As a buyer, I want to pay an order through Stripe rather than spend
-my wallet balance.
+**Story:** As a buyer, I want to pay an order directly via Stripe without debiting my wallet balance, resume an unfinished session, cancel a pending checkout, or let internal workflows expire stale unpaid sessions.
 
-## Start checkout
+## Start direct checkout
 
-1. The authenticated buyer sends `POST /api/v1/wallets/checkout/direct`
-   with `orderId` and `amount`. The order ID is a nonempty UUID, amount is
-   whole VND from 1 through 99,999,999, and an existing VND wallet is required.
-2. [CheckoutDirectCommandHandler](../../Wallet.Application/Features/Checkout/Commands/CheckoutDirect/CheckoutDirectCommandHandler.cs)
-   invokes [StripeDirectPreparation](../../Wallet.Application/Features/Stripe/StripeDirectPreparation.cs).
-   It locks the order and wallet, prevents a conflicting wallet-funded order
-   payment, creates a pending direct-order record, pending
-   `DirectGatewayPayment` ledger entry and payment attempt, and commits.
-3. The provider creates a Stripe session outside the initial database
-   transaction; Wallet stores the session correlation and URL. A matching
-   active request can reuse the session. Changed owner/amount, an unresolved
-   attempt or a conflicting payment yields `409 PAYMENT_CONFLICT`.
-4. Wallet returns `200` with `transactionId`, `orderId`, `amount`,
-   `paymentUrl`, `status: Pending` and `createdAt`, optionally wrapped by the
-   Gateway. Wallet balance is unchanged.
+1. Send `POST /api/v1/wallets/checkout/direct` (`[RequireRole]`) with `{ "orderId", "amount" }`. `orderId` is a non-empty UUID, `amount` is whole VND `1`–`99,999,999`, and an existing `ACTIVE` VND wallet is required (`404 WALLET_NOT_FOUND` or `403 WALLET_FROZEN`). No `Idempotency-Key` header is used; idempotency is keyed by `orderId`.
+2. [CheckoutDirectCommandHandler](../../Wallet.Application/Features/Checkout/Commands/CheckoutDirect/CheckoutDirectCommandHandler.cs) calls [StripeDirectPreparation](../../Wallet.Application/Features/Stripe/StripeDirectPreparation.cs):
+   - **Phase 1 Tx:** Acquires `LockOrderPaymentAsync(orderId)` -> (if `DirectPaymentOrder` exists) `LockDirectPaymentOrderByIdAsync` -> `LockOrEnsureWalletByUserIdAsync(ownerId)`.
+   - Verifies active VND wallet and **mutual exclusion**: rejects with `409 PAYMENT_CONFLICT` if any non-Failed/non-Cancelled `PurchaseDebit` exists for `orderId`.
+   - Computes fingerprint `SHA256("direct\n{ownerId:D}\n{orderId:D}\n{amount:0}\nVND")`.
+   - If an attempt has `BlocksReplacement == true`: replays the existing session URL only if `order.Pending`, `ledger.Pending`, `attempt.AwaitingPayment`, and session is unexpired with matching owner/amount; otherwise `409 PAYMENT_CONFLICT`.
+   - If a prior attempt finished cleanly (`Failed`/`Expired`, non-blocking, no `ReconciliationRequired`, order/ledger `Failed`/`Expired`/`Cancelled`), resets order/ledger to `Pending` and stages a fresh `CreationPending` attempt (`ProviderIdempotencyKey = "wallet_direct_{guid:N}"`). Otherwise creates `DirectPaymentOrder(Pending)`, `WalletTransaction(DirectGatewayPayment, Pending, BalanceBefore = BalanceAfter = wallet.Balance)`, `StripePaymentAttempt(CreationPending)`, and `AuditAction.DirectPaymentRequest`.
+   - **External Stripe call (outside Tx):** Creates and validates Stripe Checkout Session (`30`–`1440` min expiry, `Recovery.Enabled = false`).
+   - **Phase 2 Tx:** Locks `DirectPaymentOrder` -> `StripePaymentAttempt`, transitions attempt to `AwaitingPayment` with session correlation & URL.
+3. Returns `200` (`transactionId`, `orderId`, `amount`, `paymentUrl`, `status: "Pending"`, `createdAt`). Wallet `Balance` and `LockedBalance` remain unchanged.
 
-## Payment confirmation and status
+## Webhook confirmation & reconciliation
 
-1. Stripe posts a signed webhook to `/api/v1/wallets/stripe/webhooks`.
-   The shared verification and provider-state checks are described in
-   [Stripe top-up](02-stripe-topup.md#confirm-payment-webhook-and-recovery).
-   For a confirmed direct payment, [StripeSettlement](../../Wallet.Application/Features/Stripe/StripeSettlement.cs)
-   marks the order, attempt and existing direct-payment ledger entry
-   successful and records audit/event data; it does not deposit or deduct
-   wallet balance. The webhook response is an empty `200` when acknowledged.
-2. The buyer polls `GET /api/v1/wallets/checkout/direct/{orderId}`.
-   [GetDirectPaymentStatusQueryHandler](../../Wallet.Application/Features/Checkout/Queries/GetDirectPaymentStatus/GetDirectPaymentStatusQueryHandler.cs)
-   reads the ledger and provider reference. The owner can read their own
-   payment; admin/staff can read any. Unknown or non-owned payment returns
-   `404 PAYMENT_NOT_FOUND`.
-3. Wallet returns `200` with `transactionId`, `orderId`, `amount`, `currency`,
-   `status`, `gatewayTransactionNo`, `createdAt`, `updatedAt`. The Stripe
-   PaymentIntent ID may be absent until bound.
+1. Stripe posts signed events to `POST /api/v1/wallets/stripe/webhooks` (`[AllowAnonymous]`).
+2. [StripeSettlement.ApplyAsync](../../Wallet.Application/Features/Stripe/StripeSettlement.cs) locks `DirectPaymentOrder` -> `StripePaymentAttempt` -> `WalletAccount`:
+   - Re-checks that no active `PurchaseDebit` exists for `orderId` (if a wallet payment won a concurrent race before settlement, escalates attempt to `ReconciliationRequired` instead of settling twice).
+   - Marks `DirectPaymentOrder = TopupStatus.Success`, `DirectGatewayPayment` transaction `= TransactionStatus.Success` (keeping `BalanceBefore == BalanceAfter` unchanged), `StripePaymentAttempt = Successful`, and logs `AuditAction.DirectPaymentSuccess`. Because `WalletAccount.Balance` does not change, `DirectGatewayPayment` is excluded from Shadow Ledger posting (`WalletDbContext` and invariant `I12`).
+3. [ReconcilePendingTopupsCommandHandler](../../Wallet.Application/Features/Stripe/Commands/ReconcilePendingTopups/ReconcilePendingTopupsCommandHandler.cs) (run every **1 minute** by [StripeTopupReconciliationWorker](../../Wallet.Api/StripeTopupReconciliationWorker.cs) and on admin demand) **does poll pending `DirectOrder` attempts** (`AwaitingPayment`, older than 1 minute, up to 30 per pass) alongside top-ups, and promotes `CreationPending` attempts older than 10 minutes to `ReconciliationRequired`.
 
-Redirecting back from Stripe is not proof of payment. The periodic worker in
-this repository selects **top-ups**, not direct-order attempts; do not assume
-it automatically recovers direct payments. See the [direct contract](../api/checkout/direct.md)
-and [status contract](../api/checkout/direct-status.md).
+## Check status, resume, buyer cancel & internal expire
+
+All direct lifecycle mutations share [StripeDirectLifecycle.CancelOrExpireAsync](../../Wallet.Application/Features/Stripe/StripeDirectLifecycle.cs):
+
+| Operation | Route & Caller | Behavior & Guarantees |
+|---|---|---|
+| Poll status | `GET /api/v1/wallets/checkout/direct/{orderId}` ([GetDirectPaymentStatusQueryHandler](../../Wallet.Application/Features/Checkout/Queries/GetDirectPaymentStatus/GetDirectPaymentStatusQueryHandler.cs)) | Owner reads own payment; `admin`/`staff` may read any (`AllowAnyUser = true`). Missing/non-owned -> `404 PAYMENT_NOT_FOUND`. Populates `gatewayTransactionNo` from `PaymentIntentId` (or legacy `VnpTransactionNo`). |
+| Resume open session | `POST /api/v1/wallets/checkout/direct/{orderId:guid}/resume` ([ResumeDirectPaymentCommandHandler](../../Wallet.Application/Features/Checkout/Commands/ResumeDirectPayment/ResumeDirectPaymentCommandHandler.cs)) | Owner only; enforces `wallet.EnsureActive()`, fetches live Stripe session (`open`, `unpaid`, null intent, matching amount/metadata) -> returns `200` with existing URL or `409 PAYMENT_CONFLICT`. |
+| Buyer cancel | `POST /api/v1/wallets/checkout/direct/{orderId:guid}/cancel` ([CancelDirectPaymentCommandHandler](../../Wallet.Application/Features/Checkout/Commands/CancelDirectPayment/CancelDirectPaymentCommandHandler.cs)) | Owner only. Expires open Stripe session (confirming unpaid & unrecoverable), locks `OrderId -> DirectPaymentOrder -> Attempt`, sets `Attempt = Expired` (`BlocksReplacement = false`), `Order = Failed`, `DirectGatewayPayment` tx `= Cancelled`, logs `AuditAction.DirectPaymentCancel`. Idempotent if already `Failed`/`Expired` and non-blocking. |
+| Internal S2S expire | `POST ~/api/v1/internal/wallets/checkout/direct/{orderId:guid}/expire` ([ExpireDirectPaymentCommandHandler](../../Wallet.Application/Features/Checkout/Commands/ExpireDirectPayment/ExpireDirectPaymentCommandHandler.cs)) | `[RequireInternalServiceKey]`, any internal order expiry (`isInternalExpire = true`, no user ownership header required). Same live Stripe expiry verification; sets `Attempt = Expired`, `Order = Failed`, `DirectGatewayPayment` tx `= Failed`, logs `AuditAction.DirectPaymentExpire`. |
+
+Cancellation or expiry rejects completed payments with `409 PAYMENT_ALREADY_COMPLETED` and rejects uncertain/pending-creation states with `409 PAYMENT_CANCELLATION_PENDING` rather than risk double-charging or cancelling a paid session. See [direct contract](../api/checkout/direct.md) and [direct status contract](../api/checkout/direct-status.md).
