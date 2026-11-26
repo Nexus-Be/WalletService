@@ -8,7 +8,7 @@ using MediatR;
 using Wallet.Application.Common.Validation;
 
 public sealed record RequestWithdrawalCommand(
-    [Range(50000, 500000000, ErrorMessage = "Withdrawal amount must be between 50,000 and 500,000,000 VND.")]
+    [Range(typeof(decimal), "50000", "500000000", ErrorMessage = "Withdrawal amount must be between 50,000 and 500,000,000 VND.")]
     [MoneyPrecision]
     decimal Amount,
     [Required(ErrorMessage = "Currency is required.")]

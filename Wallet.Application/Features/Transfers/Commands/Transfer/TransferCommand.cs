@@ -12,7 +12,7 @@ public sealed record TransferCommand(
     [Required(ErrorMessage = "Recipient user ID is required.")]
     [NonEmptyGuid(ErrorMessage = "Recipient user ID must be a valid UUID.")]
     string RecipientUserId,
-    [Range(1000, 100000000, ErrorMessage = "Transfer amount must be between 1,000 and 100,000,000 VND.")]
+    [Range(typeof(decimal), "1000", "100000000", ErrorMessage = "Transfer amount must be between 1,000 and 100,000,000 VND.")]
     [MoneyPrecision]
     decimal Amount,
     [StringLength(500, ErrorMessage = "Note must not exceed 500 characters.")]

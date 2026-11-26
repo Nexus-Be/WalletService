@@ -8,7 +8,7 @@ using MediatR;
 using Wallet.Application.Common.Validation;
 
 public sealed record TopupVnPayCommand(
-    [Range(10000, 100000000, ErrorMessage = "Deposit amount must be between 10,000 and 100,000,000 VND.")]
+    [Range(typeof(decimal), "10000", "100000000", ErrorMessage = "Deposit amount must be between 10,000 and 100,000,000 VND.")]
     [MoneyPrecision]
     decimal Amount,
     [Required(ErrorMessage = "Currency is required.")]

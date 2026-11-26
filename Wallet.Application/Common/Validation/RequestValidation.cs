@@ -15,8 +15,16 @@ public static class RequestValidation
         var isValid = true;
         var context = new ValidationContext(instance);
 
-        if (!Validator.TryValidateObject(instance, context, results, validateAllProperties: true))
+        try
         {
+            if (!Validator.TryValidateObject(instance, context, results, validateAllProperties: true))
+            {
+                isValid = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            results.Add(new ValidationResult(ex.Message));
             isValid = false;
         }
 
@@ -56,7 +64,16 @@ public static class RequestValidation
 
                 foreach (var attribute in validationAttributes)
                 {
-                    var result = attribute.GetValidationResult(value, paramContext);
+                    ValidationResult? result;
+                    try
+                    {
+                        result = attribute.GetValidationResult(value, paramContext);
+                    }
+                    catch (Exception ex)
+                    {
+                        result = new ValidationResult(attribute.ErrorMessage ?? ex.Message, new[] { parameter.Name! });
+                    }
+
                     if (result != null && result != ValidationResult.Success)
                     {
                         results.Add(result.MemberNames.Any()

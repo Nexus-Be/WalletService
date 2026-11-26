@@ -9,7 +9,7 @@ public sealed record CheckoutDirectCommand(
     [Required(ErrorMessage = "Order ID is required.")]
     [NonEmptyGuid(ErrorMessage = "Order ID must be a valid UUID.")]
     string OrderId,
-    [Range(1, 99999999, ErrorMessage = "Amount must be between 1 and 99,999,999 VND.")]
+    [Range(typeof(decimal), "1", "99999999", ErrorMessage = "Amount must be between 1 and 99,999,999 VND.")]
     decimal Amount) : IRequest<DirectPaymentResponse>, IRequestValidation
 {
     [JsonIgnore] public Guid UserId { get; init; }
