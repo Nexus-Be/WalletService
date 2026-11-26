@@ -314,4 +314,77 @@ public sealed class RefundFundTests
         Assert.Equal(account, LedgerPostingRules.CounterAccount(type));
         Assert.True(LedgerPostingRules.Accounts.ContainsKey(account));
     }
+
+    [Fact]
+    public async Task Full_seller_recovery_records_separate_shadow_ledger_entries_for_payout_and_recovery()
+    {
+        using var context = new TestWalletDbContext(nameof(Full_seller_recovery_records_separate_shadow_ledger_entries_for_payout_and_recovery));
+        var buyer = AddWallet(context, 150_000m);
+        var seller = AddWallet(context, 0m);
+        var orderId = Guid.NewGuid();
+        var subOrderId = Guid.NewGuid();
+        await new PayOrderWithWalletCommandHandler(context).Handle(
+            new PayOrderWithWalletCommand(100_000m) { OrderId = orderId, UserId = buyer.UserId.ToString() }, default);
+        await new SettleOrderPayoutCommandHandler(context).Handle(
+            new SettleOrderPayoutCommand("OrderPayout", orderId, subOrderId, seller.UserId.ToString(), 100_000m, 0m, 0m, 0m, 100_000m, 0m), default);
+        await FundAsync(context, 1_000_000m);
+
+        var fundWallet = await context.Wallets.SingleAsync(wallet => wallet.UserId == RefundFundAccount.UserId);
+        context.LedgerSettings.Add(new LedgerSettings { Id = 1, Enabled = true, ShadowEpoch = 1, Version = 1 });
+        await context.SaveChangesAsync(default);
+
+        var sale = new Sale(orderId, subOrderId, buyer, seller, 100_000m);
+        var result = await PayAsync(context, Case(sale));
+
+        Assert.Equal("Refunded", result.Outcome);
+        Assert.Equal(100_000m, result.SellerRecovered);
+        Assert.Equal(0m, result.SellerShortfall);
+        Assert.Equal(1_000_000m, result.FundBalance);
+
+        var payout = await context.RefundFundPayouts.AsNoTracking().SingleAsync();
+        var fundRows = await context.LedgerPostingPending.AsNoTracking()
+            .Where(row => row.WalletId == fundWallet.Id && !row.IsEpochOpening)
+            .OrderBy(row => row.LedgerSeq)
+            .ToListAsync();
+        Assert.Equal(2, fundRows.Count);
+        Assert.Equal(nameof(WalletTransactionType.RefundFundPayout), fundRows[0].Type);
+        Assert.Equal(-100_000m, fundRows[0].Delta);
+        Assert.Equal(payout.FundTransactionId, fundRows[0].WalletTransactionId);
+        Assert.Equal(nameof(WalletTransactionType.RefundFundRecovery), fundRows[1].Type);
+        Assert.Equal(100_000m, fundRows[1].Delta);
+        Assert.Equal(payout.RecoveryTransactionId, fundRows[1].WalletTransactionId);
+
+        var buyerRow = await context.LedgerPostingPending.AsNoTracking()
+            .SingleAsync(row => row.WalletId == buyer.Id && !row.IsEpochOpening);
+        Assert.Equal(nameof(WalletTransactionType.RefundFundRefund), buyerRow.Type);
+        Assert.Equal(100_000m, buyerRow.Delta);
+
+        var sellerRow = await context.LedgerPostingPending.AsNoTracking()
+            .SingleAsync(row => row.WalletId == seller.Id && !row.IsEpochOpening);
+        Assert.Equal(nameof(WalletTransactionType.SellerRecoveryDebit), sellerRow.Type);
+        Assert.Equal(-100_000m, sellerRow.Delta);
+    }
+
+    [Fact]
+    public async Task A_frozen_buyer_still_receives_a_refund_from_the_fund_while_a_frozen_fund_cannot_pay()
+    {
+        using var context = new TestWalletDbContext(nameof(A_frozen_buyer_still_receives_a_refund_from_the_fund_while_a_frozen_fund_cannot_pay));
+        var frozenBuyerSale = await PaidOutSaleAsync(context);
+        var activeBuyerSale = await PaidOutSaleAsync(context);
+        await FundAsync(context, 1_000_000m);
+
+        var buyerWallet = await context.Wallets.SingleAsync(wallet => wallet.UserId == frozenBuyerSale.Buyer.UserId);
+        buyerWallet.Freeze();
+        await context.SaveChangesAsync(default);
+
+        var refunded = await PayAsync(context, Case(frozenBuyerSale));
+        Assert.Equal("Refunded", refunded.Outcome);
+        Assert.Equal(150_000m, Balance(context, frozenBuyerSale.Buyer.UserId));
+
+        var fundWallet = await context.Wallets.SingleAsync(wallet => wallet.UserId == RefundFundAccount.UserId);
+        fundWallet.Freeze();
+        await context.SaveChangesAsync(default);
+
+        Assert.Equal("WALLET_FROZEN", await ErrorCodeAsync(() => PayAsync(context, Case(activeBuyerSale))));
+    }
 }

@@ -142,6 +142,25 @@ internal sealed class RefundOrderPaymentCommandHandler
             }
         }
 
+        // Enforce at most one refund per sub-order even across distinct idempotency keys or mixed keyed/unkeyed calls.
+        if (request.IsSubOrder)
+        {
+            var existingSubOrderRefund = await _context.WalletTransactions
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    t => t.ReferenceId == request.OrderId &&
+                         t.Type == WalletTransactionType.RefundCredit &&
+                         t.Status == TransactionStatus.Success,
+                    cancellationToken);
+            if (existingSubOrderRefund is not null)
+            {
+                throw new BusinessRuleValidationException(
+                    "REFUND_CONFLICT",
+                    "This sub-order was already refunded.",
+                    409);
+            }
+        }
+
         OrderEscrow? escrow = null;
         if (payment is not null)
         {

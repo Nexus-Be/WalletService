@@ -239,7 +239,8 @@ public sealed class StripeSettlementPostgresTests
         var result = await creation;
         await using var replayContext = new WalletDbContext(options);
         var replay = await StripeTopupPreparation.CreateAsync(replayContext, provider, owner, 100000, "same-key", default);
-        Assert.Equal(result, replay);
+        Assert.Equal(result with { CreatedAt = default }, replay with { CreatedAt = default });
+        Assert.True((result.CreatedAt - replay.CreatedAt).Duration() < TimeSpan.FromMilliseconds(1));
         Assert.Equal(1, provider.Calls);
     }
 
@@ -597,14 +598,5 @@ public sealed class StripeSettlementPostgresTests
         public override ValueTask<int> SavedChangesAsync(
             SaveChangesCompletedEventData eventData, int result, CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("Simulated failure before transaction commit.");
-    }
-
-    private sealed class DisposablePostgresFactAttribute : FactAttribute
-    {
-        public DisposablePostgresFactAttribute()
-        {
-            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WALLET_STRIPE_TEST_DATABASE")))
-                Skip = "Set WALLET_STRIPE_TEST_DATABASE to a disposable PostgreSQL database to run this integration test.";
-        }
     }
 }

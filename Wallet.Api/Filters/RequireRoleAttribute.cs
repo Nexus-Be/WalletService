@@ -44,10 +44,8 @@ public sealed class RequireRoleAttribute : Attribute, IAuthorizationFilter
         if (_allowedRoles.Length > 0)
         {
             var userRoles = httpContext.GetUserRoles();
-            var isAuthorized = _allowedRoles.Any(role =>
-                userRoles.Contains(role.Trim().ToLowerInvariant(), StringComparer.OrdinalIgnoreCase) ||
-                httpContext.IsAdmin() ||
-                httpContext.HasRole("staff"));
+            var isAuthorized = httpContext.IsAdmin() || _allowedRoles.Any(role =>
+                userRoles.Contains(role.Trim().ToLowerInvariant(), StringComparer.OrdinalIgnoreCase));
 
             if (!isAuthorized)
             {
