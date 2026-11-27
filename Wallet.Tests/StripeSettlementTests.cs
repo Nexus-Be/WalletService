@@ -32,7 +32,8 @@ public sealed class StripeSettlementTests
         Assert.Equal(100m, transaction.BalanceBefore);
         Assert.Equal(100100m, transaction.BalanceAfter);
         Assert.Equal(2, context.StripeWebhookEvents.Count());
-        Assert.Single(context.AuditLogs);
+        Assert.Single(context.AuditLogs, a => a.Action == AuditAction.TopupSuccess);
+        Assert.Single(context.AuditLogs, a => a.Action == AuditAction.NotificationQueued);
     }
 
     [Fact]

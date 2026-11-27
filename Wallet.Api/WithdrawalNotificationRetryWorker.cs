@@ -1,4 +1,4 @@
-﻿namespace Wallet.Api;
+namespace Wallet.Api;
 
 using Wallet.Application.Common.Extensions;
 using Wallet.Application.Interfaces;
@@ -22,10 +22,10 @@ internal sealed class WithdrawalNotificationRetryWorker(IServiceScopeFactory sco
                 }
 
                 var context = scope.ServiceProvider.GetRequiredService<IWalletDbContext>();
-                var handled = await WithdrawalNotificationRetry.RetryPendingAsync(context, client, DateTimeOffset.UtcNow, 20, stoppingToken);
+                var handled = await WithdrawalNotificationRetry.RetryPendingAsync(context, client, DateTimeOffset.UtcNow, 20, stoppingToken, logger);
                 if (handled > 0)
                 {
-                    logger.LogInformation("Withdrawal notification retry handled {Count} event(s)", handled);
+                    logger.LogInformation("Notification retry handled {Count} event(s)", handled);
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
