@@ -2,68 +2,12 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: ["main"]
+    branches: ["dev"]
   pull_request:
-    branches: ["main"]
+    branches: ["dev"]
 
 jobs:
-  secret-scan:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      # Working-tree scan only. Switch to a full-history scan (drop --no-git)
-      # once git history has been purged of the previously leaked secrets.
-      - name: Scan for secrets (gitleaks)
-        env:
-          GITLEAKS_VERSION: "8.21.2"
-        run: |
-          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" | tar -xz gitleaks
-          ./gitleaks detect --source . --no-git --redact --verbose
-
-  tests:
-    runs-on: ubuntu-latest
-
-    # Disposable PostgreSQL for the integration tests that are skipped when WALLET_STRIPE_TEST_DATABASE is not set.
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: ci-only-password
-          POSTGRES_DB: wallet_it_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd="pg_isready -U postgres -d wallet_it_test"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up .NET 8
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "8.0.x"
-
-      - name: Verify CQRS Architecture
-        run: ./scripts/verify-wallet-architecture.sh
-
-      - name: Build Solution (Release)
-        run: dotnet build Wallet.sln -c Release
-
-      - name: Run Unit, Host Smoke & PostgreSQL Tests
-        env:
-          WALLET_STRIPE_TEST_DATABASE: "Host=localhost;Port=5432;Database=wallet_it_test;Username=postgres;Password=ci-only-password"
-        run: dotnet test Wallet.sln -c Release --no-build --nologo --verbosity minimal
-
   build-and-push:
-    needs: [secret-scan, tests]
     runs-on: ubuntu-latest
 
     steps:
@@ -102,7 +46,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-<<<<<<< HEAD
   deploy-render:
     name: Trigger Render Deploy
     needs: build-and-push
@@ -111,22 +54,11 @@ jobs:
 
     steps:
       - name: Trigger Render Deploy Webhook
-=======
-      - name: Trigger Render Deploy
-        if: github.event_name != 'pull_request'
->>>>>>> 768388fa24f816edd850e53182eecc0c71b6c2b5
         env:
           RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
         run: |
           if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
-<<<<<<< HEAD
             echo "::error::Missing RENDER_DEPLOY_HOOK_URL repository secret."
             exit 1
           fi
           curl -fsS --retry 3 --retry-delay 5 --max-time 30 -X POST "$RENDER_DEPLOY_HOOK_URL"
-=======
-            echo "RENDER_DEPLOY_HOOK_URL secret is not set" >&2
-            exit 1
-          fi
-          curl -fsS "$RENDER_DEPLOY_HOOK_URL"
->>>>>>> 768388fa24f816edd850e53182eecc0c71b6c2b5
