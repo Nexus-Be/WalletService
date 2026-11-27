@@ -10,7 +10,8 @@ using Wallet.Domain.Enums;
 
 internal sealed class ReconcilePendingTopupsCommandHandler(
     IWalletDbContext context, IStripeCheckoutClient provider,
-    ILogger<ReconcilePendingTopupsCommandHandler> logger)
+    ILogger<ReconcilePendingTopupsCommandHandler> logger,
+    INotificationClient? notificationClient = null)
     : IRequestHandler<ReconcilePendingTopupsCommand, int>
 {
     public async Task<int> Handle(ReconcilePendingTopupsCommand request, CancellationToken cancellationToken)
@@ -173,7 +174,7 @@ internal sealed class ReconcilePendingTopupsCommandHandler(
         var eventData = $"{attemptId:N}\n{session.SessionStatus}\n{session.PaymentStatus}\n{session.PaymentIntentId}";
         var eventId = $"reconcile_{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(eventData)))}";
         var outcome = await StripeSettlement.ApplyAsync(
-            context, attemptId, eventId, "reconciliation.poll", session, intent, cancellationToken);
+            context, attemptId, eventId, "reconciliation.poll", session, intent, cancellationToken, notificationClient, logger);
 
         if (outcome == StripeSettlementOutcome.ReconciliationRequired)
             logger.LogCritical("Stripe payment attempt {AttemptId} requires manual reconciliation.", attemptId);

@@ -1,6 +1,8 @@
 namespace Wallet.Application.Features.Stripe;
 
+using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Wallet.Application.Common.Extensions;
 using Wallet.Application.Interfaces;
 using Wallet.Domain.Entities;
@@ -26,7 +28,9 @@ internal static class StripeSettlement
         string eventType,
         StripeSessionSnapshot session,
         StripePaymentIntentSnapshot? intent,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        INotificationClient? notificationClient = null,
+        ILogger? logger = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(session);
@@ -77,12 +81,18 @@ internal static class StripeSettlement
             return StripeSettlementOutcome.Pending;
 
         var outcome = StripeSettlementOutcome.ReconciliationRequired;
+        WalletTopupNotificationEvent? topupNotification = null;
         if (providerOutcome == StripeReconciliationOutcome.ConfirmedPaid &&
             attempt.Status != StripePaymentAttemptStatus.ReconciliationRequired)
         {
-            outcome = topup is not null
-                ? await SettleTopup(context, attempt, topup, cancellationToken)
-                : await SettleDirect(context, attempt, order!, cancellationToken);
+            if (topup is not null)
+            {
+                (outcome, topupNotification) = await SettleTopup(context, attempt, topup, cancellationToken);
+            }
+            else
+            {
+                outcome = await SettleDirect(context, attempt, order!, cancellationToken);
+            }
         }
         else if (providerOutcome == StripeReconciliationOutcome.CannotSucceed &&
                  attempt.Status is not (StripePaymentAttemptStatus.ReconciliationRequired or StripePaymentAttemptStatus.Successful))
@@ -110,6 +120,13 @@ internal static class StripeSettlement
         });
         await context.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+
+        if (topupNotification is not null)
+        {
+            await NotificationDispatchExtensions.TryDispatchWalletTopupEventAsync(
+                context, notificationClient, topupNotification, cancellationToken, logger);
+        }
+
         return outcome;
     }
 
@@ -176,44 +193,47 @@ internal static class StripeSettlement
         attempt.BlocksReplacement = false;
         return StripeSettlementOutcome.FinalizedFailure;
     }
-    private static async Task<StripeSettlementOutcome> SettleTopup(
+    private static async Task<(StripeSettlementOutcome Outcome, WalletTopupNotificationEvent? Notification)> SettleTopup(
         IWalletDbContext context, StripePaymentAttempt attempt, WalletTopup topup, CancellationToken token)
     {
         if (topup.VnpTxnRef is not null || topup.Amount != attempt.Amount)
-            return StripeSettlementOutcome.ReconciliationRequired;
+            return (StripeSettlementOutcome.ReconciliationRequired, null);
         var wallet = await context.LockWalletByIdAsync(topup.WalletId, token);
         if (wallet is null)
-            return StripeSettlementOutcome.ReconciliationRequired;
+            return (StripeSettlementOutcome.ReconciliationRequired, null);
         await context.ReloadUnmodifiedAsync(wallet, token);
         if (wallet.UserId != attempt.OwnerId || wallet.Currency != CurrencyCode.Vnd)
-            return StripeSettlementOutcome.ReconciliationRequired;
+            return (StripeSettlementOutcome.ReconciliationRequired, null);
 
         if (topup.Status == TopupStatus.Success)
         {
             var matches = await context.WalletTransactions.AsNoTracking().Where(
                 item => item.ReferenceId == topup.Id && item.Type == WalletTransactionType.TopupStripe)
                 .ToListAsync(token);
-            return attempt.Status == StripePaymentAttemptStatus.Successful && matches.Count == 1 &&
+            var existingOutcome = attempt.Status == StripePaymentAttemptStatus.Successful && matches.Count == 1 &&
                    matches[0].WalletId == wallet.Id && matches[0].UserId == wallet.UserId.ToString() &&
                    matches[0].Amount == topup.Amount && matches[0].Status == TransactionStatus.Success
                 ? StripeSettlementOutcome.AlreadySettled
                 : StripeSettlementOutcome.ReconciliationRequired;
+            return (existingOutcome, null);
         }
         if (topup.Status is not (TopupStatus.Pending or TopupStatus.Failed or TopupStatus.Expired))
-            return StripeSettlementOutcome.ReconciliationRequired;
+            return (StripeSettlementOutcome.ReconciliationRequired, null);
         if (attempt.Status == StripePaymentAttemptStatus.Successful ||
             await context.WalletTransactions.AnyAsync(
                 item => item.ReferenceId == topup.Id && item.Type == WalletTransactionType.TopupStripe, token))
-            return StripeSettlementOutcome.ReconciliationRequired;
+            return (StripeSettlementOutcome.ReconciliationRequired, null);
 
+        var confirmedAt = DateTimeOffset.UtcNow;
         var before = wallet.Balance;
         wallet.Deposit(topup.Amount);
         topup.Status = TopupStatus.Success;
-        topup.UpdatedAt = DateTimeOffset.UtcNow;
+        topup.UpdatedAt = confirmedAt;
         attempt.Status = StripePaymentAttemptStatus.Successful;
+        var transactionId = Guid.NewGuid();
         context.WalletTransactions.Add(new WalletTransaction
         {
-            Id = Guid.NewGuid(),
+            Id = transactionId,
             WalletId = wallet.Id,
             UserId = wallet.UserId.ToString(),
             Type = WalletTransactionType.TopupStripe,
@@ -227,7 +247,17 @@ internal static class StripeSettlement
         });
         context.AddAuditLog(AuditAction.TopupSuccess, nameof(WalletTopup), topup.Id.ToString(),
             newValues: new { topup.Amount, topup.Status, AttemptId = attempt.Id }, userId: wallet.UserId.ToString());
-        return StripeSettlementOutcome.Settled;
+        var topupNotification = new WalletTopupNotificationEvent(
+            SourceEventId: $"wallet-topup:{topup.Id:D}:succeeded",
+            TopupId: topup.Id,
+            TransactionId: transactionId,
+            RecipientUserId: wallet.UserId,
+            Amount: decimal.ToInt64(decimal.Truncate(topup.Amount)),
+            Currency: "VND",
+            ConfirmedAt: confirmedAt,
+            TraceId: NotificationDispatchExtensions.NormalizeTraceId(Activity.Current?.Id));
+        NotificationDispatchExtensions.QueueWalletTopupEvent(context, topupNotification);
+        return (StripeSettlementOutcome.Settled, topupNotification);
     }
 
     private static async Task<StripeSettlementOutcome> SettleDirect(

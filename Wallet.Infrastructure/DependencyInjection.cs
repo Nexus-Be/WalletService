@@ -45,10 +45,18 @@ public static class DependencyInjection
             ?? configuration["Services:Notification:BaseUrl"]
             ?? "http://localhost:8007/";
 
+        var rawNotificationTimeout = Environment.GetEnvironmentVariable("NOTIFICATION_SERVICE_TIMEOUT_SECONDS")
+            ?? configuration["NOTIFICATION_SERVICE_TIMEOUT_SECONDS"]
+            ?? configuration["Services:Notification:TimeoutSeconds"];
+        var notificationTimeoutSeconds = int.TryParse(rawNotificationTimeout, out var parsedTimeout)
+            && parsedTimeout is >= 1 and <= 120
+            ? parsedTimeout
+            : 10;
+
         services.AddHttpClient<INotificationClient, NotificationClient>(client =>
         {
             client.BaseAddress = new Uri(notificationBaseUrl.TrimEnd('/') + "/");
-            client.Timeout = TimeSpan.FromSeconds(10);
+            client.Timeout = TimeSpan.FromSeconds(notificationTimeoutSeconds);
         });
 
         services.AddHttpClient("reconciliation-source", client => client.Timeout = TimeSpan.FromSeconds(20));

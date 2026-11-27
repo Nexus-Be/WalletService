@@ -554,7 +554,8 @@ public sealed class StripeSettlementPostgresTests
         Assert.Equal(100100m, (await final.Wallets.SingleAsync(item => item.Id == walletId)).Balance);
         Assert.Equal(1, await final.StripeWebhookEvents.CountAsync(item => item.ProviderEventId == eventId));
         Assert.Equal(1, await final.WalletTransactions.CountAsync(item => item.ReferenceId == topupId));
-        Assert.Equal(1, await final.AuditLogs.CountAsync(item => item.EntityId == topupId.ToString()));
+        Assert.Equal(1, await final.AuditLogs.CountAsync(item => item.EntityId == topupId.ToString() && item.Action == AuditAction.TopupSuccess));
+        Assert.Equal(1, await final.AuditLogs.CountAsync(item => item.EntityId == topupId.ToString() && item.Action == AuditAction.NotificationQueued));
 
         var nextTopupId = Guid.NewGuid();
         var nextAttemptId = Guid.NewGuid();

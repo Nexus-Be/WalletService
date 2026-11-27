@@ -1,4 +1,4 @@
-﻿namespace Wallet.Tests;
+namespace Wallet.Tests;
 
 using System;
 using System.Collections.Generic;
@@ -304,6 +304,13 @@ public sealed class NotificationIntegrationTests
                 ? new NotificationDispatchResult(false, 503, Error: "Simulated outage")
                 : new NotificationDispatchResult(true, 200, "notif-dep"));
         }
+
+        public Task<NotificationDispatchResult> SendWalletTopupEventAsync(
+            WalletTopupNotificationEvent payload,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(ShouldFail
+                ? new NotificationDispatchResult(false, 503, Error: "Simulated outage")
+                : new NotificationDispatchResult(true, 200, "notif-topup"));
     }
 
     private sealed class StubHttpHandler(HttpStatusCode statusCode, string responseBody) : HttpMessageHandler

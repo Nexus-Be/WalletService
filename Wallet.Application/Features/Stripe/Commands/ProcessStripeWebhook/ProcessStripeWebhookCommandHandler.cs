@@ -8,13 +8,14 @@ internal sealed class ProcessStripeWebhookCommandHandler(
     IWalletDbContext context,
     IStripeWebhookVerifier verifier,
     IStripeCheckoutClient provider,
-    ILogger<ProcessStripeWebhookCommandHandler> logger)
+    ILogger<ProcessStripeWebhookCommandHandler> logger,
+    INotificationClient? notificationClient = null)
     : IRequestHandler<ProcessStripeWebhookCommand, Unit>
 {
     public async Task<Unit> Handle(ProcessStripeWebhookCommand request, CancellationToken cancellationToken)
     {
         var outcome = await StripeWebhookProcessing.ProcessAsync(
-            context, verifier, provider, request.Payload, request.Signature, cancellationToken, logger);
+            context, verifier, provider, request.Payload, request.Signature, cancellationToken, logger, notificationClient);
         if (outcome == StripeWebhookProcessingOutcome.RetryRequired)
             throw new InvalidOperationException("Stripe webhook processing requires a retry.");
         if (outcome == StripeWebhookProcessingOutcome.ReconciliationRequired)
