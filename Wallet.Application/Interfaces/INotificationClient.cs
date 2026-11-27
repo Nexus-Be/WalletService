@@ -27,6 +27,16 @@ public sealed record AuctionDepositNotificationEvent(
     DateTimeOffset ConfirmedAt,
     string? TraceId);
 
+public sealed record WalletTopupNotificationEvent(
+    string SourceEventId,
+    Guid TopupId,
+    Guid TransactionId,
+    Guid RecipientUserId,
+    long Amount,
+    string Currency,
+    DateTimeOffset ConfirmedAt,
+    string? TraceId);
+
 public interface INotificationClient
 {
     Task<NotificationDispatchResult> SendWithdrawalEventAsync(
@@ -35,5 +45,9 @@ public interface INotificationClient
 
     Task<NotificationDispatchResult> SendAuctionDepositEventAsync(
         AuctionDepositNotificationEvent payload,
+        CancellationToken cancellationToken = default);
+
+    Task<NotificationDispatchResult> SendWalletTopupEventAsync(
+        WalletTopupNotificationEvent payload,
         CancellationToken cancellationToken = default);
 }

@@ -1,4 +1,4 @@
-﻿namespace Wallet.Infrastructure.Services.Notification;
+namespace Wallet.Infrastructure.Services.Notification;
 
 using System;
 using System.Net.Http;
@@ -59,6 +59,11 @@ public sealed class NotificationClient : INotificationClient
 
         return SendAsync("api/v1/notifications/auction-deposits", payload, cancellationToken);
     }
+
+    public Task<NotificationDispatchResult> SendWalletTopupEventAsync(
+        WalletTopupNotificationEvent payload,
+        CancellationToken cancellationToken = default) =>
+        SendAsync("api/v1/notifications/wallet-topups", payload, cancellationToken);
 
     private async Task<NotificationDispatchResult> SendAsync<TPayload>(
         string route,

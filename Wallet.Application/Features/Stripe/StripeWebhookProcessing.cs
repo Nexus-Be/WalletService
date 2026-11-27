@@ -26,7 +26,8 @@ internal static class StripeWebhookProcessing
         ReadOnlyMemory<byte> payload,
         string signature,
         CancellationToken cancellationToken,
-        ILogger? logger = null)
+        ILogger? logger = null,
+        INotificationClient? notificationClient = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(verifier);
@@ -97,7 +98,7 @@ internal static class StripeWebhookProcessing
             : await provider.GetPaymentIntentAsync(session.PaymentIntentId, cancellationToken);
 
         var result = await StripeSettlement.ApplyAsync(
-            context, attemptId, verified.EventId, verified.EventType, session, intent, cancellationToken);
+            context, attemptId, verified.EventId, verified.EventType, session, intent, cancellationToken, notificationClient, logger);
         return result switch
         {
             StripeSettlementOutcome.Settled => StripeWebhookProcessingOutcome.Settled,

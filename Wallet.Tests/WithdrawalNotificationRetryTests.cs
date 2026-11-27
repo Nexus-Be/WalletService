@@ -31,6 +31,9 @@ public sealed class WithdrawalNotificationRetryTests
 
         public Task<NotificationDispatchResult> SendAuctionDepositEventAsync(AuctionDepositNotificationEvent payload, CancellationToken cancellationToken = default) =>
             Task.FromResult(new NotificationDispatchResult(true, 200));
+
+        public Task<NotificationDispatchResult> SendWalletTopupEventAsync(WalletTopupNotificationEvent payload, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new NotificationDispatchResult(true, 200));
     }
 
     private static async Task<(TestWalletDbContext Db, Guid WithdrawalId)> ApprovedWithdrawalAsync(ScriptedClient client)
