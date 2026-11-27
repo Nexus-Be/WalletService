@@ -61,4 +61,25 @@ public sealed class AuctionServiceKeyTests
         var action = new ActionContext(http, new RouteData(), new ActionDescriptor());
         return new AuthorizationFilterContext(action, new List<IFilterMetadata>());
     }
+
+    [Fact]
+    public void InternalOrAuctionKey_AcceptsBothKeysWhenDistinct()
+    {
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["InternalSecurity:AuctionServiceKey"] = "auction-only-secret-key-32-chars",
+            ["InternalSecurity:ServiceKey"] = "commerce-shared-secret-key-32chr"
+        }).Build();
+
+        foreach (var key in new[] { "auction-only-secret-key-32-chars", "commerce-shared-secret-key-32chr" })
+        {
+            var services = new ServiceCollection().AddSingleton<IConfiguration>(config).AddLogging().BuildServiceProvider();
+            var http = new DefaultHttpContext { RequestServices = services };
+            http.Request.Headers["X-Internal-Service-Key"] = key;
+            var context = new AuthorizationFilterContext(new ActionContext(http, new RouteData(), new ActionDescriptor()), new List<IFilterMetadata>());
+
+            new RequireInternalOrAuctionServiceKeyAttribute().OnAuthorization(context);
+            Assert.Null(context.Result);
+        }
+    }
 }

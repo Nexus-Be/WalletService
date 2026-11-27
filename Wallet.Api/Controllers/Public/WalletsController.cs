@@ -141,7 +141,7 @@ public sealed class WalletsController : ControllerBase
 
     /// <summary>Gets an auction deposit hold by reference.</summary>
     [HttpGet("holds/by-reference/{referenceType}/{referenceId}")]
-    [RequireAuctionServiceKey]
+    [RequireInternalOrAuctionServiceKey]
     [ProducesResponseType(typeof(HoldStatusResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetHoldByReference(string referenceType, string referenceId,
         [FromHeader(Name = "X-Internal-Service-Key")] string? serviceKey, CancellationToken cancellationToken) =>

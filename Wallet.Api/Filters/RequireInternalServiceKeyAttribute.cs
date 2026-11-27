@@ -29,6 +29,14 @@ public sealed class RequireInternalServiceKeyAttribute : Attribute, IAuthorizati
 
 internal static class ServiceKeyGuard
 {
+    internal const string HeaderName = "X-Internal-Service-Key";
+
+    internal static bool SecureEquals(string? provided, string expected) =>
+        !string.IsNullOrWhiteSpace(provided) &&
+        CryptographicOperations.FixedTimeEquals(
+            SHA256.HashData(Encoding.UTF8.GetBytes(expected)),
+            SHA256.HashData(Encoding.UTF8.GetBytes(provided)));
+
     internal static string? FirstConfigured(params string?[] candidates)
     {
         foreach (var candidate in candidates)
