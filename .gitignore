@@ -33,6 +33,7 @@ bld/
 ._*
 Thumbs.db
 ehthumbs.db
+Library/
 
 ## Environment Variables & Secrets (DO NOT COMMIT)
 .env
@@ -52,3 +53,27 @@ appsettings*.json
 !appsettings*.example.json
 !appsettings.example.json
 !appsettings.*.example.json
+
+## AI Agents & Local Customizations
+.agents/*
+!.agents/AGENTS.md
+!.agents/rules/
+!.agents/rules/**
+!.agents/skills/
+!.agents/skills/**
+!.agents/plans/
+.agents/plans/*
+!.agents/plans/plan-template.md
+!.agents/notes/
+.agents/notes/*
+!.agents/notes/note-master.template.md
+!.agents/decisions/
+.agents/decisions/*
+!.agents/decisions/decision-template.md
+.agents/docs/
+.agents/history/
+.agents/review/
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**
+

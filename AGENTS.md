@@ -1,17 +1,45 @@
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **WalletService** (429 symbols, 686 relationships, 4 execution flows).
+This project is indexed by GitNexus as **WalletService** (1845 symbols, 2983 relationships, 23 execution flows).
 
-> Index stale? Run `node .gitnexus/run.cjs analyze --index-only` from the project root.
+> Index stale? Run `node .gitnexus/run.cjs analyze --index-only` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? Bootstrap with `npx`, `bunx`, or `pnpm dlx` — e.g. `bunx gitnexus@latest analyze` (npm 11 npx crash; #1939).
 
 ## Always Do
 
-- **MUST run impact before editing.** Use `impact({target: "symbolName", direction: "upstream"})` or `node .gitnexus/run.cjs impact "symbolName" --direction upstream --repo .`.
-- **MUST analyze graph changes before committing.** Use `detect_changes({scope: "all"})` or `node .gitnexus/run.cjs detect-changes --scope all --repo .`.
-- **MUST warn on HIGH/CRITICAL `risk` pre-edit.**
-- **MUST treat `risk: UNKNOWN` as unresolved, not low.**
-- **NEVER** edit before impact analysis · **NEVER** rename with find-and-replace · **NEVER** commit before detect_changes.
+- **MUST run impact before editing.** Use `impact({target: "symbolName", direction: "upstream"})` or `node .gitnexus/run.cjs impact "symbolName" --direction upstream --repo .`; report callers, processes, and risk. Never substitute grep for graph analysis.
+- **MUST analyze graph changes before committing.** Use `detect_changes({scope: "all"})` (MCP) or `node .gitnexus/run.cjs detect-changes --scope all --repo .` (CLI fallback). `partial: true` or `truncated: true` is not a clean check — a zero means unseen, not unaffected; re-run it. For regression review: `detect_changes({scope: "compare", base_ref: "main"})` or `node .gitnexus/run.cjs detect-changes --scope compare --base-ref "main" --repo .`.
+- MUST warn on HIGH/CRITICAL `risk` pre-edit; never use `riskSharedAxes` to waive a HIGH/CRITICAL `risk` warning. Compare File/symbol: MCP File omits axes; Graph-RAG expands File.
+- **MUST treat `risk: UNKNOWN` as unresolved, not as low.** An empty caller set is not evidence the symbol is unused — it can also mean the callers are not resolvable by the index (plain-object property access, dynamic dispatch, cross-language calls). `impact` pairs `UNKNOWN` with a `riskNote` saying so. Confirm with a text search before treating the symbol as safe to change or delete; do not proceed on the strength of a zero.
+- **MUST use `query({search_query: "concept"})` for concepts/flows, `context({name: "symbolName"})` for a named symbol, or `impact` for blast radius, on read-only callers, dependencies, imports, or execution flow.** Graph first; text search only for empty/`UNKNOWN`/literals.
+- For security review, `explain({target: "fileOrSymbol"})` lists taint findings (source→sink flows; needs `analyze --pdg`).
+
+## Never Do
+
+- NEVER edit a function, class, or method before MCP/CLI impact analysis.
+- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis, and never read `UNKNOWN` as an all-clear — it means the walk could not answer, which is the one verdict that requires confirming by other means.
+- NEVER rename symbols with find-and-replace — use `rename` which understands the call graph.
+- NEVER commit before MCP/CLI graph change analysis.
+
+## Resources
+
+| Resource | Use for |
+| --- | --- |
+| `gitnexus://repo/WalletService/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/WalletService/clusters` | All functional areas |
+| `gitnexus://repo/WalletService/processes` | All execution flows |
+| `gitnexus://repo/WalletService/process/{name}` | Step-by-step execution trace |
+
+## CLI
+
+| Task | Read this skill file |
+| --- | --- |
+| Understand architecture / "How does X work?" | `.claude/skills/gitnexus-exploring/SKILL.md` |
+| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus-impact-analysis/SKILL.md` |
+| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus-debugging/SKILL.md` |
+| Rename / extract / split / refactor | `.claude/skills/gitnexus-refactoring/SKILL.md` |
+| Tools, resources, schema reference | `.claude/skills/gitnexus-guide/SKILL.md` |
+| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus-cli/SKILL.md` |
 
 <!-- gitnexus:end -->
 
@@ -19,9 +47,9 @@ This project is indexed by GitNexus as **WalletService** (429 symbols, 686 relat
 
 # QUY CHUẨN VẬN HÀNH DÀNH CHO AI CODING AGENTS (WALLET SERVICE)
 
-> **Trạng thái triển khai (2026-10-31):** ✅ ĐÃ CHUẨN HÓA — 100% RESTful API, **classic CQRS qua MediatR** (11 use case: 8 Command, 3 Query; `EnsureWalletCommand` được query gọi nội bộ), controller chỉ inject `ISender`, cấm gRPC, bãi bỏ hoàn toàn RabbitMQ, MassTransit, Saga và Outbox/Inbox tables. WalletService là **ngoại lệ duy nhất** của lệnh cấm MediatR toàn hệ thống.
+> **Trạng thái triển khai (2026-11-19):** ✅ ĐÃ CHUẨN HÓA — 100% RESTful API, **classic CQRS qua MediatR** (71 use case: 42 Command, 29 Query; `EnsureWalletCommand` được query gọi nội bộ), controller chỉ inject `ISender`, cấm gRPC, bãi bỏ hoàn toàn RabbitMQ, MassTransit, Saga và Outbox/Inbox tables. WalletService là **ngoại lệ duy nhất** của lệnh cấm MediatR toàn hệ thống.
 > **Nguồn sự thật:** code (`Wallet.sln`, `Wallet.Api/Controllers/Public/`, `Wallet.Application/Features/`).
-> **Cập nhật lần cuối:** 2026-10-31.
+> **Cập nhật lần cuối:** 2026-11-19.
 
 ---
 
@@ -30,8 +58,8 @@ This project is indexed by GitNexus as **WalletService** (429 symbols, 686 relat
 WalletService là **service duy nhất** dùng MediatR/CQRS. Cấu trúc này từng bị đảo ngược bởi agent khác, nên được đóng băng.
 
 **Bất biến:**
-* Đúng 11 use case tại `Wallet.Application/Features/{Area}/Commands|Queries/{UseCase}/`, đúng 11 file `*Handler.cs`.
-* Đúng 2 controller: `Controllers/Public/WalletsController.cs`, `Controllers/Public/AdminWalletsController.cs`. `CheckoutDirect` đã gộp vào `WalletsController`. Mỗi controller chỉ inject `ISender` và `ILogger`.
+* Đúng 71 use case tại `Wallet.Application/Features/{Area}/Commands|Queries/{UseCase}/`, đúng 71 file `*Handler.cs` (42 Command, 29 Query).
+* Đúng 2 controller: `Controllers/Public/WalletsController.cs`, `Controllers/Public/AdminWalletsController.cs`. `CheckoutDirect` và các route `~/api/v1/internal/wallets/...` (bảo vệ bởi `[RequireInternalServiceKey]` / `[RequireAuctionServiceKey]`) nằm trong `WalletsController`. Mỗi controller chỉ inject `ISender` và `ILogger`.
 * `MediatR 12.4.1` trong `Wallet.Application.csproj`; `AddMediatR` + `ValidationBehavior<,>` trong `DependencyInjection.cs`.
 * Handler inject trực tiếp `IWalletDbContext`.
 
@@ -55,6 +83,18 @@ Nếu một tool/agent đề xuất feature service, controller theo tài nguyê
 ## Endpoint Workflow
 
 Before adding or changing any REST endpoint, follow the local checklist at `.agents/skills/new-feature-endpoint/SKILL.md`. It covers contract, persistence, Application, Api, tests, documentation handoff, and verification. This repository is Inward-Only, so the checklist is self-contained.
+
+## Spec Kit Workflow
+
+Spec Kit is initialized for GitHub Copilot in `.github/skills/`. For a feature
+or multi-file change, follow `.agents/AGENTS.md` and
+`.specify/memory/constitution.md`: specify the bounded change, clarify
+ambiguities, create and present the plan for approval, generate tasks, analyze
+the artifacts, implement only after approval, then converge until no gaps
+remain. Keep the mandatory session plan in `.agents/plans/` and link it to the
+feature plan under `specs/[###-feature-name]/`. Spec Kit supplements, but never
+replaces, the endpoint checklist, GitNexus impact requirement, frozen
+architecture, or repository verification gates.
 
 ---
 
@@ -115,10 +155,11 @@ Khi bắt đầu làm việc tại WalletService, AI Agent **BẮT BUỘC PHẢI
    - Toàn bộ thao tác phân trang giao dịch, biến động số dư bắt buộc thực hiện trực tiếp tại Database qua `.Skip((page - 1) * pageSize).Take(pageSize)` và `.CountAsync()`.
    - Đóng gói dữ liệu trả về theo cấu trúc phân trang chuẩn `PagedData<T>` (`items` và metadata `pagination: { pageIndex, pageSize, totalCount, totalPages, hasPreviousPage, hasNextPage }`).
    - TUYỆT ĐỐI CẤM trả về danh sách thô lớn không giới hạn để Gateway tự phân trang.
-8. **INTERNAL API ĐANG TẠM KHÓA (2026-10-31)**:
-   - Chỉ còn `Controllers/Public/` với `WalletsController.cs` và `AdminWalletsController.cs`.
-   - `CheckoutDirect` nằm tại `POST /api/v1/wallets/checkout/direct` trong `WalletsController`.
-   - `InternalServiceAuthMiddleware` và `InternalServiceAuthHandler` đã comment đăng ký; không yêu cầu `X-Internal-Service-Key`.
+8. **BẢO MẬT INTERNAL S2S (2026-11-19)**:
+   - Chỉ giữ 2 controller dưới `Controllers/Public/`: `WalletsController.cs` và `AdminWalletsController.cs` (0 file trong `Controllers/Internal/`).
+   - Các route S2S dùng thuộc tính route tuyệt đối `~/api/v1/internal/wallets/...` ngay trên `WalletsController` với `[ApiExplorerSettings(IgnoreApi = true)]`, bảo vệ bằng `[RequireInternalServiceKey]` (hoặc `[RequireAuctionServiceKey]` cho `holds`) và Gateway không expose `/api/v1/internal/*`.
+   - 4 route Commerce cũ trên `/api/v1/wallets/...` cũng đã gắn `[RequireInternalServiceKey]` cho tới khi Commerce chuyển sang `/api/v1/internal/wallets/...`.
+   - `InternalServiceAuthMiddleware` và `InternalServiceAuthHandler` vẫn không đăng ký; các endpoint nội bộ dùng filter `[RequireInternalServiceKey]` / `[RequireAuctionServiceKey]`.
 9. **QUY CHUẨN BẢO VỆ QUYỀN SỞ HỮU TÀI NGUYÊN (RESOURCE OWNERSHIP GOVERNANCE)**:
    - Thao tác xem số dư (`/api/v1/wallets/me`), giao dịch, nạp/rút tiền bắt buộc đọc `currentUserId` từ `HttpContext.GetUserId()`. Người dùng chỉ được thao tác trên ví của chính mình.
    - Thao tác phê duyệt hoặc từ chối yêu cầu rút tiền bắt buộc kiểm tra quyền `admin` hoặc `staff`.
@@ -152,3 +193,13 @@ Một task tại WalletService chỉ hoàn tất khi:
 * `dotnet build Wallet.sln -c Release` thành công 100% (0 error).
 * `dotnet test Wallet.sln -c Release` vượt qua 100% các bài test.
 * Trạng thái Git sạch, không commit file rác (`bin/`, `obj/`, `.vs/`, `.idea/`).
+
+---
+
+## 📝 NGUYÊN TẮC 7: QUY CHUẨN LƯU TRỮ KẾ HOẠCH, GHI CHÚ, XÁC NHẬN & TÀI LIỆU (WORKSPACE ARTIFACTS)
+
+Tuân thủ quy chuẩn tại `.agents/rules/workspace-artifacts.md` cho đúng 4 loại artifact nội bộ (100% Inward-Only):
+1. **Lưu trữ Kế hoạch (`plan`)**: Bắt buộc ghi tại `.agents/plans/YYYY-MM-DD_HHmm-plan-<slug>.md` (kèm thời gian lập/cập nhật; CẤM dùng `.agents/plan/` số ít). Phôi mẫu: `.agents/plans/plan-template.md`. Chi tiết: `.agents/rules/plan-management.md`.
+2. **Ghi chú theo Chủ đề (`note`)**: Ghi nhận thao tác, vấn đề gặp & cách xử lý, hoặc lưu ý để đọc lại sau tại `.agents/notes/YYYY-MM-DD_HHmm-<topic-slug>.md`. **1 chủ đề = 1 file duy nhất**; khi chuyển sang chủ đề khác phải tạo file note mới. Phôi mẫu: `.agents/notes/note-master.template.md`. Chi tiết: `.agents/rules/note-management.md`.
+3. **Xác nhận & Quyết định (`decision`)**: Mọi vấn đề Agent hỏi người dùng để xác nhận / chốt phương án phải lưu tại `.agents/decisions/YYYY-MM-DD_HHmm-<decision-slug>.md` kèm mốc thời gian. Phôi mẫu: `.agents/decisions/decision-template.md`. Chi tiết: `.agents/rules/decision-management.md`.
+4. **Tài liệu cho Con người (`doc`)**: Khi người dùng yêu cầu viết tài liệu cho người đọc, bắt buộc áp dụng skill `humanizer` và lưu tại `.agents/docs/<slug>.md`. Chi tiết: `.agents/rules/doc-management.md`.

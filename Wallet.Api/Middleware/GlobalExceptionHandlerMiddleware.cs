@@ -4,7 +4,9 @@ using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using Wallet.Api.Common;
 using Wallet.Application.Common.Exceptions;
+using Wallet.Application.Interfaces;
 using Wallet.Domain.Exceptions;
 
 public sealed class GlobalExceptionHandlerMiddleware
@@ -36,10 +38,25 @@ public sealed class GlobalExceptionHandlerMiddleware
 
         var (statusCode, errorCode, title, detail) = exception switch
         {
+            StripeWebhookSignatureException => (
+                StatusCodes.Status400BadRequest,
+                "VAL_INVALID_SIGNATURE",
+                "Invalid webhook signature",
+                "Stripe webhook signature is invalid."),
+            StripeWebhookVersionException => (
+                StatusCodes.Status400BadRequest,
+                "VAL_UNSUPPORTED_WEBHOOK_VERSION",
+                "Unsupported webhook version",
+                "Stripe webhook API version is not supported."),
+            PaymentProviderUnavailableException providerException => (
+                StatusCodes.Status503ServiceUnavailable,
+                "PAYMENT_PROVIDER_UNAVAILABLE",
+                "Payment provider unavailable",
+                providerException.Message),
             RequestValidationException rve => (
                 rve.StatusCode,
                 rve.ErrorCode,
-                GetStatusTitle(rve.StatusCode, "Validation failed"),
+                GetStatusTitle(rve.StatusCode, ApiValidationProblemFactory.GenericDetail),
                 rve.Message),
             WalletNotFoundException wnfe => (
                 wnfe.StatusCode,
@@ -80,25 +97,28 @@ public sealed class GlobalExceptionHandlerMiddleware
 
         if (statusCode >= 500)
         {
-            _logger.LogError(exception, "[ERROR {ErrorCode}] {Title}: {Detail}. Trace: {TraceId}", errorCode, title, detail, traceId);
+            _logger.LogError(exception, "[ERROR {ErrorCode}] {Title}: {Detail}. Trace: {TraceId}", errorCode, title,
+                detail, traceId);
         }
         else
         {
-            _logger.LogWarning("[WARN {ErrorCode}] {Title}: {Detail}. Trace: {TraceId}", errorCode, title, detail, traceId);
+            _logger.LogWarning("[WARN {ErrorCode}] {Title}: {Detail}. Trace: {TraceId}", errorCode, title, detail,
+                traceId);
         }
 
         context.Response.ContentType = "application/problem+json";
         context.Response.StatusCode = statusCode;
 
-        var problemDetails = new
-        {
-            type = $"https://tools.ietf.org/html/rfc9110#section-{(statusCode >= 500 ? "15.6.1" : "15.5.1")}",
-            title,
-            status = statusCode,
+        var errors = exception is RequestValidationException requestValidationException
+            ? requestValidationException.Errors
+            : null;
+        var problemDetails = ApiValidationProblemFactory.CreateProblemDetails(
+            statusCode,
             errorCode,
+            title,
             detail,
-            traceId
-        };
+            traceId,
+            errors);
 
         await context.Response.WriteAsync(JsonSerializer.Serialize(problemDetails));
     }

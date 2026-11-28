@@ -1,0 +1,168 @@
+namespace Wallet.Application.Features.Checkout.Commands.PayOrderWithWallet;
+
+using System;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using MediatR;
+using Microsoft.EntityFrameworkCore;
+using global::Wallet.Application.Common.Extensions;
+using global::Wallet.Application.Features.Checkout;
+using global::Wallet.Application.Interfaces;
+using global::Wallet.Domain.Entities;
+using global::Wallet.Domain.Enums;
+using global::Wallet.Domain.Exceptions;
+
+internal sealed class PayOrderWithWalletCommandHandler
+    : IRequestHandler<PayOrderWithWalletCommand, WalletOrderTransactionResponse>
+{
+    private readonly IWalletDbContext _context;
+
+    public PayOrderWithWalletCommandHandler(IWalletDbContext context)
+    {
+        _context = context;
+    }
+
+    public async Task<WalletOrderTransactionResponse> Handle(
+        PayOrderWithWalletCommand request,
+        CancellationToken cancellationToken)
+    {
+        var buyerId = Guid.Parse(request.UserId);
+
+        await using var dbTransaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+        await _context.LockOrderPaymentAsync(request.OrderId, cancellationToken);
+        var directOrderId = await _context.DirectPaymentOrders.AsNoTracking()
+            .Where(order => order.OrderId == request.OrderId)
+            .Select(order => (Guid?)order.Id)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (directOrderId is not null &&
+            await _context.LockDirectPaymentOrderByIdAsync(directOrderId.Value, cancellationToken) is null)
+            throw new InvalidOperationException("Direct payment order changed while locking.");
+
+        var wallet = await _context.LockWalletByUserIdAsync(buyerId, cancellationToken)
+                     ?? throw new WalletNotFoundException(request.UserId);
+
+        var existing = await _context.WalletTransactions
+            .Where(t => t.ReferenceId == request.OrderId &&
+                        (t.Type == WalletTransactionType.PurchaseDebit ||
+                         t.Type == WalletTransactionType.DirectGatewayPayment) &&
+                        t.Status != TransactionStatus.Failed &&
+                        t.Status != TransactionStatus.Cancelled)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (existing is not null)
+        {
+            if (existing.Type != WalletTransactionType.PurchaseDebit ||
+                existing.WalletId != wallet.Id ||
+                existing.Amount != request.Amount)
+            {
+                throw new BusinessRuleValidationException(
+                    "PAYMENT_ORDER_CONFLICT",
+                    "The order already has a different or completed payment.",
+                    409);
+            }
+
+            var escrowState = await OrderEscrowAccounting.LoadOrReconcileAsync(
+                _context,
+                request.OrderId,
+                cancellationToken);
+            if (escrowState.Escrow?.Status == OrderEscrowStatus.Cancelled)
+            {
+                throw new BusinessRuleValidationException(
+                    "ORDER_ESCROW_CANCELLED",
+                    "The order escrow was already cancelled and cannot be replayed.",
+                    409);
+            }
+
+            if (escrowState.Escrow?.Status == OrderEscrowStatus.Refunded)
+            {
+                throw new BusinessRuleValidationException(
+                    "ORDER_ESCROW_ALREADY_RESOLVED",
+                    "The order escrow was already refunded and cannot be replayed.",
+                    409);
+            }
+
+            if (escrowState.WasReconciled)
+            {
+                await _context.SaveChangesAsync(cancellationToken);
+                await dbTransaction.CommitAsync(cancellationToken);
+            }
+
+            return Map(existing);
+        }
+
+        wallet.EnsureActive();
+
+        if (directOrderId is Guid parentId && await _context.StripePaymentAttempts.AnyAsync(
+                attempt => attempt.DirectPaymentOrderId == parentId &&
+                           (attempt.BlocksReplacement || attempt.Status == StripePaymentAttemptStatus.ReconciliationRequired),
+                cancellationToken))
+        {
+            throw new BusinessRuleValidationException(
+                "PAYMENT_ORDER_CONFLICT",
+                "The order already has a different or completed payment.",
+                409);
+        }
+
+        if (wallet.AvailableBalance < request.Amount)
+        {
+            throw new InsufficientBalanceException(wallet.AvailableBalance, request.Amount);
+        }
+
+        var balanceBefore = wallet.Balance;
+        wallet.Deduct(request.Amount);
+
+        var transaction = new WalletTransaction
+        {
+            WalletId = wallet.Id,
+            UserId = wallet.UserId.ToString(),
+            Type = WalletTransactionType.PurchaseDebit,
+            Amount = request.Amount,
+            Currency = wallet.Currency.ToString(),
+            BalanceBefore = balanceBefore,
+            BalanceAfter = wallet.Balance,
+            Status = TransactionStatus.Success,
+            ReferenceId = request.OrderId,
+            Note = "Payment for order via wallet",
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        _context.WalletTransactions.Add(transaction);
+        _context.OrderEscrows.Add(new OrderEscrow
+        {
+            Id = Guid.NewGuid(),
+            OrderId = request.OrderId,
+            WalletId = wallet.Id,
+            OriginalAmount = request.Amount,
+            RemainingAmount = request.Amount
+        });
+        _context.AddAuditLog(
+            AuditAction.OrderPayment,
+            nameof(OrderEscrow),
+            request.OrderId.ToString(),
+            oldValues: new { Balance = balanceBefore, EscrowRemaining = 0m },
+            newValues: new
+            {
+                Balance = wallet.Balance,
+                EscrowOriginal = request.Amount,
+                EscrowRemaining = request.Amount,
+                TransactionId = transaction.Id
+            },
+            userId: wallet.UserId.ToString());
+
+        await _context.SaveChangesAsync(cancellationToken);
+        await dbTransaction.CommitAsync(cancellationToken);
+        return Map(transaction);
+    }
+
+    private static WalletOrderTransactionResponse Map(WalletTransaction t) => new(
+        t.Id.ToString(),
+        t.WalletId.ToString(),
+        t.UserId,
+        t.Type.ToString(),
+        t.Amount,
+        t.Currency,
+        t.BalanceAfter,
+        t.Status.ToString(),
+        t.Note,
+        t.CreatedAt);
+}

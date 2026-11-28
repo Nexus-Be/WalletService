@@ -1,0 +1,51 @@
+# Reconciliation catalog and shadow ledger
+
+The shadow ledger follows only `WalletAccount.Balance`. It never changes a balance and never changes what an existing field means: it adds columns `LedgerEpoch` and `LedgerSeq` to wallets and new tables. Locked money (auction holds, pending withdrawals) is outside the ledger and is checked by I9.
+
+## Switch and epochs
+- `LedgerSettings` (one row): `Enabled`, `ShadowEpoch`, `Version`. Default is off.
+- `PUT /api/v1/admin/wallets/ledger/shadow` `{ enabled, expectedVersion }` is idempotent and is also the emergency off switch. Switching on raises `ShadowEpoch` by one; switching on when already on changes nothing; a wrong `expectedVersion` returns 409 `LEDGER_SETTINGS_VERSION_CONFLICT`.
+- A wallet opens a new epoch on its first balance event after a switch-on: `LedgerSeq` restarts at 1 with an opening event carrying the balance before the event.
+- Every money transaction takes a shared lock on the settings row (`FOR SHARE`) until it commits; the switch takes the exclusive lock. Lock order: settings, then wallet.
+- With the ledger on, a save that changes `Balance` without a successful wallet transaction in the same save is refused in every environment.
+
+## Posting
+Each balance event writes one `LedgerPostingPending` row in the same database transaction as the money change, with `WalletBalanceAfter` captured under the wallet lock. `JournalPostingWorker` posts them in order into `JournalEntries` and `JournalLines`; a failure keeps the row (`Failed`, retried up to 5 times) and never rolls back money. `DirectGatewayPayment` does not move the balance and is not a ledger event.
+
+Counter accounts: gateway top-ups and direct payments `EXTERNAL_GATEWAY`; order payments, escrow and refunds `ORDER_ESCROW`; auction capture and deposit refund `AUCTION_ESCROW`; forfeits `AUCTION_FORFEIT`; platform fee `PLATFORM_REVENUE`; platform voucher subsidies `PLATFORM_SUBSIDY`; withdrawals `BANK_WITHDRAWAL`; manual adjustments `ADJUSTMENTS`; transfers `TRANSFER_CLEARING`; refund fund deposits `REFUND_FUND_FUNDING`; refund fund payouts and recoveries `REFUND_FUND_CLEARING`; anything else `SUSPENSE`. Opening balances use `OPENING_BALANCE`.
+
+## Invariants
+| Code | Checks | Finding codes |
+|---|---|---|
+| I1 | Sub-order: SellerReceive + (PlatformFee - SystemDiscount) + Shipping = Total | I1_FORMULA_MISMATCH |
+| I2 | Wallet-paid order has exactly one PurchaseDebit equal to the order total (plus payment adjustments) | I2_MISSING_WALLET_DEBIT, I2_DUPLICATE_DEBIT, I2_AMOUNT_MISMATCH |
+| I3 | Escrow exists, original = amount paid, remaining = original - payouts - refunds. Refunds are counted whether they are recorded against the parent order id or against any sub-order id of the order (a sub-order refund is paid out of the parent escrow). Payouts are the V2 `OrderEscrowAmount` (it already contains the seller part, the platform fee and the shipping allocation, so those are not added again) or the legacy `EscrowRelease`. The platform subsidy is paid from its budget and is not an escrow outflow | I3_MISSING_ESCROW, I3_ORIGINAL_MISMATCH, I3_REMAINING_MISMATCH, I3_LEGACY_ESCROW_NOT_REDUCED, I3_OUTFLOW_EXCEEDS_PAYMENT (High: payouts plus refunds taken from the escrow are more than the buyer paid), I3_REFUND_NOT_REDUCED (High: a sub-order refund was credited but the escrow still holds the money, even when the total paid out is not above the payment yet) |
+| I4 | Completed sub-order has an EscrowRelease equal to SellerReceive (platform fee is not released separately in the current flow and is not checked). Under settlement V2 the check reads the Wallet's own allocation record (`OrderSettlements`) for the sub-order or auction order and its identity | I4_MISSING_RELEASE, I4_AMOUNT_MISMATCH, I4_ALLOCATION_MISMATCH, I4_AUCTION_AMOUNT_MISMATCH |
+| I5 | Completed refund has a successful wallet credit of the same amount (including `RefundFundRefund`), plus refund fund conservation (`sum(deposits + recoveries - payouts) == balance`) and payout record integrity | I5_MISSING_REFUND_CREDIT, I5_AMOUNT_MISMATCH, I5_REFUND_FUND_BALANCE_MISMATCH, I5_REFUND_FUND_PAYOUT_MISMATCH |
+| I6 | Authorized, captured or released deposit matches a wallet hold (amount and state) | I6_MISSING_HOLD, I6_AMOUNT_MISMATCH, I6_STATUS_MISMATCH |
+| I7 | Successful top-up has exactly one credit | I7_MISSING_TOPUP_CREDIT, I7_DUPLICATE_TOPUP_CREDIT, I7_AMOUNT_MISMATCH |
+| I8 | Balance chain: each balance-changing transaction starts where the previous ended. Supporting check, it cannot prove order | I8_CHAIN_BREAK, I8_LAST_BALANCE_MISMATCH |
+| I9 | LockedBalance = active holds + pending, approved and processing withdrawals | I9_LOCKED_MISMATCH |
+| I10 | (a) every entry balances; (b) per wallet, over one unbroken run of one epoch, opening + journal = WalletBalanceAfter of the last event. Results: Matched, Mismatched, or Unchecked with a reason (never Matched without proof) | I10_ENTRY_UNBALANCED, I10_WALLET_LEDGER_MISMATCH |
+| I11 | Queue rows still Pending or Failed after the settle buffer | I11_POSTING_OVERDUE, I11_POSTING_FAILED |
+| I12 | Balance-changing successful transaction without a queue row, only far from the switch moments. Does not detect a SQL edit of `Balance` alone | I12_MISSING_POSTING_ROW |
+
+When the ledger was never switched on, I10, I11 and I12 are skipped and the run says so. If Commerce or Auction cannot be read the run is `Partial` and names the source; it never invents findings for data it could not read. A problem found again is not stored twice (key: invariant, reference, code).
+
+## API (admin only)
+`GET ledger/status`, `GET ledger/journal`, `GET ledger/trial-balance`, `PUT ledger/shadow`, `POST ledger/backfill`, `POST reconciliation/runs`, `GET reconciliation/runs`, `GET reconciliation/runs/{id}`, `GET reconciliation/findings`, `GET reconciliation/findings/{id}`, `PATCH reconciliation/findings/{id}` (status plus required note). All under `/api/v1/admin/wallets/`.
+
+## Approval of this catalog (owner decision)
+The project owner decided to sign this catalog in the working session of 25/11/2026, after receiving the evidence pack (`reports/ho_so_duyet_l1_danh_muc_doi_soat_25112026.md`: the I1-I12 runs, the classification of the open QA findings and the scope below). Engineering recorded the decision at the owner's instruction; the owner remains the signer and can change this block.
+
+| Item | Value |
+|---|---|
+| Status | Approved with the limits below |
+| Approved by | Project owner (decision given in the working session of 25/11/2026) |
+| Date | 25/11/2026 |
+| Scope reviewed | I1-I12, finding codes, "Unchecked/Partial" rules, switch and epoch rules |
+| Accepted limits | (1) I4 of settlement protocol V2 checks the allocation records in `OrderSettlements`, and the platform fee is not released separately. (2) I12 only checks transactions that go through the application; it does not detect a direct SQL edit of `Balance` and must not be described as an absolute integrity check of the database. |
+| Conditions | When T30 adds a refund source (the refund fund), I3, I4, I5 and the G8 rules must be updated and reviewed again before T30 is switched on. The results are from QA with fake GHN and Stripe; no run on shared-environment data exists yet. |
+
+## Refund fund (T30, phase 1)
+The refund fund is an ordinary wallet of the fixed system user `f0f0f0f0-0000-0000-0000-000000000001`. Its five transaction types are posted to two ledger accounts: `RefundFundDeposit` to `REFUND_FUND_FUNDING` and `RefundFundPayout`, `RefundFundRefund`, `SellerRecoveryDebit` and `RefundFundRecovery` to `REFUND_FUND_CLEARING`. A refund from the fund references the sub-order, not the parent order, and is not counted as an escrow movement. I5 recognizes `RefundFundRefund` for Commerce refunds and verifies refund fund balance conservation (`total deposits + recoveries - total payouts == fund balance`, `I5_REFUND_FUND_BALANCE_MISMATCH`) plus `RefundFundPayouts` link integrity (`I5_REFUND_FUND_PAYOUT_MISMATCH`). Before switching the fund on outside QA, confirm Commerce parent-order status semantics for I2–I4.

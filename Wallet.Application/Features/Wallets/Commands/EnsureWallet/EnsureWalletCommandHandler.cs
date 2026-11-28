@@ -28,42 +28,58 @@ internal sealed class EnsureWalletCommandHandler : IRequestHandler<EnsureWalletC
         }
 
         var wallet = await _context.Wallets
+            .AsNoTracking()
             .FirstOrDefaultAsync(w => w.UserId == request.UserId, cancellationToken);
 
         if (wallet is null)
         {
-            wallet = new WalletAccount
-            {
-                Id = Guid.NewGuid(),
-                UserId = request.UserId,
-                Currency = CurrencyCode.Vnd,
-                Status = "ACTIVE",
-                Balance = 0m,
-                LockedBalance = 0m
-            };
-            _context.Wallets.Add(wallet);
-            _context.AddAuditLog(
-                action: AuditAction.WalletCreate,
-                entityName: nameof(WalletAccount),
-                entityId: wallet.Id.ToString(),
-                newValues: new { wallet.UserId, wallet.Balance, wallet.LockedBalance, wallet.Currency },
-                userId: request.UserId.ToString());
+            var ownsTransaction = _context.Database.CurrentTransaction is null;
+            await using var tx = ownsTransaction
+                ? await _context.Database.BeginTransactionAsync(cancellationToken)
+                : null;
 
-            try
-            {
-                await _context.SaveChangesAsync(cancellationToken);
-            }
-            catch (DbUpdateException)
-            {
-                _context.Wallets.Remove(wallet);
-                wallet = await _context.Wallets
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(w => w.UserId == request.UserId, cancellationToken);
+            await _context.LockAuctionKeyAsync($"wallet-create:{request.UserId:D}", cancellationToken);
 
-                if (wallet is null)
+            wallet = await _context.Wallets
+                .AsNoTracking()
+                .FirstOrDefaultAsync(w => w.UserId == request.UserId, cancellationToken);
+
+            if (wallet is null)
+            {
+                var (stagedWallet, stagedAudit) = _context.StageDefaultWalletWithAudit(request.UserId);
+
+                try
                 {
-                    throw;
+                    await _context.SaveChangesAsync(cancellationToken);
+                    if (tx is not null)
+                    {
+                        await tx.CommitAsync(cancellationToken);
+                    }
+
+                    wallet = stagedWallet;
                 }
+                catch (DbUpdateException)
+                {
+                    _context.Wallets.Remove(stagedWallet);
+                    _context.AuditLogs.Remove(stagedAudit);
+                    if (tx is not null)
+                    {
+                        await tx.RollbackAsync(cancellationToken);
+                    }
+
+                    wallet = await _context.Wallets
+                        .AsNoTracking()
+                        .FirstOrDefaultAsync(w => w.UserId == request.UserId, cancellationToken);
+
+                    if (wallet is null)
+                    {
+                        throw;
+                    }
+                }
+            }
+            else if (tx is not null)
+            {
+                await tx.CommitAsync(cancellationToken);
             }
         }
 

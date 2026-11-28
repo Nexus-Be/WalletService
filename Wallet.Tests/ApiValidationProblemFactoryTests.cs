@@ -1,12 +1,22 @@
 namespace Wallet.Tests;
 
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Text.Json;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
 using Wallet.Api.Common;
+using Wallet.Api.Middleware;
+using Wallet.Application.Common.Exceptions;
+using Wallet.Application.Interfaces;
+using Wallet.Infrastructure.Payments;
 using Xunit;
 
 public sealed class ApiValidationProblemFactoryTests
@@ -28,6 +38,9 @@ public sealed class ApiValidationProblemFactoryTests
         Assert.Equal("VAL_INVALID_INPUT", root.GetProperty("errorCode").GetString());
         Assert.Equal(StatusCodes.Status400BadRequest, root.GetProperty("status").GetInt32());
         Assert.Contains("The Amount field is required.", root.GetProperty("detail").GetString());
+        Assert.True(root.TryGetProperty("timestamp", out _));
+        Assert.True(root.TryGetProperty("errors", out var errorsElement));
+        Assert.Equal("The Amount field is required.", errorsElement.GetProperty("Amount")[0].GetString());
     }
 
     [Fact]
@@ -47,6 +60,123 @@ public sealed class ApiValidationProblemFactoryTests
         Assert.Equal(ApiValidationProblemFactory.UnreadableBodyDetail, detail);
         Assert.DoesNotContain("Wallet.Tests", detail);
         Assert.DoesNotContain("LineNumber", detail);
+    }
+
+    [Fact]
+    public async Task ModelBindingAndPipelineValidation_UseTheSameProblemDetailsShape()
+    {
+        var modelState = CreateActionContext();
+        modelState.ModelState.AddModelError("Amount", "Amount must be greater than zero.");
+        var mvcResult = Assert.IsType<ObjectResult>(ApiValidationProblemFactory.Create(modelState));
+        var mvcJson = JsonSerializer.Serialize(mvcResult.Value);
+
+        var errors = new Dictionary<string, string[]>
+        {
+            ["Amount"] = ["Amount must be greater than zero."]
+        };
+        var validationException = new RequestValidationException(
+            "Amount must be greater than zero.",
+            errors);
+        var context = new DefaultHttpContext();
+        context.TraceIdentifier = "validation-test-trace";
+        context.Response.Body = new MemoryStream();
+        var middleware = new GlobalExceptionHandlerMiddleware(
+            _ => Task.FromException(validationException),
+            NullLogger<GlobalExceptionHandlerMiddleware>.Instance);
+
+        await middleware.InvokeAsync(context);
+        context.Response.Body.Position = 0;
+        var middlewareJson = await new StreamReader(context.Response.Body).ReadToEndAsync();
+
+        using var mvcDocument = JsonDocument.Parse(mvcJson);
+        using var middlewareDocument = JsonDocument.Parse(middlewareJson);
+        var mvcRoot = mvcDocument.RootElement;
+        var middlewareRoot = middlewareDocument.RootElement;
+        var expectedFields = new[]
+        {
+            "type", "title", "status", "errorCode", "detail", "errors", "traceId", "timestamp"
+        };
+
+        Assert.Contains("application/problem+json", mvcResult.ContentTypes);
+        Assert.Equal("application/problem+json", context.Response.ContentType);
+        Assert.Equal(
+            expectedFields.OrderBy(field => field),
+            mvcRoot.EnumerateObject().Select(property => property.Name).OrderBy(field => field));
+        Assert.Equal(
+            expectedFields.OrderBy(field => field),
+            middlewareRoot.EnumerateObject().Select(property => property.Name).OrderBy(field => field));
+        Assert.Equal(mvcRoot.GetProperty("type").GetString(), middlewareRoot.GetProperty("type").GetString());
+        Assert.Equal(mvcRoot.GetProperty("title").GetString(), middlewareRoot.GetProperty("title").GetString());
+        Assert.Equal(mvcRoot.GetProperty("status").GetInt32(), middlewareRoot.GetProperty("status").GetInt32());
+        Assert.Equal(mvcRoot.GetProperty("errorCode").GetString(), middlewareRoot.GetProperty("errorCode").GetString());
+        Assert.Equal(mvcRoot.GetProperty("detail").GetString(), middlewareRoot.GetProperty("detail").GetString());
+        Assert.Equal(
+            mvcRoot.GetProperty("errors").GetProperty("Amount")[0].GetString(),
+            middlewareRoot.GetProperty("errors").GetProperty("Amount")[0].GetString());
+    }
+
+    [Fact]
+    public async Task ProviderUnavailable_ReturnsSanitized503Problem()
+    {
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+        var exception = new PaymentProviderUnavailableException(new InvalidOperationException("Provider internal detail"));
+        var middleware = new GlobalExceptionHandlerMiddleware(
+            _ => Task.FromException(exception),
+            NullLogger<GlobalExceptionHandlerMiddleware>.Instance);
+
+        await middleware.InvokeAsync(context);
+        context.Response.Body.Position = 0;
+        using var document = await JsonDocument.ParseAsync(context.Response.Body);
+
+        Assert.Equal(StatusCodes.Status503ServiceUnavailable, context.Response.StatusCode);
+        Assert.Equal("PAYMENT_PROVIDER_UNAVAILABLE", document.RootElement.GetProperty("errorCode").GetString());
+        Assert.DoesNotContain("Provider internal detail", document.RootElement.ToString());
+    }
+
+    [Fact]
+    public async Task InvalidStripeSignature_ReturnsSanitized400Problem()
+    {
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+        var exception = new StripeWebhookSignatureException(new InvalidOperationException("Sensitive signature details"));
+        var middleware = new GlobalExceptionHandlerMiddleware(
+            _ => Task.FromException(exception),
+            NullLogger<GlobalExceptionHandlerMiddleware>.Instance);
+
+        await middleware.InvokeAsync(context);
+        context.Response.Body.Position = 0;
+        using var document = await JsonDocument.ParseAsync(context.Response.Body);
+
+        Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
+        Assert.Equal("VAL_INVALID_SIGNATURE", document.RootElement.GetProperty("errorCode").GetString());
+        Assert.DoesNotContain("Sensitive signature details", document.RootElement.ToString());
+    }
+
+    [Fact]
+    public async Task MissingStripeSignature_FromVerifier_ReturnsSignatureProblem()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Stripe:WebhookSecret"] = "whsec_test_only_not_real"
+        }).Build();
+        var verifier = new StripeWebhookVerifier(configuration);
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+        var middleware = new GlobalExceptionHandlerMiddleware(
+            _ =>
+            {
+                verifier.Verify(new byte[] { 123, 125 }, string.Empty);
+                return Task.CompletedTask;
+            },
+            NullLogger<GlobalExceptionHandlerMiddleware>.Instance);
+
+        await middleware.InvokeAsync(context);
+        context.Response.Body.Position = 0;
+        using var document = await JsonDocument.ParseAsync(context.Response.Body);
+
+        Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
+        Assert.Equal("VAL_INVALID_SIGNATURE", document.RootElement.GetProperty("errorCode").GetString());
     }
 
     private static ActionContext CreateActionContext() =>

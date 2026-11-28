@@ -37,8 +37,8 @@ description: Add or change a REST endpoint in WalletService (port 8008). Use whe
 - [ ] Run `./scripts/verify-wallet-architecture.sh` and confirm the baseline is intact.
 - [ ] Run GitNexus impact for every symbol to change and record the risk.
 - [ ] Confirm the contract: method, route, RBAC, ownership, amount rules, idempotency, database change.
-- [ ] Confirm whether the change adds a use case. Adding one changes the frozen count of 11, so get explicit approval first.
-- [ ] Create `.agents/plan/PLAN-YYYYMMDD-HHMM-<NAME>.md`.
+- [ ] Confirm whether the change adds a use case. Adding one changes the frozen count of 15, so get explicit approval first.
+- [ ] Create `.agents/plans/YYYY-MM-DD_HHmm-plan-<slug>.md`.
 - [ ] Stop and ask if the contract is ambiguous.
 
 ### 1. Contract
@@ -84,7 +84,9 @@ description: Add or change a REST endpoint in WalletService (port 8008). Use whe
 - [ ] Action builds the command or query and calls `_sender.Send(...)`.
 - [ ] Server-filled fields (`UserId`, `AdminUserId`, `ClientIp`) are `[JsonIgnore]` and injected with `command with { ... }`.
 - [ ] One route attribute per action and one-line XML `<summary>`.
-- [ ] Identity comes from `this.TryGetUserId(...)`; admin actions use the role filter.
+- [ ] Caller identity and roles: `UserContextMiddleware` automatically decodes gateway headers into `HttpContext.User`.
+  - Identity comes from `this.TryGetUserId(out var userId, out var authError)` (returns HTTP 401 ProblemDetails if unauthenticated).
+  - Admin actions use `[RequireRole("admin", "staff")]` or `this.HasRole(...)`.
 - [ ] DTOs are returned directly; delete returns `NoContent()`.
 - [ ] No `ResultFilter`, no manual envelope, no business branching in the controller.
 
@@ -114,7 +116,7 @@ description: Add or change a REST endpoint in WalletService (port 8008). Use whe
 
 ## Variant
 
-Wallet is the only CQRS service in Nexus. MediatR and the use-case layout are frozen. If the task requires a new use case, the count moves from 11 to 12; get explicit approval, update `AGENTS.md`, and update `scripts/verify-wallet-architecture.sh` in the same change. Never reintroduce feature services, never split controllers, and never remove MediatR.
+Wallet is the only CQRS service in Nexus. MediatR and the use-case layout are frozen. If the task requires a new use case, the count moves from 15 to 16; get explicit approval, update `AGENTS.md`, and update `scripts/verify-wallet-architecture.sh` in the same change. Never reintroduce feature services, never split controllers, and never remove MediatR.
 
 ## Commands
 

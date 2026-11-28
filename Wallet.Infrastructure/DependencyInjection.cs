@@ -3,9 +3,11 @@ namespace Wallet.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 using Wallet.Application.Interfaces;
 using Wallet.Infrastructure.Payments;
 using Wallet.Infrastructure.Persistence;
+using Wallet.Infrastructure.Services.Notification;
 
 public static class DependencyInjection
 {
@@ -34,8 +36,32 @@ public static class DependencyInjection
         });
 
         services.AddScoped<IWalletDbContext>(sp => sp.GetRequiredService<WalletDbContext>());
-        services.AddSingleton<IVnPayService, VnPayService>();
-        services.AddSingleton<IDirectPaymentGateway, ConfiguredDirectPaymentGateway>();
+        services.AddHttpClient<IStripeCheckoutClient, StripeCheckoutClient>(client =>
+            client.Timeout = TimeSpan.FromSeconds(10));
+        services.AddSingleton<IStripeWebhookVerifier, StripeWebhookVerifier>();
+
+        var notificationBaseUrl = Environment.GetEnvironmentVariable("NOTIFICATION_SERVICE_URL")
+            ?? configuration["NOTIFICATION_SERVICE_URL"]
+            ?? configuration["Services:Notification:BaseUrl"]
+            ?? "http://localhost:8007/";
+
+        var rawNotificationTimeout = Environment.GetEnvironmentVariable("NOTIFICATION_SERVICE_TIMEOUT_SECONDS")
+            ?? configuration["NOTIFICATION_SERVICE_TIMEOUT_SECONDS"]
+            ?? configuration["Services:Notification:TimeoutSeconds"];
+        var notificationTimeoutSeconds = int.TryParse(rawNotificationTimeout, out var parsedTimeout)
+            && parsedTimeout is >= 1 and <= 120
+            ? parsedTimeout
+            : 10;
+
+        services.AddHttpClient<INotificationClient, NotificationClient>(client =>
+        {
+            client.BaseAddress = new Uri(notificationBaseUrl.TrimEnd('/') + "/");
+            client.Timeout = TimeSpan.FromSeconds(notificationTimeoutSeconds);
+        });
+
+        services.AddHttpClient("reconciliation-source", client => client.Timeout = TimeSpan.FromSeconds(20));
+        services.AddScoped<global::Wallet.Application.Common.Ledger.IReconciliationSourceClient, Services.HttpReconciliationSourceClient>();
+        services.AddScoped<global::Wallet.Application.Common.Ledger.JournalPoster>();
 
         return services;
     }
@@ -55,13 +81,30 @@ public static class DependencyInjection
                 var pass = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : "";
                 var port = uri.Port > 0 ? uri.Port : 5432;
                 var db = uri.AbsolutePath.TrimStart('/');
-                return $"Host={uri.Host};Port={port};Database={db};Username={user};Password={pass};SSL Mode=Require;Trust Server Certificate=true";
+                var connectionBuilder = new NpgsqlConnectionStringBuilder
+                {
+                    Host = uri.Host,
+                    Port = port,
+                    Database = db,
+                    Username = user,
+                    Password = pass,
+                    SslMode = SslMode.Require
+                };
+                var queryParameters = System.Web.HttpUtility.ParseQueryString(uri.Query);
+                var channelBinding = queryParameters["channel_binding"];
+                if (!string.IsNullOrWhiteSpace(channelBinding))
+                {
+                    connectionBuilder["Channel Binding"] = channelBinding;
+                }
+
+                return connectionBuilder.ConnectionString;
             }
             catch
             {
                 return trimmed;
             }
         }
+
         return trimmed;
     }
 }

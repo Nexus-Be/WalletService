@@ -7,5 +7,6 @@ public enum WithdrawalStatus
     Processing = 2,
     Completed = 3,
     Rejected = 4,
-    Failed = 5
+    Failed = 5,
+    Cancelled = 6
 }

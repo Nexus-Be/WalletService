@@ -11,7 +11,7 @@
 * Examples: `WALLET_NOT_FOUND`, `INSUFFICIENT_BALANCE`, `VAL_INVALID_AMOUNT`, `VAL_INVALID_USER_ID`, `UNAUTHORIZED`, `FORBIDDEN`.
 
 ## 3. RFC 9110 ProblemDetails Structure
-* Handled by `GlobalExceptionHandlerMiddleware.cs`: returns `application/problem+json` containing `type`, `title`, `status`, `errorCode`, `detail`, `traceId`.
+* Handled by `GlobalExceptionHandlerMiddleware.cs` and `ApiValidationProblemFactory.cs`: returns `application/problem+json` containing `type`, `title`, `status`, `errorCode`, `detail`, `errors` (field validation dictionary), `traceId`, and `timestamp`.
 
 ## 4. Enum Persistence & Boundary Serialization
 * In PostgreSQL (`wallet_db`): 100% stored as `integer` (int32). Prohibit `HasConversion<string>()`.

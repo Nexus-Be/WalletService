@@ -12,7 +12,11 @@ grep -q 'Include="MediatR"' Wallet.Application/Wallet.Application.csproj \
   || fail "Wallet.Application.csproj lost the MediatR package reference."
 
 handlers=$(find Wallet.Application/Features -name '*Handler.cs' 2>/dev/null | wc -l | tr -d ' ')
-[ "$handlers" = "11" ] || fail "Expected 11 handlers under Wallet.Application/Features, found $handlers."
+[ "$handlers" = "71" ] || fail "Expected 71 handlers under Wallet.Application/Features, found $handlers."
+commands=$(find Wallet.Application/Features -path '*/Commands/*' -name '*Handler.cs' 2>/dev/null | wc -l | tr -d ' ')
+queries=$(find Wallet.Application/Features -path '*/Queries/*' -name '*Handler.cs' 2>/dev/null | wc -l | tr -d ' ')
+[ "$commands" = "42" ] || fail "Expected 42 command handlers, found $commands."
+[ "$queries" = "29" ] || fail "Expected 29 query handlers, found $queries."
 
 if grep -rInE "interface I(Wallet|AdminWallet|Topup|Checkout|Transfer|Withdrawal|VnPayCallback)Service\b" \
     --include='*.cs' Wallet.Application Wallet.Api >/dev/null 2>&1; then
@@ -20,7 +24,11 @@ if grep -rInE "interface I(Wallet|AdminWallet|Topup|Checkout|Transfer|Withdrawal
 fi
 
 public_controllers=$(find Wallet.Api/Controllers/Public -maxdepth 1 -name '*Controller.cs' | wc -l | tr -d ' ')
-internal_controllers=$(find Wallet.Api/Controllers/Internal -maxdepth 1 -name '*Controller.cs' | wc -l | tr -d ' ')
+if [ -d Wallet.Api/Controllers/Internal ]; then
+  internal_controllers=$(find Wallet.Api/Controllers/Internal -maxdepth 1 -name '*Controller.cs' | wc -l | tr -d ' ')
+else
+  internal_controllers=0
+fi
 [ "$public_controllers" = "2" ] || fail "Expected 2 public controllers (Wallets, AdminWallets), found $public_controllers."
 [ "$internal_controllers" = "0" ] || fail "Expected 0 internal controllers, found $internal_controllers."
 
@@ -32,6 +40,6 @@ for controller in \
 done
 
 if [ "$failed" -eq 0 ]; then
-  echo "OK: Wallet CQRS architecture is intact (11 handlers, 2 controllers, MediatR wired)."
+  echo "OK: Wallet CQRS architecture is intact (71 handlers, 2 controllers, MediatR wired)."
 fi
 exit "$failed"

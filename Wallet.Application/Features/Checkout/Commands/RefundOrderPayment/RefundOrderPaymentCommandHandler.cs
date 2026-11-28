@@ -1,0 +1,314 @@
+namespace Wallet.Application.Features.Checkout.Commands.RefundOrderPayment;
+
+using System;
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using MediatR;
+using Microsoft.EntityFrameworkCore;
+using global::Wallet.Application.Common.Extensions;
+using global::Wallet.Application.Features.Checkout;
+using global::Wallet.Application.Features.Checkout.Commands.PayOrderWithWallet;
+using global::Wallet.Application.Features.Withdrawals;
+using global::Wallet.Application.Interfaces;
+using global::Wallet.Domain.Entities;
+using global::Wallet.Domain.Enums;
+using global::Wallet.Domain.Exceptions;
+
+internal sealed class RefundOrderPaymentCommandHandler
+    : IRequestHandler<RefundOrderPaymentCommand, WalletOrderTransactionResponse>
+{
+    private readonly IWalletDbContext _context;
+
+    public RefundOrderPaymentCommandHandler(IWalletDbContext context)
+    {
+        _context = context;
+    }
+
+    public async Task<WalletOrderTransactionResponse> Handle(
+        RefundOrderPaymentCommand request,
+        CancellationToken cancellationToken)
+    {
+        var idempotencyKey = string.IsNullOrWhiteSpace(request.IdempotencyKey)
+            ? null
+            : request.IdempotencyKey.Trim();
+        if (idempotencyKey is not null && !WithdrawalWorkflow.IsValidIdempotencyKey(idempotencyKey))
+        {
+            throw new BusinessRuleValidationException(
+                "VAL_INVALID_IDEMPOTENCY_KEY",
+                "Idempotency-Key header must be 1 to 100 ASCII letters, digits, hyphens, or underscores.");
+        }
+
+        var buyerId = Guid.Parse(request.UserId);
+
+        // A sub-order refund draws on the parent order's escrow. Without the parent id the payment and the escrow cannot be checked,
+        // so the credit would be created out of nothing; refuse it and let the caller handle the case manually.
+        if (request.IsSubOrder && !request.ParentOrderId.HasValue)
+        {
+            throw new BusinessRuleValidationException(
+                "PARENT_ORDER_REQUIRED",
+                "A sub-order refund must name its parent order.",
+                400);
+        }
+
+        var escrowOrderId = request.ParentOrderId ?? request.OrderId;
+        var enforceEscrow = !request.IsSubOrder || request.ParentOrderId.HasValue;
+        var normalizedReason = request.Reason?.Trim() ?? string.Empty;
+        var fingerprint = idempotencyKey is null
+            ? null
+            : ComputeFingerprint(
+                request.OrderId,
+                request.ParentOrderId,
+                request.IsSubOrder,
+                buyerId,
+                request.Amount,
+                normalizedReason);
+
+        await using var dbTransaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+        await LockOrderAndChildAsync(escrowOrderId, request.OrderId, cancellationToken);
+
+        WalletTransaction? payment = null;
+        if (enforceEscrow)
+        {
+            payment = await _context.WalletTransactions
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    t => t.ReferenceId == escrowOrderId &&
+                         t.Type == WalletTransactionType.PurchaseDebit &&
+                         t.Status == TransactionStatus.Success,
+                    cancellationToken)
+                ?? throw new BusinessRuleValidationException(
+                    "PAYMENT_NOT_FOUND",
+                    "No completed wallet payment was found for the order.",
+                    404);
+
+            if (!Guid.TryParse(payment.UserId, out var payerId) || payerId != buyerId)
+            {
+                throw new BusinessRuleValidationException(
+                    "REFUND_CONFLICT",
+                    "The refund user does not match the order payer.",
+                    409);
+            }
+        }
+
+        var wallet = await _context.LockWalletByUserIdAsync(buyerId, cancellationToken)
+                     ?? throw new WalletNotFoundException(request.UserId);
+
+        if (idempotencyKey is not null)
+        {
+            var existingByKey = await _context.WalletTransactions
+                .FirstOrDefaultAsync(
+                    t => t.ReferenceId == request.OrderId && t.ClientIdempotencyKey == idempotencyKey,
+                    cancellationToken);
+
+            if (existingByKey is not null)
+            {
+                if (existingByKey.Type != WalletTransactionType.RefundCredit ||
+                    !string.Equals(existingByKey.RequestFingerprint, fingerprint, StringComparison.Ordinal))
+                {
+                    throw new BusinessRuleValidationException(
+                        "IDEMPOTENCY_KEY_REUSED",
+                        "The idempotency key was already used for a different order operation.",
+                        409);
+                }
+
+                await dbTransaction.CommitAsync(cancellationToken);
+                return Map(existingByKey) with { Replayed = true };
+            }
+        }
+        else
+        {
+            var existing = await _context.WalletTransactions
+                .FirstOrDefaultAsync(
+                    t => t.ReferenceId == request.OrderId &&
+                         t.Type == WalletTransactionType.RefundCredit &&
+                         t.ClientIdempotencyKey == null,
+                    cancellationToken);
+
+            if (existing is not null)
+            {
+                if (existing.WalletId != wallet.Id || existing.Amount != request.Amount)
+                {
+                    throw new BusinessRuleValidationException(
+                        "REFUND_CONFLICT",
+                        "The order was already refunded with a different amount.",
+                        409);
+                }
+
+                await dbTransaction.CommitAsync(cancellationToken);
+                return Map(existing) with { Replayed = true };
+            }
+        }
+
+        // Enforce at most one refund per sub-order even across distinct idempotency keys or mixed keyed/unkeyed calls.
+        if (request.IsSubOrder)
+        {
+            var existingSubOrderRefund = await _context.WalletTransactions
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    t => t.ReferenceId == request.OrderId &&
+                         t.Type == WalletTransactionType.RefundCredit &&
+                         t.Status == TransactionStatus.Success,
+                    cancellationToken);
+            if (existingSubOrderRefund is not null)
+            {
+                throw new BusinessRuleValidationException(
+                    "REFUND_CONFLICT",
+                    "This sub-order was already refunded.",
+                    409);
+            }
+        }
+
+        OrderEscrow? escrow = null;
+        if (payment is not null)
+        {
+            var escrowState = await OrderEscrowAccounting.LoadOrReconcileAsync(
+                _context,
+                escrowOrderId,
+                cancellationToken);
+            escrow = escrowState.Escrow;
+
+            if (request.Amount > (escrow?.OriginalAmount ?? payment.Amount))
+            {
+                throw new BusinessRuleValidationException(
+                    "REFUND_EXCEEDS_PAYMENT",
+                    "Refund amount exceeds the original payment.",
+                    409);
+            }
+
+            if (escrow is null)
+            {
+                if (escrowState.HasResolvedOperation)
+                {
+                    throw new BusinessRuleValidationException(
+                        "REFUND_CONFLICT",
+                        "The order payment was already resolved without recoverable escrow.",
+                        409);
+                }
+
+                throw new BusinessRuleValidationException(
+                    "ORDER_ESCROW_UNAVAILABLE",
+                    "The order's wallet-payment escrow cannot be safely reconstructed.",
+                    409);
+            }
+
+            if (escrow.Status == OrderEscrowStatus.Cancelled)
+            {
+                throw new BusinessRuleValidationException(
+                    "ORDER_ESCROW_CANCELLED",
+                    "The order escrow was already cancelled and cannot be refunded.",
+                    409);
+            }
+
+            if (escrow.RemainingAmount < request.Amount)
+            {
+                throw new BusinessRuleValidationException(
+                    "ORDER_ESCROW_INSUFFICIENT",
+                    "The order has insufficient remaining wallet-payment escrow for this refund.",
+                    409);
+            }
+        }
+
+        var escrowBefore = escrow?.RemainingAmount;
+        if (escrow is not null)
+        {
+            escrow.RemainingAmount -= request.Amount;
+            if (escrow.RemainingAmount == 0m)
+            {
+                escrow.Status = OrderEscrowStatus.Refunded;
+            }
+            escrow.UpdatedAt = DateTimeOffset.UtcNow;
+        }
+
+        var balanceBefore = wallet.Balance;
+        wallet.Deposit(request.Amount);
+
+        var transaction = new WalletTransaction
+        {
+            WalletId = wallet.Id,
+            UserId = wallet.UserId.ToString(),
+            Type = WalletTransactionType.RefundCredit,
+            Amount = request.Amount,
+            Currency = wallet.Currency.ToString(),
+            BalanceBefore = balanceBefore,
+            BalanceAfter = wallet.Balance,
+            Status = TransactionStatus.Success,
+            ReferenceId = request.OrderId,
+            Note = string.IsNullOrWhiteSpace(request.Reason) ? "Order refund" : request.Reason.Trim(),
+            ClientIdempotencyKey = idempotencyKey,
+            RequestFingerprint = fingerprint,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        _context.WalletTransactions.Add(transaction);
+        _context.AddAuditLog(
+            AuditAction.OrderRefund,
+            escrow is null ? nameof(WalletTransaction) : nameof(OrderEscrow),
+            escrow is null ? request.OrderId.ToString() : escrowOrderId.ToString(),
+            oldValues: new { Balance = balanceBefore, EscrowRemaining = escrowBefore },
+            newValues: new
+            {
+                Balance = wallet.Balance,
+                EscrowRemaining = escrow?.RemainingAmount,
+                transaction.Amount,
+                request.Reason,
+                TransactionId = transaction.Id,
+                SubOrderId = request.IsSubOrder ? request.OrderId : (Guid?)null,
+                request.ParentOrderId
+            },
+            userId: buyerId.ToString());
+
+        await _context.SaveChangesAsync(cancellationToken);
+        await dbTransaction.CommitAsync(cancellationToken);
+        return Map(transaction);
+    }
+
+    private static string ComputeFingerprint(
+        Guid orderId,
+        Guid? parentOrderId,
+        bool isSubOrder,
+        Guid buyerId,
+        decimal amount,
+        string reason)
+    {
+        var canonical = string.Join(
+            '\n',
+            orderId.ToString("D"),
+            parentOrderId?.ToString("D") ?? string.Empty,
+            isSubOrder ? "1" : "0",
+            buyerId.ToString("D"),
+            amount.ToString("0.00", CultureInfo.InvariantCulture),
+            reason);
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
+    }
+
+    private async Task LockOrderAndChildAsync(
+        Guid escrowOrderId,
+        Guid orderId,
+        CancellationToken cancellationToken)
+    {
+        if (escrowOrderId == orderId)
+        {
+            await _context.LockOrderPaymentAsync(orderId, cancellationToken);
+            return;
+        }
+
+        var first = escrowOrderId.CompareTo(orderId) < 0 ? escrowOrderId : orderId;
+        var second = first == escrowOrderId ? orderId : escrowOrderId;
+        await _context.LockOrderPaymentAsync(first, cancellationToken);
+        await _context.LockOrderPaymentAsync(second, cancellationToken);
+    }
+
+    private static WalletOrderTransactionResponse Map(WalletTransaction t) => new(
+        t.Id.ToString(),
+        t.WalletId.ToString(),
+        t.UserId,
+        t.Type.ToString(),
+        t.Amount,
+        t.Currency,
+        t.BalanceAfter,
+        t.Status.ToString(),
+        t.Note,
+        t.CreatedAt);
+}

@@ -17,6 +17,8 @@ public class WalletTransaction : BaseEntity<Guid>
     public string? UserId { get; set; }
     public string? Currency { get; set; }
     public string? Note { get; set; }
+    public string? ClientIdempotencyKey { get; set; }
+    public string? RequestFingerprint { get; set; }
 
     // Navigation
     public WalletAccount? Wallet { get; set; }

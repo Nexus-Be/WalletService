@@ -10,5 +10,7 @@ public sealed record WalletResponse(
     decimal LockedBalance,
     string Currency,
     string Status,
-    DateTimeOffset UpdatedAt
-);
+    DateTimeOffset UpdatedAt)
+{
+    public decimal HeldBalance => LockedBalance;
+}

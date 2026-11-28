@@ -7,7 +7,7 @@
 Every AI Coding Agent working inside WalletService must strictly comply with the local rules in `.agents/rules/`:
 1. [01 Clean Architecture Layers](rules/01_clean_architecture_layers.md): 4-layer structure, classic CQRS with MediatR (Wallet-only exception, frozen), non-negative balance invariant, No-Repository over EF Core.
 2. [02 API Routing & Envelopes](rules/02_api_routing_and_envelopes.md): 100% Plural route convention, pure DTO return, zero ResultFilter.
-3. [03 Security Headers & Internal API](rules/03_security_headers_and_internal.md): Public controllers; internal key check temporarily disabled, wallet ownership.
+3. [03 Security Headers & Internal API](rules/03_security_headers_and_internal.md): Public controllers; the legacy internal middleware remains disabled, while Auction hold service actions require the scoped service key; wallet ownership applies to buyer routes.
 4. [04 Audit & Financial Logging](rules/04_audit_and_event_logging.md): AuditableEntity tracking, balance modification audit trails.
 5. [05 Error Handling & Enums](rules/05_error_handling_and_enums.md): 100% English sentence-case messages, SCREAMING_SNAKE_CASE error codes, PascalCase JSON enum serialization.
 6. [06 Database & Migrations](rules/06_database_and_migrations.md): Database isolation, PostgreSQL integer enums, soft delete, deterministic seed GUIDs.
@@ -15,9 +15,38 @@ Every AI Coding Agent working inside WalletService must strictly comply with the
 ## Endpoint Workflow
 Before adding or changing an endpoint, follow `.agents/skills/new-feature-endpoint/SKILL.md`.
 
+## Spec Kit Workflow
+Spec Kit is installed with the GitHub Copilot integration. For a new feature or
+multi-file change, use the `/speckit-*` skills and the project constitution at
+`.specify/memory/constitution.md`:
+
+1. `/speckit-specify` the bounded change; resolve ambiguity with
+   `/speckit-clarify` when needed.
+2. `/speckit-plan` and record the mandatory user-visible plan under
+   `.agents/plans/YYYY-MM-DD_HHmm-plan-<slug>.md`, linking to the Spec Kit plan in
+   `specs/[###-feature-name]/plan.md`.
+3. Present the plan for approval before code edits. Include file context,
+   GitNexus upstream impact/risk, implementation steps, and verification.
+4. Generate tasks with `/speckit-tasks`; run `/speckit-analyze` before
+   `/speckit-implement`; finish with `/speckit-converge` and address remaining
+   tasks.
+
+Spec Kit does not replace the endpoint checklist, frozen architecture, or
+verification gates below. Use the existing two controllers and CQRS handlers;
+do not accept generated service/repository abstractions or optional tests.
+Keep feature artifacts in `specs/[###-feature-name]/`, separate from the
+numbered service-level documents.
+
 ## Verification Checklist
 - `./scripts/verify-wallet-architecture.sh` must print `OK: Wallet CQRS architecture is intact`.
 - `dotnet build Wallet.sln -c Release` must succeed with 0 errors.
 - `dotnet test Wallet.sln -c Release` must pass 100%.
 
-> **Frozen:** 11 handlers, 2 controllers, MediatR wired. Never recreate `Wallet.Application/Services/{Feature}/` or per-resource controllers.
+> **Frozen:** 71 handlers (42 Commands, 29 Queries), 2 controllers (`WalletsController` also hosts `~/api/v1/internal/wallets/...` behind `[RequireInternalServiceKey]` / `[RequireAuctionServiceKey]`), MediatR wired. Never recreate `Wallet.Application/Services/{Feature}/` or per-resource controllers.
+## Workspace Artifacts (Note, Decision, Doc, Plan)
+Every AI Coding Agent working in this repository must follow the local rules for the 4 workspace artifact types under `.agents/`:
+- **Plans** ([`rules/plan-management.md`](rules/plan-management.md)): Save in `.agents/plans/YYYY-MM-DD_HHmm-plan-<slug>.md` using [`plans/plan-template.md`](plans/plan-template.md) (never `.agents/plan/`).
+- **Topic Notes** ([`rules/note-management.md`](rules/note-management.md)): Save in `.agents/notes/YYYY-MM-DD_HHmm-<topic-slug>.md` using [`notes/note-master.template.md`](notes/note-master.template.md) (**1 topic = 1 file**; open a new file when switching topics).
+- **Confirmations & Decisions** ([`rules/decision-management.md`](rules/decision-management.md)): Save every user confirmation question and settled choice in `.agents/decisions/YYYY-MM-DD_HHmm-<decision-slug>.md` using [`decisions/decision-template.md`](decisions/decision-template.md).
+- **Human-Facing Docs** ([`rules/doc-management.md`](rules/doc-management.md)): Save user-requested docs for human readers in `.agents/docs/<slug>.md` and process through the `humanizer` skill first.
+- **Unified Rules**: See [`rules/workspace-artifacts.md`](rules/workspace-artifacts.md).

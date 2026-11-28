@@ -15,9 +15,26 @@ public static class RequestValidation
         var isValid = true;
         var context = new ValidationContext(instance);
 
-        if (!Validator.TryValidateObject(instance, context, results, validateAllProperties: true))
+        try
         {
+            if (!Validator.TryValidateObject(instance, context, results, validateAllProperties: true))
+            {
+                isValid = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            results.Add(new ValidationResult(ex.Message));
             isValid = false;
+        }
+
+        if (instance is IRequestValidation requestValidation)
+        {
+            foreach (var result in requestValidation.ValidateRequest())
+            {
+                results.Add(result);
+                isValid = false;
+            }
         }
 
         var type = instance.GetType();
@@ -36,7 +53,8 @@ public static class RequestValidation
                     continue;
                 }
 
-                var property = type.GetProperty(parameter.Name ?? string.Empty, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+                var property = type.GetProperty(parameter.Name ?? string.Empty,
+                    BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
                 var value = property?.GetValue(instance);
 
                 var paramContext = new ValidationContext(instance)
@@ -46,10 +64,21 @@ public static class RequestValidation
 
                 foreach (var attribute in validationAttributes)
                 {
-                    var result = attribute.GetValidationResult(value, paramContext);
+                    ValidationResult? result;
+                    try
+                    {
+                        result = attribute.GetValidationResult(value, paramContext);
+                    }
+                    catch (Exception ex)
+                    {
+                        result = new ValidationResult(attribute.ErrorMessage ?? ex.Message, new[] { parameter.Name! });
+                    }
+
                     if (result != null && result != ValidationResult.Success)
                     {
-                        results.Add(result);
+                        results.Add(result.MemberNames.Any()
+                            ? result
+                            : new ValidationResult(result.ErrorMessage, new[] { parameter.Name! }));
                         isValid = false;
                     }
                 }
@@ -58,4 +87,19 @@ public static class RequestValidation
 
         return isValid;
     }
+
+    public static ValidationResult? ValidateGuid(string? value, string memberName, string displayName) =>
+        Guid.TryParse(value, out var guid) && guid != Guid.Empty
+            ? null
+            : new ValidationResult($"{displayName} must be a valid UUID.", new[] { memberName });
+
+    public static ValidationResult? ValidateGuid(Guid value, string memberName, string displayName) =>
+        value != Guid.Empty
+            ? null
+            : new ValidationResult($"{displayName} must be a valid UUID.", new[] { memberName });
+}
+
+public interface IRequestValidation
+{
+    IEnumerable<ValidationResult> ValidateRequest();
 }

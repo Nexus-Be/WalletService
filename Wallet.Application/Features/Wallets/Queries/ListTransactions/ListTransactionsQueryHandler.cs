@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using global::Wallet.Application.Common;
+using global::Wallet.Application.Common.Extensions;
 using global::Wallet.Application.Common.Models;
 using global::Wallet.Application.Interfaces;
 using global::Wallet.Domain.Enums;
@@ -37,7 +38,7 @@ internal sealed class ListTransactionsQueryHandler : IRequestHandler<ListTransac
             var types = request.Type.Trim().ToUpperInvariant() switch
             {
                 "ALL" => Array.Empty<WalletTransactionType>(),
-                "DEPOSIT" => new[] { WalletTransactionType.TopupVnpay },
+                "DEPOSIT" => new[] { WalletTransactionType.TopupVnpay, WalletTransactionType.TopupStripe },
                 "WITHDRAWAL" => new[]
                 {
                     WalletTransactionType.WithdrawalDebit,
@@ -46,9 +47,33 @@ internal sealed class ListTransactionsQueryHandler : IRequestHandler<ListTransac
                 "PAYMENT" => new[]
                 {
                     WalletTransactionType.PurchaseDebit,
-                    WalletTransactionType.DirectGatewayPayment
+                    WalletTransactionType.DirectGatewayPayment,
+                    WalletTransactionType.OrderPaymentAdjustmentDebit,
+                    WalletTransactionType.AuctionHoldCapture
                 },
-                "REFUND" => new[] { WalletTransactionType.RefundCredit },
+                "REFUND" => new[]
+                {
+                    WalletTransactionType.RefundCredit,
+                    WalletTransactionType.AuctionDepositRefund,
+                    WalletTransactionType.EscrowCancellationRefund,
+                    WalletTransactionType.OrderPaymentAdjustmentRefund
+                },
+                "TRANSFER" => new[]
+                {
+                    WalletTransactionType.TransferIn,
+                    WalletTransactionType.TransferOut
+                },
+                "ADJUSTMENT" => new[]
+                {
+                    WalletTransactionType.AdjustmentCredit,
+                    WalletTransactionType.AdjustmentDebit
+                },
+                "AUCTION" => new[]
+                {
+                    WalletTransactionType.AuctionHoldCapture,
+                    WalletTransactionType.AuctionForfeitCredit,
+                    WalletTransactionType.AuctionDepositRefund
+                },
                 _ when Enum.TryParse<WalletTransactionType>(request.Type.Trim(), true, out var txType) =>
                     new[] { txType },
                 _ => throw new ArgumentException("Transaction type is invalid.", nameof(request))
@@ -58,10 +83,38 @@ internal sealed class ListTransactionsQueryHandler : IRequestHandler<ListTransac
                 query = query.Where(t => types.Contains(t.Type));
         }
 
+        if (!string.IsNullOrWhiteSpace(request.Status))
+        {
+            if (!request.Status.TryToEnum<TransactionStatus>(out var status))
+            {
+                throw new ArgumentException("Transaction status is invalid.", nameof(request));
+            }
+
+            query = query.Where(t => t.Status == status);
+        }
+
+        if (request.ReferenceId.HasValue)
+        {
+            if (request.ReferenceId.Value == Guid.Empty)
+            {
+                throw new ArgumentException("Reference ID must be a valid UUID.", nameof(request));
+            }
+
+            var refId = request.ReferenceId.Value;
+            query = query.Where(t => t.ReferenceId == refId);
+        }
+
         if (request.FromDate.HasValue)
-            query = query.Where(t => t.CreatedAt >= request.FromDate.Value);
+        {
+            var fromUtc = request.FromDate.Value.ToUniversalTime();
+            query = query.Where(t => t.CreatedAt >= fromUtc);
+        }
+
         if (request.ToDate.HasValue)
-            query = query.Where(t => t.CreatedAt <= request.ToDate.Value);
+        {
+            var toUtc = request.ToDate.Value.ToUniversalTime();
+            query = query.Where(t => t.CreatedAt <= toUtc);
+        }
 
         var total = await query.CountAsync(cancellationToken);
 
@@ -76,7 +129,7 @@ internal sealed class ListTransactionsQueryHandler : IRequestHandler<ListTransac
                 t.UserId ?? string.Empty,
                 t.Type.ToString(),
                 t.Amount,
-                t.Currency ?? "VND",
+                t.Currency ?? "Vnd",
                 t.BalanceAfter,
                 t.Status.ToString(),
                 t.Note ?? string.Empty,

@@ -7,8 +7,14 @@ using Wallet.Application.Common.Validation;
 using Wallet.Application.Features.AdminWallets.Commands.AdjustWalletBalance;
 using Wallet.Application.Features.AdminWallets.Commands.ProcessWithdrawal;
 using Wallet.Application.Features.Checkout.Commands.CheckoutDirect;
+using Wallet.Application.Features.Topups.Commands.TopupStripe;
 using Wallet.Application.Features.Topups.Commands.TopupVnPay;
 using Wallet.Application.Features.Transfers.Commands.Transfer;
+using Wallet.Application.Features.VnPay.Commands.ProcessVnPayIpn;
+using Wallet.Application.Features.Topups.Queries.GetTopupStatus;
+using Wallet.Application.Features.Wallets.Commands.EnsureWallet;
+using Wallet.Application.Features.Wallets.Queries.GetMyWallet;
+using Wallet.Application.Features.Wallets.Queries.ListTransactions;
 using Wallet.Application.Features.Withdrawals.Commands.RequestWithdrawal;
 using Xunit;
 
@@ -26,9 +32,21 @@ public class WalletRequestValidatorTests
     [Fact]
     public void TopupVnPayCommand_AcceptsValidAmount()
     {
-        var request = new TopupVnPayCommand(Amount: 50_000m);
+        var request = new TopupVnPayCommand(Amount: 50_000m) { UserId = Guid.NewGuid().ToString() };
         var results = ValidateModel(request);
         Assert.Empty(results);
+    }
+
+    [Theory]
+    [InlineData(50_000.001)]
+    [InlineData(100_000_001)]
+    public void TopupVnPayCommand_RejectsUnsupportedAmountPrecisionOrRange(decimal amount)
+    {
+        var request = new TopupVnPayCommand(amount) { UserId = Guid.NewGuid().ToString() };
+
+        var results = ValidateModel(request);
+
+        Assert.Contains(results, result => result.MemberNames.Contains(nameof(request.Amount)));
     }
 
     [Theory]
@@ -36,39 +54,147 @@ public class WalletRequestValidatorTests
     [InlineData(100_000_001)]
     public void TopupVnPayCommand_RejectsAmountOutsideAllowedRange(decimal amount)
     {
-        var request = new TopupVnPayCommand(Amount: amount);
+        var request = new TopupVnPayCommand(Amount: amount) { UserId = Guid.NewGuid().ToString() };
         var results = ValidateModel(request);
-        Assert.NotEmpty(results);
+        Assert.Contains(results, result => result.MemberNames.Contains(nameof(request.Amount)));
     }
 
     [Fact]
     public void RequestWithdrawalCommand_AcceptsValidData()
     {
-        var request = new RequestWithdrawalCommand(Amount: 100_000m, BankCode: "VCB", AccountNumber: "1234567890");
+        var request = new RequestWithdrawalCommand(
+            Amount: 100_000m,
+            BankCode: "VCB",
+            AccountNumber: "1234567890",
+            AccountHolderName: "Test User")
+        {
+            UserId = Guid.NewGuid().ToString(),
+            IdempotencyKey = "req-wd-1"
+        };
         var results = ValidateModel(request);
         Assert.Empty(results);
     }
 
     [Fact]
+    public void RequestWithdrawalCommand_RequiresAccountHolderName()
+    {
+        var request = new RequestWithdrawalCommand(Amount: 100_000m, BankCode: "VCB", AccountNumber: "1234567890")
+        {
+            UserId = Guid.NewGuid().ToString(),
+            IdempotencyKey = "req-wd-2"
+        };
+        var results = ValidateModel(request);
+        Assert.Contains(results, result => result.MemberNames.Contains(nameof(request.AccountHolderName)));
+    }
+
+    [Fact]
     public void RequestWithdrawalCommand_RejectsAmountBelowMinimum()
     {
-        var request = new RequestWithdrawalCommand(Amount: 49_999m, BankCode: "VCB", AccountNumber: "1234567890");
+        var request = new RequestWithdrawalCommand(
+            Amount: 49_999m,
+            BankCode: "VCB",
+            AccountNumber: "1234567890",
+            AccountHolderName: "Test User")
+        {
+            UserId = Guid.NewGuid().ToString(),
+            IdempotencyKey = "req-wd-3"
+        };
         var results = ValidateModel(request);
-        Assert.NotEmpty(results);
+        Assert.Contains(results, result => result.MemberNames.Contains(nameof(request.Amount)));
+    }
+
+    [Fact]
+    public void RequestWithdrawalCommand_RejectsUnsupportedCurrency()
+    {
+        var request = new RequestWithdrawalCommand(
+            Amount: 100_000m,
+            Currency: "USD",
+            BankCode: "VCB",
+            AccountNumber: "1234567890",
+            AccountHolderName: "Test User")
+        {
+            UserId = Guid.NewGuid().ToString(),
+            IdempotencyKey = "req-wd-4"
+        };
+        var results = ValidateModel(request);
+        Assert.Contains(results, result => result.MemberNames.Contains(nameof(request.Currency)));
+    }
+
+    [Fact]
+    public void RequestWithdrawalCommand_WhenAmountExceedsInt32_DoesNotThrowOverflowExceptionAndRejectsAmount()
+    {
+        var request = new RequestWithdrawalCommand(
+            Amount: 999_999_999_999m,
+            BankCode: "VCB",
+            AccountNumber: "1234567890",
+            AccountHolderName: "Test User")
+        {
+            UserId = Guid.NewGuid().ToString(),
+            IdempotencyKey = "req-wd-overflow"
+        };
+        var results = ValidateModel(request);
+        Assert.Contains(results, result => result.MemberNames.Contains(nameof(request.Amount)));
+    }
+
+    [Fact]
+    public void TransferCommand_WhenAmountExceedsInt32_DoesNotThrowOverflowExceptionAndRejectsAmount()
+    {
+        var request = new TransferCommand(
+            RecipientUserId: Guid.NewGuid().ToString(),
+            Amount: 999_999_999_999m)
+        {
+            SenderUserId = Guid.NewGuid().ToString(),
+            IdempotencyKey = "tf-overflow"
+        };
+        var results = ValidateModel(request);
+        Assert.Contains(results, result => result.MemberNames.Contains(nameof(request.Amount)));
+    }
+
+    [Fact]
+    public void TopupStripeCommand_WhenAmountExceedsInt32_DoesNotThrowOverflowExceptionAndRejectsAmount()
+    {
+        var request = new TopupStripeCommand(Amount: 999_999_999_999m)
+        {
+            UserId = Guid.NewGuid(),
+            IdempotencyKey = "topup-stripe-overflow"
+        };
+        var results = ValidateModel(request);
+        Assert.Contains(results, result => result.MemberNames.Contains(nameof(request.Amount)));
+    }
+
+    [Fact]
+    public void CheckoutDirectCommand_WhenAmountExceedsInt32_DoesNotThrowOverflowExceptionAndRejectsAmount()
+    {
+        var request = new CheckoutDirectCommand(
+            OrderId: Guid.NewGuid().ToString(),
+            Amount: 999_999_999_999m)
+        {
+            UserId = Guid.NewGuid()
+        };
+        var results = ValidateModel(request);
+        Assert.Contains(results, result => result.MemberNames.Contains(nameof(request.Amount)));
     }
 
     [Fact]
     public void TransferCommand_RequiresRecipientUserId()
     {
-        var request = new TransferCommand(RecipientUserId: "", Amount: 10_000m);
+        var request = new TransferCommand(RecipientUserId: "", Amount: 10_000m)
+        {
+            SenderUserId = Guid.NewGuid().ToString()
+        };
         var results = ValidateModel(request);
-        Assert.NotEmpty(results);
+        Assert.Contains(results, result => result.MemberNames.Contains(nameof(request.RecipientUserId)));
     }
 
     [Fact]
     public void AdjustWalletBalanceCommand_AcceptsValidData()
     {
-        var request = new AdjustWalletBalanceCommand(Amount: 50_000m, AdjustmentType: "Credit", Reason: "Manual Correction");
+        var request =
+            new AdjustWalletBalanceCommand(Amount: 50_000m, AdjustmentType: "Credit", Reason: "Manual Correction")
+            {
+                UserId = Guid.NewGuid(),
+                AdminUserId = Guid.NewGuid().ToString()
+            };
         var results = ValidateModel(request);
         Assert.Empty(results);
     }
@@ -76,9 +202,201 @@ public class WalletRequestValidatorTests
     [Fact]
     public void ProcessWithdrawalCommand_RequiresAction()
     {
-        var request = new ProcessWithdrawalCommand(Action: "");
+        var request = new ProcessWithdrawalCommand(Action: "")
+        {
+            WithdrawalId = Guid.NewGuid(),
+            AdminUserId = Guid.NewGuid().ToString()
+        };
         var results = ValidateModel(request);
-        Assert.NotEmpty(results);
+        Assert.Contains(results, result => result.MemberNames.Contains(nameof(request.Action)));
+    }
+
+    [Fact]
+    public void ProcessWithdrawalCommand_RequiresTransferConfirmationAndReferenceForComplete()
+    {
+        var request = new ProcessWithdrawalCommand("Complete")
+        {
+            WithdrawalId = Guid.NewGuid(),
+            AdminUserId = Guid.NewGuid().ToString()
+        };
+
+        var results = ValidateModel(request);
+
+        Assert.Contains(results, result => result.MemberNames.Contains(nameof(request.TransferConfirmed)));
+        Assert.Contains(results, result => result.MemberNames.Contains(nameof(request.TransferReference)));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("  ")]
+    public void ProcessWithdrawalCommand_RejectsBlankCompleteReference(string transferReference)
+    {
+        var request = new ProcessWithdrawalCommand("COMPLETE", TransferConfirmed: true, TransferReference: transferReference)
+        {
+            WithdrawalId = Guid.NewGuid(),
+            AdminUserId = Guid.NewGuid().ToString()
+        };
+
+        var results = ValidateModel(request);
+
+        Assert.Contains(results, result => result.MemberNames.Contains(nameof(request.TransferReference)));
+    }
+
+    [Fact]
+    public void ProcessWithdrawalCommand_AllowsApproveAndRejectWithoutReference()
+    {
+        var approve = new ProcessWithdrawalCommand("Approve")
+        {
+            WithdrawalId = Guid.NewGuid(),
+            AdminUserId = Guid.NewGuid().ToString()
+        };
+        var reject = new ProcessWithdrawalCommand("Reject")
+        {
+            WithdrawalId = Guid.NewGuid(),
+            AdminUserId = Guid.NewGuid().ToString()
+        };
+
+        Assert.Empty(ValidateModel(approve));
+        Assert.Empty(ValidateModel(reject));
+    }
+
+    [Theory]
+    [InlineData(100, false)]
+    [InlineData(101, true)]
+    public void ProcessWithdrawalCommand_EnforcesReferenceLength(int length, bool invalid)
+    {
+        var request = new ProcessWithdrawalCommand("Approve", TransferReference: new string('R', length))
+        {
+            WithdrawalId = Guid.NewGuid(),
+            AdminUserId = Guid.NewGuid().ToString()
+        };
+
+        var results = ValidateModel(request);
+
+        Assert.Equal(invalid, results.Any(result => result.MemberNames.Contains(nameof(request.TransferReference))));
+    }
+
+    [Fact]
+    public void ExistingRequests_AcceptValidBoundaries()
+    {
+        var userId = Guid.NewGuid().ToString();
+        var adminId = Guid.NewGuid().ToString();
+        var transactionsQuery = new ListTransactionsQuery { UserId = userId };
+        Assert.Equal(1, transactionsQuery.Page);
+        Assert.Equal(10, transactionsQuery.PageSize);
+
+        var requests = new object[]
+        {
+            new AdjustWalletBalanceCommand(50_000m, "Credit", "Manual correction")
+            {
+                UserId = Guid.NewGuid(),
+                AdminUserId = adminId
+            },
+            new ProcessWithdrawalCommand("Approve", TransferReference: "BANK-TRANSFER-REF")
+            {
+                WithdrawalId = Guid.NewGuid(),
+                AdminUserId = adminId
+            },
+            new CheckoutDirectCommand(
+                Guid.NewGuid().ToString(),
+                50_000m)
+            {
+                UserId = Guid.Parse(userId)
+            },
+            new TopupVnPayCommand(50_000m) { UserId = userId },
+            new TransferCommand(Guid.NewGuid().ToString(), 10_000m) { SenderUserId = userId },
+            new ProcessVnPayIpnCommand(new Dictionary<string, string>()),
+            new GetTopupStatusQuery(Guid.NewGuid()) { UserId = Guid.Parse(userId) },
+            new EnsureWalletCommand(Guid.NewGuid()),
+            new GetMyWalletQuery(userId),
+            transactionsQuery,
+            new RequestWithdrawalCommand(
+                100_000m,
+                BankCode: "VCB",
+                AccountNumber: "1234567890",
+                AccountHolderName: "Test User") { UserId = userId, IdempotencyKey = "req-boundary-1" }
+        };
+
+        foreach (var request in requests)
+        {
+            Assert.Empty(ValidateModel(request));
+        }
+    }
+
+    [Fact]
+    public void ExistingRequests_RejectInvalidBoundaries()
+    {
+        var requests = new object[]
+        {
+            new AdjustWalletBalanceCommand(1.001m, "Cash", "Correction")
+                { UserId = Guid.Empty, AdminUserId = "not-a-guid" },
+            new ProcessWithdrawalCommand("1")
+                { WithdrawalId = Guid.Empty, AdminUserId = "not-a-guid" },
+            new CheckoutDirectCommand(
+                    "not-a-guid",
+                    10.5m)
+                { UserId = Guid.Empty },
+            new TopupVnPayCommand(9_999m, Currency: "USD", PaymentMethod: "CARD")
+                { UserId = "not-a-guid" },
+            new TransferCommand("not-a-guid", 999m) { SenderUserId = "not-a-guid" },
+            new ProcessVnPayIpnCommand(null!),
+            new GetTopupStatusQuery(Guid.Empty) { UserId = Guid.Empty },
+            new EnsureWalletCommand(Guid.Empty),
+            new GetMyWalletQuery("not-a-guid"),
+            new ListTransactionsQuery(
+                    Page: 0,
+                    PageSize: 101,
+                    Type: "UNKNOWN",
+                    FromDate: DateTimeOffset.UtcNow,
+                    ToDate: DateTimeOffset.UtcNow.AddDays(-1))
+                { UserId = "not-a-guid" },
+            new RequestWithdrawalCommand(
+                    49_999m,
+                    Currency: "USD",
+                    BankCode: new string('B', 151),
+                    AccountNumber: new string('1', 101),
+                    AccountHolderName: new string('A', 256))
+                { UserId = "not-a-guid" }
+        };
+
+        foreach (var request in requests)
+        {
+            Assert.NotEmpty(ValidateModel(request));
+        }
+    }
+
+    [Fact]
+    public void CheckoutDirectCommand_RejectsFractionalVndAmount()
+    {
+        var request = new CheckoutDirectCommand(
+            Guid.NewGuid().ToString(),
+            10.5m)
+        {
+            UserId = Guid.NewGuid()
+        };
+
+        var results = ValidateModel(request);
+
+        Assert.Contains(results, result => result.MemberNames.Contains(nameof(request.Amount)));
+    }
+
+    [Fact]
+    public void ListTransactionsQuery_RejectsInvalidTypeAndDateRange()
+    {
+        var request = new ListTransactionsQuery(
+            Type: "UNKNOWN",
+            FromDate: DateTimeOffset.UtcNow,
+            ToDate: DateTimeOffset.UtcNow.AddDays(-1))
+        {
+            UserId = Guid.NewGuid().ToString()
+        };
+
+        var results = ValidateModel(request);
+
+        Assert.Contains(results, result => result.MemberNames.Contains(nameof(request.Type)));
+        Assert.Contains(results, result =>
+            result.MemberNames.Contains(nameof(request.FromDate)) &&
+            result.MemberNames.Contains(nameof(request.ToDate)));
     }
 
     [Theory]
@@ -92,11 +410,48 @@ public class WalletRequestValidatorTests
     {
         // ASP.NET Core ModelMetadata throws InvalidOperationException if validation metadata
         // is placed on properties of record types with primary constructors.
-        var propertiesWithValidation = commandType.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+        var propertiesWithValidation = commandType
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
             .Where(p => p.GetCustomAttributes<ValidationAttribute>(inherit: false).Any())
             .Select(p => p.Name)
             .ToList();
 
         Assert.Empty(propertiesWithValidation);
+    }
+
+    [Fact]
+    public void AllApplicationRequests_MustNotHaveValidationMetadataOnProperties()
+    {
+        var requestTypes = typeof(Wallet.Application.DependencyInjection).Assembly
+            .GetTypes()
+            .Where(t => !t.IsAbstract && !t.IsInterface && typeof(MediatR.IBaseRequest).IsAssignableFrom(t))
+            .OrderBy(t => t.FullName, StringComparer.Ordinal)
+            .ToList();
+
+        Assert.NotEmpty(requestTypes);
+
+        foreach (var requestType in requestTypes)
+        {
+            var propertiesWithValidation = requestType
+                .GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                .Where(p => p.GetCustomAttributes<ValidationAttribute>(inherit: false).Any())
+                .Select(p => $"{requestType.Name}.{p.Name}")
+                .ToList();
+
+            Assert.Empty(propertiesWithValidation);
+        }
+    }
+
+    [Fact]
+    public void ListWalletLedgerQuery_RejectsOutOfRangePagination()
+    {
+        var query = new Wallet.Application.Features.AdminWallets.Queries.ListWalletLedger.ListWalletLedgerQuery(
+            Page: 0,
+            PageSize: 101);
+
+        var results = ValidateModel(query);
+
+        Assert.Contains(results, result => result.MemberNames.Contains(nameof(query.Page)));
+        Assert.Contains(results, result => result.MemberNames.Contains(nameof(query.PageSize)));
     }
 }
