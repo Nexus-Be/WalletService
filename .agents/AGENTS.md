@@ -23,7 +23,7 @@ multi-file change, use the `/speckit-*` skills and the project constitution at
 1. `/speckit-specify` the bounded change; resolve ambiguity with
    `/speckit-clarify` when needed.
 2. `/speckit-plan` and record the mandatory user-visible plan under
-   `.agents/plan/PLAN-YYYYMMDD-HHMM-<NAME>.md`, linking to the Spec Kit plan in
+   `.agents/plans/YYYY-MM-DD_HHmm-plan-<slug>.md`, linking to the Spec Kit plan in
    `specs/[###-feature-name]/plan.md`.
 3. Present the plan for approval before code edits. Include file context,
    GitNexus upstream impact/risk, implementation steps, and verification.
@@ -43,3 +43,10 @@ numbered service-level documents.
 - `dotnet test Wallet.sln -c Release` must pass 100%.
 
 > **Frozen:** 71 handlers (42 Commands, 29 Queries), 2 controllers (`WalletsController` also hosts `~/api/v1/internal/wallets/...` behind `[RequireInternalServiceKey]` / `[RequireAuctionServiceKey]`), MediatR wired. Never recreate `Wallet.Application/Services/{Feature}/` or per-resource controllers.
+## Workspace Artifacts (Note, Decision, Doc, Plan)
+Every AI Coding Agent working in this repository must follow the local rules for the 4 workspace artifact types under `.agents/`:
+- **Plans** ([`rules/plan-management.md`](rules/plan-management.md)): Save in `.agents/plans/YYYY-MM-DD_HHmm-plan-<slug>.md` using [`plans/plan-template.md`](plans/plan-template.md) (never `.agents/plan/`).
+- **Topic Notes** ([`rules/note-management.md`](rules/note-management.md)): Save in `.agents/notes/YYYY-MM-DD_HHmm-<topic-slug>.md` using [`notes/note-master.template.md`](notes/note-master.template.md) (**1 topic = 1 file**; open a new file when switching topics).
+- **Confirmations & Decisions** ([`rules/decision-management.md`](rules/decision-management.md)): Save every user confirmation question and settled choice in `.agents/decisions/YYYY-MM-DD_HHmm-<decision-slug>.md` using [`decisions/decision-template.md`](decisions/decision-template.md).
+- **Human-Facing Docs** ([`rules/doc-management.md`](rules/doc-management.md)): Save user-requested docs for human readers in `.agents/docs/<slug>.md` and process through the `humanizer` skill first.
+- **Unified Rules**: See [`rules/workspace-artifacts.md`](rules/workspace-artifacts.md).

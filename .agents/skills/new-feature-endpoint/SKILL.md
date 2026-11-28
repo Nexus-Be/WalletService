@@ -38,7 +38,7 @@ description: Add or change a REST endpoint in WalletService (port 8008). Use whe
 - [ ] Run GitNexus impact for every symbol to change and record the risk.
 - [ ] Confirm the contract: method, route, RBAC, ownership, amount rules, idempotency, database change.
 - [ ] Confirm whether the change adds a use case. Adding one changes the frozen count of 15, so get explicit approval first.
-- [ ] Create `.agents/plan/PLAN-YYYYMMDD-HHMM-<NAME>.md`.
+- [ ] Create `.agents/plans/YYYY-MM-DD_HHmm-plan-<slug>.md`.
 - [ ] Stop and ask if the contract is ambiguous.
 
 ### 1. Contract

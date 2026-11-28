@@ -91,7 +91,7 @@ or multi-file change, follow `.agents/AGENTS.md` and
 `.specify/memory/constitution.md`: specify the bounded change, clarify
 ambiguities, create and present the plan for approval, generate tasks, analyze
 the artifacts, implement only after approval, then converge until no gaps
-remain. Keep the mandatory session plan in `.agents/plan/` and link it to the
+remain. Keep the mandatory session plan in `.agents/plans/` and link it to the
 feature plan under `specs/[###-feature-name]/`. Spec Kit supplements, but never
 replaces, the endpoint checklist, GitNexus impact requirement, frozen
 architecture, or repository verification gates.
@@ -193,3 +193,13 @@ Một task tại WalletService chỉ hoàn tất khi:
 * `dotnet build Wallet.sln -c Release` thành công 100% (0 error).
 * `dotnet test Wallet.sln -c Release` vượt qua 100% các bài test.
 * Trạng thái Git sạch, không commit file rác (`bin/`, `obj/`, `.vs/`, `.idea/`).
+
+---
+
+## 📝 NGUYÊN TẮC 7: QUY CHUẨN LƯU TRỮ KẾ HOẠCH, GHI CHÚ, XÁC NHẬN & TÀI LIỆU (WORKSPACE ARTIFACTS)
+
+Tuân thủ quy chuẩn tại `.agents/rules/workspace-artifacts.md` cho đúng 4 loại artifact nội bộ (100% Inward-Only):
+1. **Lưu trữ Kế hoạch (`plan`)**: Bắt buộc ghi tại `.agents/plans/YYYY-MM-DD_HHmm-plan-<slug>.md` (kèm thời gian lập/cập nhật; CẤM dùng `.agents/plan/` số ít). Phôi mẫu: `.agents/plans/plan-template.md`. Chi tiết: `.agents/rules/plan-management.md`.
+2. **Ghi chú theo Chủ đề (`note`)**: Ghi nhận thao tác, vấn đề gặp & cách xử lý, hoặc lưu ý để đọc lại sau tại `.agents/notes/YYYY-MM-DD_HHmm-<topic-slug>.md`. **1 chủ đề = 1 file duy nhất**; khi chuyển sang chủ đề khác phải tạo file note mới. Phôi mẫu: `.agents/notes/note-master.template.md`. Chi tiết: `.agents/rules/note-management.md`.
+3. **Xác nhận & Quyết định (`decision`)**: Mọi vấn đề Agent hỏi người dùng để xác nhận / chốt phương án phải lưu tại `.agents/decisions/YYYY-MM-DD_HHmm-<decision-slug>.md` kèm mốc thời gian. Phôi mẫu: `.agents/decisions/decision-template.md`. Chi tiết: `.agents/rules/decision-management.md`.
+4. **Tài liệu cho Con người (`doc`)**: Khi người dùng yêu cầu viết tài liệu cho người đọc, bắt buộc áp dụng skill `humanizer` và lưu tại `.agents/docs/<slug>.md`. Chi tiết: `.agents/rules/doc-management.md`.
