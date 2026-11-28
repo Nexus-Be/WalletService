@@ -71,7 +71,7 @@ public static class StripeSettings
     public static void EnsureValid(IConfiguration configuration, ILogger logger) =>
         Validate(configuration, logger);
 
-    private static bool IsBlankOrPlaceholder(string? value) =>
+    internal static bool IsBlankOrPlaceholder(string? value) =>
         string.IsNullOrWhiteSpace(value) ||
         value.Contains("SET_VIA_ENVIRONMENT", StringComparison.OrdinalIgnoreCase) ||
         value.Contains("REPLACE_WITH", StringComparison.OrdinalIgnoreCase);

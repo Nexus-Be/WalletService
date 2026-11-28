@@ -104,6 +104,17 @@ public sealed class StripeCheckoutClientTests
             new StripeCheckoutClient(http, Configuration("sk_live_not-a-real-key")));
     }
 
+    [Fact]
+    public async Task UnconfiguredStripe_ReturnsProviderUnavailableInsteadOfCrashingDi()
+    {
+        using var http = new HttpClient(new RecordingHandler());
+        var emptyConfig = new ConfigurationBuilder().Build();
+        var client = new StripeCheckoutClient(http, emptyConfig);
+
+        await Assert.ThrowsAsync<PaymentProviderUnavailableException>(() =>
+            client.CreateSessionAsync(new StripeCheckoutRequest(Guid.NewGuid(), 100000, "unconfigured-key"), default));
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]

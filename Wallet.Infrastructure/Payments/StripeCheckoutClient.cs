@@ -14,14 +14,22 @@ public sealed class StripeCheckoutClient : IStripeCheckoutClient
     /// <summary>Universal checkout time to live for every payment type (Stripe's minimum allowed is 30 minutes).</summary>
     private const int SessionExpiryMinutes = 30;
 
-    private readonly SessionService _sessions;
-    private readonly PaymentIntentService _paymentIntents;
-    private readonly string _successUrl;
-    private readonly string _cancelUrl;
+    private readonly SessionService? _sessions;
+    private readonly PaymentIntentService? _paymentIntents;
+    private readonly string _successUrl = string.Empty;
+    private readonly string _cancelUrl = string.Empty;
+    private readonly bool _isConfigured;
 
     public StripeCheckoutClient(HttpClient httpClient, IConfiguration configuration)
     {
         var key = configuration["Stripe:SecretKey"];
+        var webhookSecret = configuration["Stripe:WebhookSecret"];
+        if (StripeSettings.IsBlankOrPlaceholder(key) && StripeSettings.IsBlankOrPlaceholder(webhookSecret))
+        {
+            _isConfigured = false;
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(key) || !key.StartsWith("sk_test_", StringComparison.Ordinal))
         {
             throw new InvalidOperationException("A Stripe test-mode secret key is required.");
@@ -47,6 +55,7 @@ public sealed class StripeCheckoutClient : IStripeCheckoutClient
         }
         _sessions = new SessionService(client);
         _paymentIntents = new PaymentIntentService(client);
+        _isConfigured = true;
     }
 
     public async Task<StripeCheckoutSession> CreateSessionAsync(
@@ -61,6 +70,9 @@ public sealed class StripeCheckoutClient : IStripeCheckoutClient
         if (string.IsNullOrWhiteSpace(request.IdempotencyKey) || request.IdempotencyKey.Length > 255 ||
             request.IdempotencyKey.Any(char.IsWhiteSpace))
             throw new ArgumentException("Provider idempotency key is invalid.", nameof(request));
+
+        if (!_isConfigured || _sessions is null)
+            throw new PaymentProviderUnavailableException(new InvalidOperationException("Stripe payments are not configured in this environment."));
 
         var expiresAt = request.ExpiresAt ?? DateTimeOffset.UtcNow.AddMinutes(SessionExpiryMinutes);
         var metadata = new Dictionary<string, string> { ["attempt_id"] = request.AttemptId.ToString() };
@@ -112,6 +124,8 @@ public sealed class StripeCheckoutClient : IStripeCheckoutClient
     public async Task<StripeSessionSnapshot> GetSessionAsync(string sessionId, CancellationToken cancellationToken)
     {
         ValidateProviderId(sessionId, "cs_test_", nameof(sessionId));
+        if (!_isConfigured || _sessions is null)
+            throw new PaymentProviderUnavailableException(new InvalidOperationException("Stripe payments are not configured in this environment."));
         var session = await RequestProviderAsync(
             () => _sessions.GetAsync(sessionId, cancellationToken: cancellationToken), cancellationToken);
         return MapSessionSnapshot(sessionId, session);
@@ -120,6 +134,8 @@ public sealed class StripeCheckoutClient : IStripeCheckoutClient
     public async Task<StripeSessionSnapshot> ExpireSessionAsync(string sessionId, CancellationToken cancellationToken)
     {
         ValidateProviderId(sessionId, "cs_test_", nameof(sessionId));
+        if (!_isConfigured || _sessions is null)
+            throw new PaymentProviderUnavailableException(new InvalidOperationException("Stripe payments are not configured in this environment."));
         var session = await RequestProviderAsync(
             () => _sessions.ExpireAsync(sessionId, cancellationToken: cancellationToken), cancellationToken);
         return MapSessionSnapshot(sessionId, session);
@@ -144,6 +160,8 @@ public sealed class StripeCheckoutClient : IStripeCheckoutClient
         string paymentIntentId, CancellationToken cancellationToken)
     {
         ValidateProviderId(paymentIntentId, "pi_", nameof(paymentIntentId));
+        if (!_isConfigured || _paymentIntents is null)
+            throw new PaymentProviderUnavailableException(new InvalidOperationException("Stripe payments are not configured in this environment."));
         var intent = await RequestProviderAsync(
             () => _paymentIntents.GetAsync(paymentIntentId, cancellationToken: cancellationToken), cancellationToken);
         if (intent.Id != paymentIntentId || intent.Livemode || intent.Currency != "vnd" ||
